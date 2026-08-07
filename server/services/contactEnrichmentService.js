@@ -1,4 +1,4 @@
-import { VerifaliaRestClient } from 'verifalia';
+import { VerifaliaRestClient } from '../vendor/verifalia-js-sdk-master/node/cjs/index.js';
 import { trackedFetch, trackApiCall } from './apiUsage.js';
 
 const isKeyValid = (key) => {
