@@ -23,16 +23,16 @@
   --color-on-background: oklch(0.98 0.005 250);
   --color-error: oklch(0.62 0.22 25);
   --color-surface-container-lowest: oklch(0.1 0.04 275);
-  --color-secondary: oklch(0.24 0.04 268);
+  --color-secondary: oklch(0.78 0.16 200);
   --color-on-secondary-container: oklch(0.96 0.005 250);
-  --color-text-secondary: oklch(0.85 0.02 260);
+  --color-text-secondary: oklch(0.88 0.02 260);
   --color-surface-bright: oklch(0.24 0.04 268);
   --color-on-primary-container: oklch(0.99 0.002 250);
   --color-surface: oklch(0.13 0.045 275);
   --color-inverse-on-surface: #2e3037;
   --color-background: oklch(0.13 0.045 275);
   --color-surface-container: oklch(0.16 0.04 272);
-  --color-on-surface-variant: oklch(0.72 0.025 260);
+  --color-on-surface-variant: oklch(0.80 0.02 260);
   --color-surface-container-highest: oklch(0.22 0.035 268);
   --color-on-primary-fixed: #001a41;
   --color-surface-container-low: oklch(0.15 0.04 273);
@@ -42,13 +42,13 @@
   --color-primary-container: oklch(0.55 0.18 253);
   --color-on-primary-fixed-variant: #004493;
   --color-primary-fixed: #d8e2ff;
-  --color-secondary-fixed: oklch(0.3 0.04 268);
+  --color-secondary-fixed: oklch(0.78 0.16 200);
   --color-outline-variant: oklch(0.98 0.01 250 / 14%);
   --color-tertiary-fixed: #ffdbcc;
   --color-primary: oklch(0.66 0.19 253);
   --color-text-primary: #ffffff;
   --color-error-container: #93000a;
-  --color-secondary-fixed-dim: oklch(0.24 0.04 268);
+  --color-secondary-fixed-dim: oklch(0.70 0.14 200);
   --color-surface-dim: oklch(0.13 0.045 275);
   --color-on-tertiary-fixed: #351000;
   --color-tertiary: #ffb595;
@@ -58,7 +58,7 @@
   --color-on-surface: oklch(0.98 0.005 250);
 
   --color-muted: oklch(0.22 0.035 268);
-  --color-muted-foreground: oklch(0.72 0.025 260);
+  --color-muted-foreground: oklch(0.80 0.02 260);
   --color-primary-glow: oklch(0.78 0.15 235);
   --color-glass: oklch(0.98 0.01 250 / 6%);
   --color-glass-border: oklch(0.98 0.01 250 / 14%);
@@ -212,4 +212,134 @@
 ::-webkit-scrollbar-thumb {
   background: oklch(0.22 0.035 268);
   border-radius: 10px;
+}
+
+/* Satellite uplink auth loader */
+.satellite-uplink-fade-in {
+  animation: satellite-uplink-fade 0.45s ease-out both;
+}
+
+@keyframes satellite-uplink-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.satellite-uplink-pulse {
+  animation: satellite-uplink-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes satellite-uplink-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.05);
+  }
+}
+
+.satellite-uplink-core {
+  animation: satellite-uplink-core 3s ease-in-out infinite;
+}
+
+@keyframes satellite-uplink-core {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.satellite-uplink-arc {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.satellite-uplink-arc-1 {
+  inset: 0;
+  border-top-color: var(--color-primary-glow);
+  border-right-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+  animation: satellite-uplink-orbit 4s linear infinite;
+}
+
+.satellite-uplink-arc-2 {
+  inset: 14px;
+  border-bottom-color: var(--color-tertiary-container);
+  border-left-color: color-mix(in oklab, var(--color-tertiary-container) 45%, transparent);
+  animation: satellite-uplink-orbit 5.5s linear infinite reverse;
+}
+
+.satellite-uplink-arc-3 {
+  inset: 28px;
+  border-top-color: color-mix(in oklab, var(--color-primary-glow) 70%, var(--color-tertiary-container));
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-left-color: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  animation: satellite-uplink-orbit 3.2s linear infinite;
+}
+
+@keyframes satellite-uplink-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.satellite-uplink-progress-bar {
+  background: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    var(--color-primary-glow) 45%,
+    var(--color-tertiary-container) 100%
+  );
+  box-shadow: 0 0 12px color-mix(in oklab, var(--color-primary-glow) 50%, transparent);
+}
+
+/* Solar proposal print — isolate one document, no app shell or fixed-overlay repeats */
+@media print {
+  @page {
+    margin: 0.4in;
+  }
+
+  body.solar-proposal-printing #root {
+    display: none !important;
+  }
+
+  body.solar-proposal-printing .solar-proposal-print-root {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+  }
+
+  body.solar-proposal-printing .solar-proposal-document {
+    max-width: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 }

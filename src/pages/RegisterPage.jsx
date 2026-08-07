@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '../config.js';
+import { US_STATES } from '../lib/usStates.js';
+import SatelliteUplinkLoader from '../components/SatelliteUplinkLoader.jsx';
 
 export default function RegisterPage() {
   const [searchParams] = useSearchParams();
@@ -12,12 +14,11 @@ export default function RegisterPage() {
     email: '',
     password: '',
     region: 'California',
-    license: '',
     volume: '50-200 leads/mo',
-    crm: 'Salesforce'
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showAuthLoader, setShowAuthLoader] = useState(false);
   const navigate = useNavigate();
 
   const handleInputChange = (field, value) => {
@@ -34,6 +35,7 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
+    setShowAuthLoader(true);
     try {
       const response = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
@@ -45,19 +47,20 @@ export default function RegisterPage() {
 
       localStorage.setItem('solar_token', data.token);
       if (selectedPlan) {
-        navigate(`/packages?plan=${encodeURIComponent(selectedPlan)}`);
+        navigate(`/billing?plan=${encodeURIComponent(selectedPlan)}#plans`);
       } else {
         navigate('/dashboard?welcome=1');
       }
     } catch (err) {
+      setShowAuthLoader(false);
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
 
   return (
     <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <SatelliteUplinkLoader visible={showAuthLoader} />
       <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary/15 blur-3xl rounded-full pointer-events-none" />
       <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-primary-glow/10 blur-3xl rounded-full pointer-events-none" />
       <div className="w-full max-w-[500px] z-10 my-8">
@@ -113,23 +116,14 @@ export default function RegisterPage() {
                 <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-primary text-[11px] font-semibold">
                   You get 5 free lead credits on signup. Subscribe to a monthly plan when you need more.
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-on-surface-variant block font-medium">Target Region</label>
-                    <select value={formData.region} onChange={(e) => handleInputChange('region', e.target.value)}
-                      className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs">
-                      <option value="California">California</option>
-                      <option value="Texas">Texas</option>
-                      <option value="Arizona">Arizona</option>
-                      <option value="Florida">Florida</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-on-surface-variant block font-medium">CSLB License Number</label>
-                    <input type="text" value={formData.license} onChange={(e) => handleInputChange('license', e.target.value)}
-                      placeholder="e.g. CSLB-990184"
-                      className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs" />
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-on-surface-variant block font-medium">Target Region</label>
+                  <select value={formData.region} onChange={(e) => handleInputChange('region', e.target.value)}
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs">
+                    {US_STATES.map((state) => (
+                      <option key={state} value={state}>{state}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-on-surface-variant block font-medium">Monthly Target Lead Volume</label>
@@ -139,16 +133,6 @@ export default function RegisterPage() {
                     <option value="50-200 leads/mo">50 - 200 leads/mo</option>
                     <option value="200-500 leads/mo">200 - 500 leads/mo</option>
                     <option value="500+ leads/mo">500+ leads/mo</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-on-surface-variant block font-medium">Primary CRM Preference</label>
-                  <select value={formData.crm} onChange={(e) => handleInputChange('crm', e.target.value)}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs">
-                    <option value="Salesforce">Salesforce CRM</option>
-                    <option value="HubSpot">HubSpot CRM</option>
-                    <option value="Zapier">Zapier Webhook</option>
-                    <option value="CSV">CSV Downloads</option>
                   </select>
                 </div>
               </div>

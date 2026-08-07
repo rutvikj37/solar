@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
+import WebhookModal from '../components/WebhookModal';
+import SolarProposalModal from '../components/SolarProposalModal';
 import { API_BASE } from '../config.js';
+import { apiService } from '../services/api.js';
 import { formatLeadGeneratedAt } from '../lib/formatDate.js';
+import { buildLeadMarkerIcon } from '../lib/mapMarkers.js';
 
 const API = API_BASE;
 const STATUS_OPTIONS = ['new', 'contacted', 'appointment', 'proposal', 'won', 'lost', 'qualified', 'in_progress'];
@@ -31,7 +35,7 @@ function loadGoogleMapsScript(apiKey) {
     if (!script) {
       script = document.createElement('script');
       script.id = GMAPS_SCRIPT_ID;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly&loading=async`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -59,11 +63,12 @@ export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [crmStatus, setCrmStatus] = useState('idle');
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [showProposalModal, setShowProposalModal] = useState(false);
   const [lead, setLead] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState('');
-  const [smsBody, setSmsBody] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [apptAt, setApptAt] = useState('');
   const [busy, setBusy] = useState('');
@@ -71,6 +76,7 @@ export default function LeadDetails() {
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState('');
+  const [dripEnrollments, setDripEnrollments] = useState([]);
   const [mapEl, setMapEl] = useState(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
@@ -114,9 +120,6 @@ export default function LeadDetails() {
         const data = await response.json();
         setLead(data);
         setNote(data.notes || '');
-        setSmsBody(
-          `Hi ${data.owner_name || 'there'}, this is your local solar team about savings at ${data.address}. Interested in a free assessment?`
-        );
         setEmailBody(
           `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`
         );
@@ -126,6 +129,13 @@ export default function LeadDetails() {
         headers: { Authorization: `Bearer ${t}` }
       });
       if (actRes.ok) setActivities(await actRes.json());
+
+      try {
+        const dripData = await apiService.getLeadDripEnrollments(id);
+        setDripEnrollments(dripData || []);
+      } catch {
+        setDripEnrollments([]);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -173,7 +183,8 @@ export default function LeadDetails() {
         markerRef.current = new window.google.maps.Marker({
           position: center,
           map,
-          title: lead.address
+          title: lead.address,
+          icon: buildLeadMarkerIcon(window.google, { fillColor: '#FF3B30', scale: 1.8 })
         });
       } else {
         mapInstanceRef.current.setCenter(center);
@@ -185,7 +196,8 @@ export default function LeadDetails() {
           markerRef.current = new window.google.maps.Marker({
             position: center,
             map: mapInstanceRef.current,
-            title: lead.address
+            title: lead.address,
+            icon: buildLeadMarkerIcon(window.google, { fillColor: '#FF3B30', scale: 1.8 })
           });
         }
       }
@@ -244,20 +256,6 @@ export default function LeadDetails() {
     });
     setCrmStatus(res.ok ? 'exported' : 'idle');
     if (res.ok) await load();
-  };
-
-  const handleSms = async () => {
-    setBusy('sms');
-    const res = await fetch(`${API}/api/outreach/sms`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ leadId: Number(id), message: smsBody })
-    });
-    const data = await res.json();
-    if (!res.ok) alert(data.error || 'SMS failed');
-    else alert(data.simulated ? 'SMS simulated (Twilio phone not configured)' : 'SMS sent');
-    await load();
-    setBusy('');
   };
 
   const handleEmail = async () => {
@@ -387,25 +385,50 @@ export default function LeadDetails() {
             )}
           </div>
           <div className="flex flex-wrap gap-2 items-center shrink-0">
+            <button
+              onClick={() => setShowProposalModal(true)}
+              className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110"
+            >
+              <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+              Download Solar Proposal
+            </button>
+
+            <button
+              onClick={() => setShowWebhookModal(true)}
+              className="bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-base">hub</span>
+              Push to Webhook
+            </button>
+
             <select
               value={lead.status || 'new'}
               onChange={(e) => handleStatus(e.target.value)}
               disabled={busy === 'status'}
-              className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+              className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
             >
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            <button
-              onClick={handleExport}
-              disabled={crmStatus !== 'idle'}
-              className="bg-primary text-on-primary py-2.5 px-4 rounded-lg font-bold"
-            >
-              {crmStatus === 'exported' ? 'Exported' : crmStatus === 'exporting' ? 'Exporting...' : 'Export to CRM'}
-            </button>
           </div>
         </div>
+
+        {dripEnrollments.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">
+            <span className="material-symbols-outlined text-primary text-base">reorder</span>
+            <span className="text-xs font-bold text-white">Active Drip:</span>
+            {dripEnrollments.map((e) => (
+              <Link
+                key={e.id}
+                to="/drip-campaigns"
+                className="px-2 py-1 rounded-lg bg-white/10 text-primary text-[10px] font-bold hover:bg-white/15"
+              >
+                {e.campaignName} · Step {e.currentStep}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Google Maps satellite hero */}
         <div className="glass-card rounded-2xl overflow-hidden border border-glass-stroke">
@@ -442,7 +465,7 @@ export default function LeadDetails() {
           ].map((k) => (
             <div key={k.label} className="glass-card rounded-xl p-4 border border-glass-stroke">
               <p className="text-[9px] text-on-surface-variant uppercase font-label-mono tracking-wider">{k.label}</p>
-              <p className={`text-base font-bold mt-1.5 truncate ${k.accent ? 'text-primary' : 'text-white'}`}>{k.value}</p>
+              <p className={`text-base font-bold mt-1.5 truncate font-mono tabular-nums ${k.accent ? 'text-primary' : 'text-white'}`}>{k.value}</p>
             </div>
           ))}
         </div>
@@ -545,37 +568,20 @@ export default function LeadDetails() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-                <h4 className="font-bold text-white">Send SMS</h4>
-                <textarea
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
-                  value={smsBody}
-                  onChange={(e) => setSmsBody(e.target.value)}
-                />
-                <button
-                  onClick={handleSms}
-                  disabled={busy === 'sms'}
-                  className="w-full bg-primary text-on-primary py-2 rounded-lg font-bold"
-                >
-                  {busy === 'sms' ? 'Sending...' : 'Send SMS'}
-                </button>
-              </div>
-              <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-                <h4 className="font-bold text-white">Send Email</h4>
-                <textarea
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
-                  value={emailBody}
-                  onChange={(e) => setEmailBody(e.target.value)}
-                />
-                <button
-                  onClick={handleEmail}
-                  disabled={busy === 'email'}
-                  className="w-full bg-white/10 text-white py-2 rounded-lg font-bold"
-                >
-                  {busy === 'email' ? 'Sending...' : 'Send Email'}
-                </button>
-              </div>
+            <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
+              <h4 className="font-bold text-white">Send Email</h4>
+              <textarea
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+              />
+              <button
+                onClick={handleEmail}
+                disabled={busy === 'email'}
+                className="w-full bg-white/10 text-white py-2 rounded-lg font-bold"
+              >
+                {busy === 'email' ? 'Sending...' : 'Send Email'}
+              </button>
             </div>
 
             <div className="glass-card rounded-xl p-5 border border-glass-stroke flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -595,13 +601,26 @@ export default function LeadDetails() {
               >
                 Book Appointment
               </button>
-              <Link to="/call-center" className="text-primary font-bold hover:underline py-2 shrink-0">
-                AI Call Center →
+              <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
+                AI Voice Calling →
               </Link>
             </div>
           </div>
         </div>
       </div>
+
+      <WebhookModal
+        show={showWebhookModal}
+        onClose={() => setShowWebhookModal(false)}
+        leadId={lead.id}
+        leadName={lead.owner_name}
+      />
+
+      <SolarProposalModal
+        show={showProposalModal}
+        onClose={() => setShowProposalModal(false)}
+        lead={lead}
+      />
     </AppLayout>
   );
 }

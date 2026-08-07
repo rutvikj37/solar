@@ -23,7 +23,7 @@ export default function UpgradeModal({ open, onClose, credits = 0, message }) {
         )}
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
           <Link
-            to="/packages"
+            to="/billing#plans"
             className="flex-1 text-center bg-primary text-on-primary font-bold py-2.5 rounded-lg text-xs hover:brightness-110"
           >
             View monthly plans

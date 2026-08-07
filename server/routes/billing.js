@@ -528,7 +528,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
           }
         },
         success_url: `${frontendUrl}/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendUrl}/packages?canceled=1`
+        cancel_url: `${frontendUrl}/billing?canceled=1#plans`
       });
 
       await recordInvoice({
@@ -571,7 +571,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
         credits: String(credits)
       },
       success_url: `${frontendUrl}/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${frontendUrl}/packages?canceled=1`
+      cancel_url: `${frontendUrl}/billing?canceled=1#plans`
     });
 
     await recordInvoice({

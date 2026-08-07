@@ -3,8 +3,13 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 
+import TeamWorkspacePanel from '../components/TeamWorkspacePanel';
+import TerritoryAnalyticsPanel from '../components/TerritoryAnalyticsPanel';
+
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { id: 'team', label: 'Team Workspace', icon: 'groups' },
+  { id: 'territory', label: 'Territory Analytics', icon: 'analytics' },
   { id: 'users', label: 'Users', icon: 'group' },
   { id: 'subscriptions', label: 'Subscriptions', icon: 'card_membership' },
   { id: 'plans', label: 'Plans', icon: 'sell' },
@@ -24,7 +29,17 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState([]);
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
-  const [creditAmount, setCreditAmount] = useState(10);
+  const [userDetail, setUserDetail] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [creditAdjustAmount, setCreditAdjustAmount] = useState(10);
+  const [creditNote, setCreditNote] = useState('');
+  const [creditMode, setCreditMode] = useState('add');
+  const [creditMsg, setCreditMsg] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState('');
+  const [revealedPassword, setRevealedPassword] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [planForm, setPlanForm] = useState({
     id: '',
     name: '',
@@ -116,6 +131,8 @@ export default function AdminDashboard() {
     setTab(id);
     setSearchParams({ tab: id });
     setTicketDetail(null);
+    setUserDetail(null);
+    setSelectedUserId(null);
   };
 
   const bootstrapAdmin = async () => {
@@ -133,6 +150,89 @@ export default function AdminDashboard() {
     loadTab(tab);
   };
 
+  const openUser = async (id) => {
+    setSelectedUserId(id);
+    setCreditMsg('');
+    setPasswordMsg('');
+    setRevealedPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    const res = await fetch(`${API_BASE}/api/admin/users/${id}`, { headers: authHeaders() });
+    if (res.ok) {
+      setUserDetail(await res.json());
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setCreditMsg(data.error || 'Failed to load user profile');
+      setUserDetail(null);
+    }
+  };
+
+  const resetUserPassword = async ({ generate = false } = {}) => {
+    if (!selectedUserId || passwordBusy) return;
+    setPasswordMsg('');
+    setRevealedPassword('');
+
+    if (!generate) {
+      if (newPassword.length < 8) {
+        setPasswordMsg('Password must be at least 8 characters');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setPasswordMsg('Passwords do not match');
+        return;
+      }
+    }
+
+    setPasswordBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/reset-password`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(generate ? { generate: true } : { password: newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPasswordMsg(data.error || 'Password reset failed');
+        return;
+      }
+      setRevealedPassword(data.temporaryPassword || '');
+      setPasswordMsg(
+        generate
+          ? 'Temporary password generated — copy it now; it will not be shown again.'
+          : 'Password updated — copy it now if you need to share it with the user.'
+      );
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch {
+      setPasswordMsg('Password reset failed');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  const applyCredits = async () => {
+    if (!selectedUserId) return;
+    setCreditMsg('');
+    const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/credits`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        amount: Number(creditAdjustAmount),
+        mode: creditMode,
+        note: creditNote.trim() || undefined
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setCreditMsg(data.error || 'Credit adjustment failed');
+      return;
+    }
+    setCreditMsg(`Credits updated — new balance: ${data.credits}`);
+    setCreditNote('');
+    openUser(selectedUserId);
+    loadTab('users');
+  };
+
   const toggleStatus = async (userId, current) => {
     const status = current === 'suspended' ? 'active' : 'suspended';
     await fetch(`${API_BASE}/api/admin/users/${userId}/status`, {
@@ -141,15 +241,12 @@ export default function AdminDashboard() {
       body: JSON.stringify({ status })
     });
     loadTab('users');
+    if (selectedUserId === userId) openUser(userId);
   };
 
-  const addCredits = async (userId) => {
-    await fetch(`${API_BASE}/api/admin/users/${userId}/credits`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ amount: Number(creditAmount) })
-    });
-    loadTab('users');
+  const toggleStatusFromDetail = async () => {
+    if (!userDetail?.user) return;
+    await toggleStatus(userDetail.user.id, userDetail.user.account_status);
   };
 
   const createPlan = async (e) => {
@@ -260,73 +357,285 @@ export default function AdminDashboard() {
           ].map(([label, value, sub]) => (
             <div key={label} className="glass-card p-5 rounded-xl">
               <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">{label}</p>
-              <h3 className="text-2xl font-bold text-white mt-1.5">{value}</h3>
+              <h3 className="text-2xl font-bold text-white mt-1.5 font-mono tabular-nums">{value}</h3>
               <p className="text-on-surface-variant text-[10px] mt-2">{sub}</p>
             </div>
           ))}
         </div>
       )}
 
+      {tab === 'team' && <TeamWorkspacePanel />}
+
+      {tab === 'territory' && <TerritoryAnalyticsPanel />}
+
       {tab === 'users' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-3 items-center">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && loadTab('users')}
-              placeholder="Search users…"
-              className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white w-64"
-            />
-            <button onClick={() => loadTab('users')} className="text-xs bg-white/10 px-3 py-2 rounded-lg">
-              Search
-            </button>
-            <label className="text-xs text-on-surface-variant flex items-center gap-2">
-              Credit +/-
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3 items-center">
               <input
-                type="number"
-                value={creditAmount}
-                onChange={(e) => setCreditAmount(e.target.value)}
-                className="w-20 bg-surface-container-low border border-glass-stroke rounded px-2 py-1 text-white"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadTab('users')}
+                placeholder="Search users…"
+                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white w-64"
               />
-            </label>
-          </div>
-          <div className="glass-card rounded-xl overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-white/5 text-on-surface-variant uppercase text-[9px]">
-                <tr>
-                  <th className="px-4 py-3">User</th>
-                  <th className="px-4 py-3">Plan</th>
-                  <th className="px-4 py-3">Credits</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-glass-stroke">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-white/5">
-                    <td className="px-4 py-3">
-                      <p className="text-white font-semibold">{u.name}</p>
-                      <p className="text-on-surface-variant">{u.email}</p>
-                    </td>
-                    <td className="px-4 py-3 text-white">{u.plan}</td>
-                    <td className="px-4 py-3 font-mono text-white">{u.credits}</td>
-                    <td className="px-4 py-3">
-                      <span className={u.account_status === 'suspended' ? 'text-red-400' : 'text-green-400'}>
-                        {u.account_status || 'active'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right space-x-2">
-                      <button onClick={() => addCredits(u.id)} className="text-primary font-semibold">
-                        +Credits
-                      </button>
-                      <button onClick={() => toggleStatus(u.id, u.account_status)} className="text-on-surface-variant">
-                        {u.account_status === 'suspended' ? 'Activate' : 'Suspend'}
-                      </button>
-                    </td>
+              <button onClick={() => loadTab('users')} className="text-xs bg-white/10 px-3 py-2 rounded-lg">
+                Search
+              </button>
+            </div>
+            <div className="glass-card rounded-xl overflow-x-auto max-h-[70vh] overflow-y-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-white/5 text-on-surface-variant uppercase text-[9px] sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Plan</th>
+                    <th className="px-4 py-3">Credits</th>
+                    <th className="px-4 py-3">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-glass-stroke">
+                  {users.map((u) => (
+                    <tr
+                      key={u.id}
+                      onClick={() => openUser(u.id)}
+                      className={`cursor-pointer hover:bg-white/5 ${
+                        selectedUserId === u.id ? 'bg-primary/10' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <p className="text-white font-semibold">{u.name}</p>
+                        <p className="text-on-surface-variant">{u.email}</p>
+                      </td>
+                      <td className="px-4 py-3 text-white">{u.plan}</td>
+                      <td className="px-4 py-3 font-mono text-white">{u.credits}</td>
+                      <td className="px-4 py-3">
+                        <span className={u.account_status === 'suspended' ? 'text-red-400' : 'text-green-400'}>
+                          {u.account_status || 'active'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {users.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-on-surface-variant text-center">
+                        No users found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="glass-card p-4 rounded-xl min-h-[420px] flex flex-col">
+            {!userDetail ? (
+              <p className="text-on-surface-variant m-auto">Select a user to view profile</p>
+            ) : (
+              <>
+                <div className="flex justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-white font-bold text-sm">{userDetail.user.name}</h3>
+                    <p className="text-on-surface-variant mt-0.5">{userDetail.user.email}</p>
+                  </div>
+                  <button
+                    onClick={toggleStatusFromDetail}
+                    className="text-[10px] bg-white/10 px-2 py-1 rounded self-start"
+                  >
+                    {userDetail.user.account_status === 'suspended' ? 'Activate' : 'Suspend'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {[
+                    ['Company', userDetail.user.company_name || '—'],
+                    ['Role', userDetail.user.role || 'solar_company'],
+                    ['Phone', userDetail.user.phone || '—'],
+                    ['Joined', userDetail.user.created_at ? new Date(userDetail.user.created_at).toLocaleDateString() : '—'],
+                    ['Account', userDetail.user.account_status || 'active'],
+                    ['Credits', userDetail.credits]
+                  ].map(([label, value]) => (
+                    <div key={label} className="bg-white/5 rounded-lg p-2">
+                      <p className="text-[9px] text-on-surface-variant uppercase">{label}</p>
+                      <p className="text-white font-semibold mt-0.5">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mb-4 p-3 rounded-lg bg-white/5 space-y-1">
+                  <p className="text-[9px] text-on-surface-variant uppercase">Package & Subscription</p>
+                  <p className="text-white">
+                    Plan: {userDetail.package?.packageName || 'None'}{' '}
+                    {userDetail.package?.purchasedLeads != null && (
+                      <span className="text-on-surface-variant">
+                        · purchased {userDetail.package.purchasedLeads} · remaining {userDetail.package.remainingLeads}
+                      </span>
+                    )}
+                  </p>
+                  {userDetail.subscription ? (
+                    <p className="text-on-surface-variant">
+                      Sub: {userDetail.subscription.packageName || userDetail.subscription.packageId} ·{' '}
+                      {userDetail.subscription.status}
+                      {userDetail.subscription.currentPeriodEnd && (
+                        <> · renews {new Date(userDetail.subscription.currentPeriodEnd).toLocaleDateString()}</>
+                      )}
+                      {userDetail.subscription.cancelAtPeriodEnd && (
+                        <span className="text-amber-400"> · cancel pending</span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-on-surface-variant">No active billing subscription record.</p>
+                  )}
+                </div>
+
+                <div className="mb-4 p-3 rounded-lg bg-white/5">
+                  <p className="text-[9px] text-on-surface-variant uppercase mb-1">Leads & Support</p>
+                  <p className="text-white">
+                    {userDetail.leads?.total ?? 0} total leads
+                    {userDetail.leads?.last7d > 0 && (
+                      <span className="text-on-surface-variant"> · {userDetail.leads.last7d} in last 7 days</span>
+                    )}
+                  </p>
+                  {userDetail.leads?.byStatus && Object.keys(userDetail.leads.byStatus).length > 0 && (
+                    <p className="text-on-surface-variant mt-1">
+                      {Object.entries(userDetail.leads.byStatus)
+                        .map(([s, n]) => `${s}: ${n}`)
+                        .join(' · ')}
+                    </p>
+                  )}
+                  <p className="text-on-surface-variant mt-1">
+                    {userDetail.tickets?.open ?? 0} open / {userDetail.tickets?.total ?? 0} support tickets
+                  </p>
+                </div>
+
+                {userDetail.recentActivity?.length > 0 && (
+                  <div className="mb-4 max-h-28 overflow-y-auto space-y-1">
+                    <p className="text-[9px] text-on-surface-variant uppercase mb-1">Recent Activity</p>
+                    {userDetail.recentActivity.map((a) => (
+                      <div key={a.id} className="text-[10px] bg-white/5 rounded p-1.5">
+                        <span className="text-primary">{a.type}</span>
+                        {a.lead_address && <span className="text-on-surface-variant"> · {a.lead_address}</span>}
+                        <span className="text-on-surface-variant"> · {new Date(a.created_at).toLocaleString()}</span>
+                        {a.content && <p className="text-white mt-0.5 line-clamp-1">{a.content}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-auto pt-3 border-t border-glass-stroke space-y-2">
+                  <p className="text-[9px] text-on-surface-variant uppercase">Adjust Credits</p>
+                  <p className="text-white font-mono text-sm">Current balance: {userDetail.credits}</p>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <select
+                      value={creditMode}
+                      onChange={(e) => setCreditMode(e.target.value)}
+                      className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                    >
+                      <option value="add">Add credits (+/−)</option>
+                      <option value="set">Set absolute balance</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={creditAdjustAmount}
+                      onChange={(e) => setCreditAdjustAmount(e.target.value)}
+                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white font-mono"
+                    />
+                    <input
+                      value={creditNote}
+                      onChange={(e) => setCreditNote(e.target.value)}
+                      placeholder="Optional note…"
+                      className="flex-1 min-w-[120px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                    />
+                    <button
+                      onClick={applyCredits}
+                      className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  {creditMsg && (
+                    <p className={`text-[10px] ${creditMsg.startsWith('Credits updated') ? 'text-green-400' : 'text-red-400'}`}>
+                      {creditMsg}
+                    </p>
+                  )}
+                  {userDetail.creditHistory?.length > 0 && (
+                    <div className="max-h-24 overflow-y-auto space-y-1 pt-1">
+                      <p className="text-[9px] text-on-surface-variant uppercase">Credit history</p>
+                      {userDetail.creditHistory.map((h) => (
+                        <p key={h.id} className="text-[10px] text-on-surface-variant">
+                          {new Date(h.created_at).toLocaleString()} · {h.mode === 'set' ? 'set' : h.amount > 0 ? '+' : ''}
+                          {h.amount} → {h.balance_after}
+                          {h.note && <> · {h.note}</>}
+                          {h.admin_name && <> · by {h.admin_name}</>}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-glass-stroke space-y-2">
+                  <p className="text-[9px] text-on-surface-variant uppercase">Reset Password</p>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password (min 8)"
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                    />
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm password"
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                    />
+                    <button
+                      type="button"
+                      disabled={passwordBusy}
+                      onClick={() => resetUserPassword({ generate: false })}
+                      className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
+                    >
+                      Set new password
+                    </button>
+                    <button
+                      type="button"
+                      disabled={passwordBusy}
+                      onClick={() => resetUserPassword({ generate: true })}
+                      className="bg-white/10 text-white px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
+                    >
+                      Generate temporary password
+                    </button>
+                  </div>
+                  {passwordMsg && (
+                    <p
+                      className={`text-[10px] ${
+                        revealedPassword ? 'text-green-400' : 'text-red-400'
+                      }`}
+                    >
+                      {passwordMsg}
+                    </p>
+                  )}
+                  {revealedPassword && (
+                    <div className="flex flex-wrap gap-2 items-center bg-white/5 rounded-lg p-2">
+                      <code className="text-white font-mono text-xs break-all flex-1">{revealedPassword}</code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(revealedPassword).catch(() => {});
+                        }}
+                        className="text-[10px] bg-white/10 px-2 py-1 rounded"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

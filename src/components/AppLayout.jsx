@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
-import { API_BASE } from '../config.js';
+import { fetchMe } from '../lib/auth.js';
 
 export default function AppLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -10,18 +10,14 @@ export default function AppLayout({ children }) {
   const [credits, setCredits] = useState(null);
   const location = useLocation();
   const isMapPage = location.pathname === '/map';
+  const isWideTablePage = location.pathname === '/my-leads';
 
   const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
 
   useEffect(() => {
-    const token = localStorage.getItem('solar_token');
-    if (!token) return;
-    fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.credits !== undefined) setCredits(data.credits);
-      })
-      .catch(() => {});
+    fetchMe().then((data) => {
+      if (data?.credits !== undefined) setCredits(data.credits);
+    });
   }, [location.pathname]);
 
   const creditsLow = credits !== null && credits <= 2;
@@ -35,16 +31,16 @@ export default function AppLayout({ children }) {
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
             <span>
               {credits === null
-                ? '5 free credits on signup — 1 lead = 1 credit'
+                ? '1 lead unlock = 1 credit'
                 : creditsEmpty
                   ? 'No credits remaining. Subscribe to a monthly plan to generate more leads.'
-                  : `${credits} lead credit${credits === 1 ? '' : 's'} remaining — 1 lead = 1 credit`}
+                  : `${Number(credits).toLocaleString()} credit${credits === 1 ? '' : 's'} remaining — 1 lead = 1 credit`}
             </span>
           </div>
           <div className="flex items-center gap-3">
             {(creditsLow || creditsEmpty) && (
               <Link
-                to="/packages"
+                to="/billing#plans"
                 className="px-3 py-1 font-bold text-[10px] rounded-full bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all shadow-sm"
               >
                 {creditsEmpty ? 'Subscribe' : 'Upgrade plan'}
@@ -68,14 +64,16 @@ export default function AppLayout({ children }) {
             className={`flex-1 transition-all duration-300 ${bodyPadding} ${
               isMapPage
                 ? 'p-0 h-screen overflow-hidden relative'
-                : 'pb-12 px-6 lg:pr-[280px] max-w-7xl mx-auto w-full'
+                : isWideTablePage
+                  ? 'pb-8 px-4 sm:px-5 lg:pr-[280px] max-w-[1680px] mx-auto w-full'
+                  : 'pb-12 px-6 lg:pr-[280px] max-w-7xl mx-auto w-full'
             }`}
           >
             {children}
           </main>
         </div>
 
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} showBanner={showBanner} />
       </div>
     </div>
   );

@@ -244,6 +244,72 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_filter_presets (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      filters_json TEXT NOT NULL,
+      is_default TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_presets_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS drip_campaigns (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      status ENUM('active', 'paused') NOT NULL DEFAULT 'active',
+      trigger_min_score INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_drip_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS drip_steps (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      campaign_id INT UNSIGNED NOT NULL,
+      step_order INT NOT NULL,
+      delay_days INT NOT NULL DEFAULT 0,
+      action_type ENUM('sms', 'email', 'ai_call') NOT NULL,
+      subject VARCHAR(200) NULL,
+      template_content TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_drip_steps_campaign (campaign_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS drip_enrollments (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      campaign_id INT UNSIGNED NOT NULL,
+      lead_id INT UNSIGNED NOT NULL,
+      current_step INT NOT NULL DEFAULT 1,
+      next_run_at TIMESTAMP NULL,
+      status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_enroll_user_lead (user_id, lead_id),
+      INDEX idx_enroll_status_next (status, next_run_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS team_members (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      owner_user_id INT UNSIGNED NOT NULL,
+      member_email VARCHAR(190) NOT NULL,
+      role ENUM('manager', 'canvasser', 'sales_rep') NOT NULL DEFAULT 'sales_rep',
+      status ENUM('pending', 'active') NOT NULL DEFAULT 'active',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_team_owner (owner_user_id),
+      INDEX idx_team_email (member_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
   // Ensure techx admin role if account exists
   await db.query(
     `UPDATE users SET role = 'super_admin'
@@ -251,5 +317,349 @@ export async function migrateSchema() {
        AND (role IS NULL OR role = '' OR role = 'solar_company')`
   );
 
-  console.log('[Schema] Migration complete');
+  // Ensure indices for performance
+  async function ensureIndex(table, indexName, columns) {
+    try {
+      const [rows] = await db.query(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+        [table, indexName]
+      );
+      if (rows[0].cnt === 0) {
+        await db.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${columns})`);
+        console.log(`[Schema] Added index ${indexName} on ${table}`);
+      }
+    } catch (err) {
+      console.error(`[Schema] Index creation error (${table}.${indexName}):`, err.message);
+    }
+  }
+
+  await ensureIndex('users', 'idx_users_email', 'email');
+  await ensureIndex('leads', 'idx_leads_user_status', 'user_id, status');
+  await ensureIndex('leads', 'idx_leads_user_created', 'user_id, created_at');
+  await ensureIndex('user_packages', 'idx_user_packages_user_status', 'user_id, status');
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS admin_credit_adjustments (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      admin_id INT UNSIGNED NOT NULL,
+      amount INT NOT NULL,
+      balance_after INT NOT NULL,
+      mode VARCHAR(10) NOT NULL DEFAULT 'add',
+      note TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_credit_adj_user (user_id),
+      INDEX idx_credit_adj_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ===== AI CALLING AUTOMATION MODULE TABLES =====
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_calling_campaigns (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      status ENUM('draft','active','paused','completed','cancelled') NOT NULL DEFAULT 'draft',
+      caller_name VARCHAR(100) NULL,
+      business_name VARCHAR(255) NULL,
+      twilio_number VARCHAR(20) NULL,
+      elevenlabs_voice_id VARCHAR(100) NULL,
+      elevenlabs_agent_id VARCHAR(100) NULL,
+      timezone VARCHAR(50) NOT NULL DEFAULT 'America/New_York',
+      calling_window_start TIME NOT NULL DEFAULT '09:00:00',
+      calling_window_end TIME NOT NULL DEFAULT '20:00:00',
+      calling_days JSON NULL,
+      retry_attempts INT NOT NULL DEFAULT 3,
+      retry_delay_minutes INT NOT NULL DEFAULT 60,
+      max_call_duration_seconds INT NOT NULL DEFAULT 300,
+      appointment_duration_minutes INT NOT NULL DEFAULT 30,
+      system_prompt TEXT NULL,
+      greeting_script TEXT NULL,
+      qualification_questions JSON NULL,
+      objection_responses JSON NULL,
+      booking_script TEXT NULL,
+      closing_script TEXT NULL,
+      total_leads INT NOT NULL DEFAULT 0,
+      completed_calls INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_ai_camp_user (user_id),
+      INDEX idx_ai_camp_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_calling_queue (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      campaign_id INT UNSIGNED NOT NULL,
+      lead_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      priority INT NOT NULL DEFAULT 0,
+      status ENUM('pending','calling','answered','completed','no_answer',
+                  'voicemail','callback','failed','do_not_call') NOT NULL DEFAULT 'pending',
+      attempt_count INT NOT NULL DEFAULT 0,
+      max_attempts INT NOT NULL DEFAULT 3,
+      next_attempt_at DATETIME NULL,
+      last_attempt_at DATETIME NULL,
+      callback_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_aiq_campaign (campaign_id),
+      INDEX idx_aiq_status_next (status, next_attempt_at),
+      INDEX idx_aiq_lead (lead_id),
+      UNIQUE KEY uniq_campaign_lead (campaign_id, lead_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_call_records (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      campaign_id INT UNSIGNED NULL,
+      queue_id INT UNSIGNED NULL,
+      lead_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      twilio_call_sid VARCHAR(64) NULL,
+      direction ENUM('outbound','inbound') NOT NULL DEFAULT 'outbound',
+      status ENUM('initiated','ringing','in_progress','completed',
+                  'no_answer','busy','failed','voicemail','transferred') NOT NULL DEFAULT 'initiated',
+      disposition ENUM('qualified','not_interested','callback','appointment_booked',
+                       'wrong_number','do_not_call','voicemail_left','no_disposition') NOT NULL DEFAULT 'no_disposition',
+      duration_seconds INT NOT NULL DEFAULT 0,
+      recording_url VARCHAR(1024) NULL,
+      recording_sid VARCHAR(64) NULL,
+      transcript LONGTEXT NULL,
+      ai_summary TEXT NULL,
+      ai_notes TEXT NULL,
+      sentiment ENUM('positive','neutral','negative','unknown') NOT NULL DEFAULT 'unknown',
+      lead_score_delta INT NOT NULL DEFAULT 0,
+      qualification_data JSON NULL,
+      voice_provider VARCHAR(32) NULL DEFAULT 'openai',
+      elevenlabs_agent_id VARCHAR(100) NULL,
+      qa_score INT NULL,
+      qa_notes JSON NULL,
+      started_at DATETIME NULL,
+      ended_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_acr_campaign (campaign_id),
+      INDEX idx_acr_lead (lead_id),
+      INDEX idx_acr_user_date (user_id, created_at),
+      INDEX idx_acr_twilio (twilio_call_sid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_calling_appointments (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      call_record_id INT UNSIGNED NOT NULL,
+      lead_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      appointment_id INT UNSIGNED NULL,
+      agency_name VARCHAR(255) NULL,
+      agency_zip VARCHAR(10) NULL,
+      scheduled_at DATETIME NOT NULL,
+      duration_minutes INT NOT NULL DEFAULT 30,
+      confirmation_sms_sent TINYINT(1) NOT NULL DEFAULT 0,
+      confirmation_email_sent TINYINT(1) NOT NULL DEFAULT 0,
+      google_calendar_event_id VARCHAR(255) NULL,
+      outlook_event_id VARCHAR(255) NULL,
+      invite_link VARCHAR(512) NULL,
+      agency_id INT UNSIGNED NULL,
+      reminder_24h_sent TINYINT(1) NOT NULL DEFAULT 0,
+      reminder_1h_sent TINYINT(1) NOT NULL DEFAULT 0,
+      status ENUM('confirmed','cancelled','rescheduled','completed','no_show') NOT NULL DEFAULT 'confirmed',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_aia_lead (lead_id),
+      INDEX idx_aia_call (call_record_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_knowledge_base (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      category VARCHAR(100) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      content TEXT NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_akb_user_cat (user_id, category)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_calling_settings (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      twilio_phone_number VARCHAR(20) NULL,
+      elevenlabs_api_key_encrypted VARCHAR(512) NULL,
+      elevenlabs_voice_id VARCHAR(100) NULL,
+      elevenlabs_agent_id VARCHAR(100) NULL,
+      openai_api_key_encrypted VARCHAR(512) NULL,
+      openai_model VARCHAR(50) NOT NULL DEFAULT 'gpt-4o',
+      google_calendar_token JSON NULL,
+      outlook_calendar_token JSON NULL,
+      default_business_name VARCHAR(255) NULL,
+      default_caller_name VARCHAR(100) NULL,
+      default_timezone VARCHAR(50) NOT NULL DEFAULT 'America/New_York',
+      business_hours_start TIME NOT NULL DEFAULT '09:00:00',
+      business_hours_end TIME NOT NULL DEFAULT '20:00:00',
+      daily_call_limit INT NOT NULL DEFAULT 100,
+      concurrent_call_limit INT NOT NULL DEFAULT 5,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_acs_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_solar_agencies (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      zip_codes JSON NULL,
+      states JSON NULL,
+      phone VARCHAR(20) NULL,
+      email VARCHAR(190) NULL,
+      calendar_link VARCHAR(512) NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_asa_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_calling_audit_log (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      action VARCHAR(100) NOT NULL,
+      entity_type VARCHAR(50) NULL,
+      entity_id INT UNSIGNED NULL,
+      details JSON NULL,
+      ip_address VARCHAR(45) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_acal_user_date (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ai_voicemail_templates (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      name VARCHAR(100) NOT NULL,
+      script TEXT NOT NULL,
+      is_default TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_avt_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // AI Calling column upgrades
+  await ensureColumn('ai_calling_campaigns', 'elevenlabs_agent_id', 'VARCHAR(100) NULL');
+  await ensureColumn('ai_call_records', 'voice_provider', "VARCHAR(32) NULL DEFAULT 'openai'");
+  await ensureColumn('ai_call_records', 'elevenlabs_agent_id', 'VARCHAR(100) NULL');
+  await ensureColumn('ai_call_records', 'qa_score', 'INT NULL');
+  await ensureColumn('ai_call_records', 'qa_notes', 'JSON NULL');
+  await ensureColumn('ai_calling_appointments', 'reminder_24h_sent', 'TINYINT(1) NOT NULL DEFAULT 0');
+  await ensureColumn('ai_calling_appointments', 'reminder_1h_sent', 'TINYINT(1) NOT NULL DEFAULT 0');
+  await ensureColumn('ai_calling_appointments', 'invite_link', 'VARCHAR(512) NULL');
+  await ensureColumn('ai_calling_appointments', 'agency_id', 'INT UNSIGNED NULL');
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS proposals (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      slug VARCHAR(64) NOT NULL UNIQUE,
+      lead_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      company_name VARCHAR(255) NULL DEFAULT 'SollarX Energy Solutions',
+      system_size_kw DECIMAL(6,2) NOT NULL DEFAULT 8.50,
+      panel_count INT NOT NULL DEFAULT 20,
+      gross_cost DECIMAL(10,2) NOT NULL DEFAULT 25500.00,
+      financing_type ENUM('cash', 'loan', 'lease') NOT NULL DEFAULT 'cash',
+      loan_term_years INT NOT NULL DEFAULT 20,
+      loan_interest_rate DECIMAL(4,2) NOT NULL DEFAULT 5.99,
+      down_payment DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      include_itc_30 TINYINT(1) NOT NULL DEFAULT 1,
+      state_rebate DECIMAL(10,2) NOT NULL DEFAULT 1000.00,
+      battery_type VARCHAR(50) NULL DEFAULT 'none',
+      battery_count INT NOT NULL DEFAULT 0,
+      battery_cost DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      utility_escalation DECIMAL(4,2) NOT NULL DEFAULT 4.50,
+      est_25yr_savings DECIMAL(10,2) NOT NULL DEFAULT 38500.00,
+      payback_years DECIMAL(4,1) NOT NULL DEFAULT 6.2,
+      status ENUM('draft', 'sent', 'viewed', 'signed', 'rejected') NOT NULL DEFAULT 'sent',
+      signed_name VARCHAR(255) NULL,
+      signed_email VARCHAR(255) NULL,
+      signed_signature_data LONGTEXT NULL,
+      signed_at DATETIME NULL,
+      viewed_at DATETIME NULL,
+      view_count INT UNSIGNED NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_prop_lead (lead_id),
+      INDEX idx_prop_user (user_id),
+      INDEX idx_prop_slug (slug),
+      INDEX idx_prop_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ===== DRIP AUTOMATION UPGRADES =====
+  await ensureColumn('drip_campaigns', 'enrollment_mode', "ENUM('all_leads','score_gated','manual') NOT NULL DEFAULT 'score_gated'");
+  await ensureColumn('drip_campaigns', 'description', 'TEXT NULL');
+  await ensureColumn('drip_campaigns', 'timezone', "VARCHAR(50) NOT NULL DEFAULT 'America/New_York'");
+  await ensureColumn('drip_campaigns', 'quiet_hours_start', "TIME NOT NULL DEFAULT '09:00:00'");
+  await ensureColumn('drip_campaigns', 'quiet_hours_end', "TIME NOT NULL DEFAULT '20:00:00'");
+  await ensureColumn('drip_campaigns', 'stop_on_reply', 'TINYINT(1) NOT NULL DEFAULT 1');
+  await ensureColumn('drip_campaigns', 'stop_on_statuses', 'JSON NULL');
+  await ensureColumn('drip_steps', 'delay_hours', 'INT NOT NULL DEFAULT 0');
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS drip_step_executions (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      enrollment_id INT UNSIGNED NOT NULL,
+      step_id INT UNSIGNED NOT NULL,
+      lead_id INT UNSIGNED NOT NULL,
+      channel ENUM('sms','email','ai_call') NOT NULL,
+      status ENUM('sent','failed','skipped') NOT NULL,
+      error_message TEXT NULL,
+      external_id VARCHAR(255) NULL,
+      executed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_drip_exec_enrollment (enrollment_id),
+      INDEX idx_drip_exec_lead (lead_id),
+      INDEX idx_drip_exec_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS drip_triggers (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      campaign_id INT UNSIGNED NOT NULL,
+      trigger_type ENUM('lead_created','status_change','min_score','has_phone','has_email','territory') NOT NULL,
+      trigger_config JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_drip_trigger_campaign (campaign_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  async function ensureUniqueIndex(table, indexName, columns) {
+    try {
+      const [rows] = await db.query(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+        [table, indexName]
+      );
+      if (rows[0].cnt === 0) {
+        await db.query(`ALTER TABLE \`${table}\` ADD UNIQUE INDEX \`${indexName}\` (${columns})`);
+        console.log(`[Schema] Added unique index ${indexName} on ${table}`);
+      }
+    } catch (err) {
+      console.error(`[Schema] Unique index error (${table}.${indexName}):`, err.message);
+    }
+  }
+
+  await ensureUniqueIndex('drip_enrollments', 'uniq_campaign_lead', 'campaign_id, lead_id');
+
+  console.log('[Schema] Migration complete (including AI Calling, Proposals & Drip Automation)');
 }

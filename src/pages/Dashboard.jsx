@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 import { formatLeadGeneratedAt } from '../lib/formatDate.js';
+import { buildLeadMarkerIcon } from '../lib/mapMarkers.js';
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -114,18 +115,10 @@ export default function Dashboard() {
 
         leadsWithCoords.forEach(lead => {
           new window.google.maps.Marker({
-            position: { lat: parseFloat(lead.latitude) + 0.00009, lng: parseFloat(lead.longitude) + 0.00004 },
+            position: { lat: parseFloat(lead.latitude), lng: parseFloat(lead.longitude) },
             map,
             title: lead.owner_name || 'Saved Lead',
-            icon: {
-              path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-              fillColor: '#6366f1',
-              fillOpacity: 0.95,
-              strokeColor: '#ffffff',
-              strokeWeight: 1.5,
-              scale: 1.5,
-              anchor: new window.google.maps.Point(12, 22)
-            }
+            icon: buildLeadMarkerIcon(window.google)
           });
         });
 
@@ -180,19 +173,19 @@ export default function Dashboard() {
         <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">Purchased Leads</p>
-            <span className="material-symbols-outlined text-primary opacity-50">shopping_cart</span>
+            <span className="material-symbols-outlined text-primary opacity-80">shopping_cart</span>
           </div>
-          <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-primary">{totalLeadsPurchased}</p>
+          <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-primary font-mono tabular-nums">{totalLeadsPurchased}</p>
         </div>
 
         <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">Remaining Leads</p>
-            <span className="material-symbols-outlined text-secondary opacity-50">hourglass_empty</span>
+            <span className="material-symbols-outlined text-secondary opacity-80">hourglass_empty</span>
           </div>
           <div className="flex items-end gap-2">
-            <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-secondary">{credits}</p>
-            <p className="font-label-mono text-[9px] text-on-surface-variant pb-1">Credits left</p>
+            <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-secondary font-mono tabular-nums">{credits}</p>
+            <p className="font-label-mono text-[9px] text-slate-300 pb-1">Credits left</p>
           </div>
         </div>
 
@@ -292,23 +285,13 @@ export default function Dashboard() {
             </div>
           </Link>
 
-          <Link to="/bulk-scan" className="flex items-center gap-4 p-4 glass-card rounded-xl text-left hover:translate-x-1 transition-all active:scale-[0.98]">
-            <div className="w-12 h-12 rounded-lg bg-secondary-container/20 flex items-center justify-center text-secondary">
-              <span className="material-symbols-outlined text-[24px]">layers</span>
-            </div>
-            <div>
-              <p className="font-button text-sm text-on-surface font-bold">Start Bulk Scan</p>
-              <p className="text-xs text-on-surface-variant">Extract up to 500 records</p>
-            </div>
-          </Link>
-
-          <Link to="/packages" className="flex items-center gap-4 p-4 glass-card rounded-xl text-left hover:translate-x-1 transition-all active:scale-[0.98]">
+          <Link to="/billing#plans" className="flex items-center gap-4 p-4 glass-card rounded-xl text-left hover:translate-x-1 transition-all active:scale-[0.98]">
             <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
               <span className="material-symbols-outlined text-[24px]">trending_up</span>
             </div>
             <div>
-              <p className="font-button text-sm text-on-surface font-bold">Upgrade Package</p>
-              <p className="text-xs text-on-surface-variant">Get unlimited daily scans</p>
+              <p className="font-button text-sm text-on-surface font-bold">Upgrade Plan</p>
+              <p className="text-xs text-on-surface-variant">Subscribe to a monthly plan</p>
             </div>
           </Link>
 

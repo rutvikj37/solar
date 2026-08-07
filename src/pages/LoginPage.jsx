@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '../config.js';
+import SatelliteUplinkLoader from '../components/SatelliteUplinkLoader.jsx';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showAuthLoader, setShowAuthLoader] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -27,19 +29,19 @@ export default function LoginPage() {
         throw new Error(data.error || 'Invalid email or password');
       }
 
-      // Save token
+      setShowAuthLoader(true);
       localStorage.setItem('solar_token', data.token);
       const next = searchParams.get('next');
       navigate(next && next.startsWith('/') ? next : '/dashboard');
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
 
   return (
     <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <SatelliteUplinkLoader visible={showAuthLoader} />
       {/* Background glow effects */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/15 blur-3xl rounded-full pointer-events-none"></div>
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary-glow/10 blur-3xl rounded-full pointer-events-none"></div>

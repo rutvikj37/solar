@@ -84,7 +84,7 @@ export default function Downloads() {
         <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
           <div>
             <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-wider mb-1">TOTAL LEADS EXPORTED</p>
-            <h3 className="text-2xl font-bold text-primary mt-2">{leadsCount} Enriched Rows</h3>
+            <h3 className="text-2xl font-bold text-primary mt-2 font-mono tabular-nums">{leadsCount} Enriched Rows</h3>
           </div>
           <p className="text-on-surface-variant text-[10px]">98% verified phone/email contact rate</p>
         </div>
@@ -125,12 +125,12 @@ export default function Downloads() {
                   <td className="px-6 py-4">
                     <div>
                       <p className="font-semibold text-white">All Enriched Leads Extract</p>
-                      <p className="text-[10px] text-on-surface-variant mt-0.5">EXPORT-ALL-LEADS</p>
+                      <p className="text-[10px] text-on-surface-variant mt-0.5 font-mono">EXPORT-ALL-LEADS</p>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-on-surface-variant">CSV Spreadsheet</td>
-                  <td className="px-6 py-4 font-mono font-semibold text-white">{estimatedSize}</td>
-                  <td className="px-6 py-4 text-on-surface">{leadsCount} Leads</td>
+                  <td className="px-6 py-4 font-mono font-semibold text-white tabular-nums">{estimatedSize}</td>
+                  <td className="px-6 py-4 text-on-surface font-mono tabular-nums">{leadsCount} Leads</td>
                   <td className="px-6 py-4 text-on-surface-variant">{formattedDate}</td>
                   <td className="px-6 py-4 text-right">
                     <button 

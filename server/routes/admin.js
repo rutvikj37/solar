@@ -1,4 +1,6 @@
 import express from 'express';
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import db from '../db.js';
 import { authenticateToken, requireAdmin, JWT_SECRET } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
@@ -6,6 +8,19 @@ import { getUsageSummary } from '../services/apiUsage.js';
 import { createRazorpayPlan, isRazorpayConfigured } from '../services/razorpayBilling.js';
 
 const router = express.Router();
+
+/** Matches RegisterPage minLength={8} */
+const MIN_PASSWORD_LENGTH = 8;
+
+function generateTemporaryPassword(length = 12) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i += 1) {
+    out += alphabet[bytes[i] % alphabet.length];
+  }
+  return out;
+}
 
 async function attachRole(req, res, next) {
   try {
@@ -92,6 +107,126 @@ router.get('/users', ...adminChain, async (req, res) => {
   }
 });
 
+router.get('/users/:id', ...adminChain, async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const [users] = await db.query(
+      `SELECT id, name, email, company_name, phone, role, account_status, created_at, stripe_customer_id
+       FROM users WHERE id = ?`,
+      [userId]
+    );
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const [packages] = await db.query(
+      `SELECT p.id, p.package_id, p.remaining_leads, p.purchased_leads, p.status,
+              pkg.name AS package_name, pkg.price, pkg.lead_limit
+       FROM user_packages p
+       LEFT JOIN packages pkg ON pkg.id = p.package_id
+       WHERE p.user_id = ? AND p.status = 'active'
+       ORDER BY p.id DESC LIMIT 1`,
+      [userId]
+    );
+
+    const [subs] = await db.query(
+      `SELECT s.package_id, s.status, s.current_period_start, s.current_period_end,
+              s.cancel_at_period_end, s.payment_provider, s.stripe_subscription_id,
+              s.razorpay_subscription_id, pkg.name AS package_name, pkg.lead_limit
+       FROM user_subscriptions s
+       LEFT JOIN packages pkg ON pkg.id = s.package_id
+       WHERE s.user_id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    const [leadCounts] = await db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS last_7d
+       FROM leads WHERE user_id = ?`,
+      [userId]
+    );
+
+    const [leadByStatus] = await db.query(
+      'SELECT status, COUNT(*) AS count FROM leads WHERE user_id = ? GROUP BY status',
+      [userId]
+    );
+
+    const [recentActivity] = await db.query(
+      `SELECT la.id, la.type, la.content, la.created_at, la.lead_id, l.address AS lead_address
+       FROM lead_activities la
+       LEFT JOIN leads l ON l.id = la.lead_id
+       WHERE la.user_id = ?
+       ORDER BY la.created_at DESC
+       LIMIT 15`,
+      [userId]
+    );
+
+    const [creditHistory] = await db.query(
+      `SELECT a.id, a.amount, a.balance_after, a.mode, a.note, a.created_at,
+              u.name AS admin_name
+       FROM admin_credit_adjustments a
+       LEFT JOIN users u ON u.id = a.admin_id
+       WHERE a.user_id = ?
+       ORDER BY a.created_at DESC
+       LIMIT 10`,
+      [userId]
+    );
+
+    const [ticketCount] = await db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status IN ('open','in_progress') THEN 1 ELSE 0 END) AS open_count
+       FROM support_tickets WHERE user_id = ?`,
+      [userId]
+    );
+
+    const pkg = packages[0] || null;
+    const sub = subs[0] || null;
+
+    res.json({
+      user: users[0],
+      package: pkg
+        ? {
+            packageId: pkg.package_id,
+            packageName: pkg.package_name || pkg.package_id,
+            remainingLeads: pkg.remaining_leads,
+            purchasedLeads: pkg.purchased_leads,
+            status: pkg.status,
+            price: pkg.price,
+            leadLimit: pkg.lead_limit
+          }
+        : null,
+      credits: pkg?.remaining_leads ?? 0,
+      subscription: sub
+        ? {
+            packageId: sub.package_id,
+            packageName: sub.package_name,
+            status: sub.status,
+            leadLimit: sub.lead_limit,
+            currentPeriodStart: sub.current_period_start,
+            currentPeriodEnd: sub.current_period_end,
+            cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
+            paymentProvider: sub.payment_provider,
+            stripeSubscriptionId: sub.stripe_subscription_id,
+            razorpaySubscriptionId: sub.razorpay_subscription_id
+          }
+        : null,
+      leads: {
+        total: leadCounts[0]?.total ?? 0,
+        last7d: leadCounts[0]?.last_7d ?? 0,
+        byStatus: Object.fromEntries(leadByStatus.map((r) => [r.status || 'unknown', r.count]))
+      },
+      tickets: {
+        total: ticketCount[0]?.total ?? 0,
+        open: ticketCount[0]?.open_count ?? 0
+      },
+      recentActivity,
+      creditHistory
+    });
+  } catch (error) {
+    console.error('Admin user detail error:', error);
+    res.status(500).json({ error: 'Failed to load user profile' });
+  }
+});
+
 router.get('/users/:id/invoices', ...adminChain, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -138,33 +273,117 @@ router.patch('/users/:id/status', ...adminChain, async (req, res) => {
 });
 
 router.post('/users/:id/credits', ...adminChain, async (req, res) => {
-  const amount = Number(req.body.amount || 0);
-  if (!amount || Number.isNaN(amount)) {
+  const rawAmount = req.body.amount;
+  const amount = Number(rawAmount);
+  const mode = req.body.mode === 'set' ? 'set' : 'add';
+  const note = (req.body.note || '').toString().trim().slice(0, 500) || null;
+
+  if (rawAmount === undefined || rawAmount === null || rawAmount === '' || Number.isNaN(amount)) {
     return res.status(400).json({ error: 'amount required' });
   }
+  if (mode === 'add' && amount === 0) {
+    return res.status(400).json({ error: 'amount must be non-zero for add mode' });
+  }
+  if (mode === 'set' && amount < 0) {
+    return res.status(400).json({ error: 'balance cannot be negative' });
+  }
+
   try {
     const userId = req.params.id;
+    const [userRows] = await db.query('SELECT id FROM users WHERE id = ?', [userId]);
+    if (userRows.length === 0) return res.status(404).json({ error: 'User not found' });
+
     const [packages] = await db.query(
-      'SELECT id, remaining_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
+      'SELECT id, remaining_leads, purchased_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
       [userId]
     );
+
+    let balanceAfter;
+    const delta = mode === 'set' ? amount - (packages[0]?.remaining_leads ?? 0) : amount;
+
     if (packages.length === 0) {
+      balanceAfter = mode === 'set' ? amount : Math.max(0, amount);
       await db.query(
         `INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status)
          VALUES (?, 'Free', ?, ?, 'active')`,
-        [userId, Math.max(0, amount), Math.max(0, amount)]
+        [userId, balanceAfter, Math.max(0, delta > 0 ? delta : 0)]
+      );
+    } else if (mode === 'set') {
+      balanceAfter = amount;
+      const purchasedBump = Math.max(0, amount - packages[0].remaining_leads);
+      await db.query(
+        `UPDATE user_packages
+         SET remaining_leads = ?,
+             purchased_leads = purchased_leads + ?
+         WHERE id = ?`,
+        [balanceAfter, purchasedBump, packages[0].id]
       );
     } else {
-      const next = Math.max(0, packages[0].remaining_leads + amount);
-      await db.query('UPDATE user_packages SET remaining_leads = ? WHERE id = ?', [next, packages[0].id]);
+      balanceAfter = Math.max(0, packages[0].remaining_leads + amount);
+      const purchasedBump = amount > 0 ? amount : 0;
+      await db.query(
+        `UPDATE user_packages
+         SET remaining_leads = ?,
+             purchased_leads = purchased_leads + ?
+         WHERE id = ?`,
+        [balanceAfter, purchasedBump, packages[0].id]
+      );
     }
-    const [updated] = await db.query(
-      'SELECT remaining_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
-      [userId]
+
+    await db.query(
+      `INSERT INTO admin_credit_adjustments (user_id, admin_id, amount, balance_after, mode, note)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, req.user.id, mode === 'set' ? delta : amount, balanceAfter, mode, note]
     );
-    res.json({ success: true, credits: updated[0]?.remaining_leads || 0 });
+
+    res.json({ success: true, credits: balanceAfter, mode, amount: mode === 'set' ? delta : amount });
   } catch (error) {
+    console.error('Admin credit adjust error:', error);
     res.status(500).json({ error: 'Failed to adjust credits' });
+  }
+});
+
+router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
+  const userId = req.params.id;
+  const generate = Boolean(req.body.generate);
+  let password = (req.body.password ?? '').toString();
+
+  if (generate) {
+    password = generateTemporaryPassword(12);
+  }
+
+  if (!password) {
+    return res.status(400).json({ error: 'password required, or set generate: true' });
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({
+      error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+    });
+  }
+
+  try {
+    const [users] = await db.query('SELECT id, email FROM users WHERE id = ?', [userId]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+
+    console.log(
+      `[admin] password reset for user ${userId} (${users[0].email}) by admin ${req.user.id}`
+    );
+
+    res.json({
+      success: true,
+      userId: Number(userId),
+      email: users[0].email,
+      temporaryPassword: password,
+      generated: generate,
+      note: `Password reset by admin ${req.user.id}`
+    });
+  } catch (error) {
+    console.error('Admin password reset error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 

@@ -224,33 +224,7 @@ export default function BulkAreaScan() {
               </div>
             </div>
 
-            <div className="space-y-2 border-t border-glass-stroke pt-6">
-              <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest font-semibold mb-2">
-                Enrichment Targets
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex items-center gap-2.5 p-3 bg-surface/30 rounded-xl border border-glass-stroke">
-                  <span className="material-symbols-outlined text-primary text-base">home</span>
-                  <span className="font-semibold text-xs text-white">Property + Solar Details</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-3 bg-surface/30 rounded-xl border border-glass-stroke">
-                  <span className="material-symbols-outlined text-primary text-base">badge</span>
-                  <span className="font-semibold text-xs text-white">Owner Name when available</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-3 bg-surface/30 rounded-xl border border-glass-stroke">
-                  <span className="material-symbols-outlined text-primary text-base">call</span>
-                  <span className="font-semibold text-xs text-white">Phone (Tracerfy → Apollo)</span>
-                </div>
-                <div className="flex items-center gap-2.5 p-3 bg-surface/30 rounded-xl border border-glass-stroke">
-                  <span className="material-symbols-outlined text-primary text-base">mail</span>
-                  <span className="font-semibold text-xs text-white">Email (Tracerfy → Apollo)</span>
-                </div>
-              </div>
-              <p className="text-[10px] text-on-surface-variant leading-relaxed pt-1">
-                Leads with phone or email are prioritized. Property-only leads are still saved (marked incomplete) if
-                contact enrichment misses.
-              </p>
-            </div>
+
 
             <button
               type="submit"
@@ -310,7 +284,7 @@ export default function BulkAreaScan() {
             </div>
 
             <button
-              onClick={() => navigate('/packages')}
+              onClick={() => navigate('/billing#plans')}
               className="w-full border border-secondary text-secondary hover:bg-secondary/10 font-bold py-2 rounded-lg transition-all text-xs"
             >
               Buy Lead Credits

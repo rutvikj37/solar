@@ -65,7 +65,7 @@ function mapPackage(pkg, index, total) {
 }
 
 function PricingCard({ plan, index, loggedIn }) {
-  const to = loggedIn ? '/packages' : `/register?plan=${encodeURIComponent(plan.id)}`;
+  const to = loggedIn ? '/billing#plans' : `/register?plan=${encodeURIComponent(plan.id)}`;
   return (
     <motion.div
       initial={{ opacity: 0, y: 40 }}
@@ -248,10 +248,10 @@ export function Pricing() {
             {!loggedIn ? null : (
               <button
                 type="button"
-                onClick={() => navigate('/packages')}
+                onClick={() => navigate('/billing#plans')}
                 className="mt-4 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
-                View packages in app
+                View plans in billing
               </button>
             )}
           </div>

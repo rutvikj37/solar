@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
+import { isAdminRole } from '../lib/auth.js';
 
 export default function Profile() {
   const [user, setUser] = useState(null);
@@ -49,6 +50,8 @@ export default function Profile() {
     setApiKey(`sv_live_${randomHex}`);
   };
 
+  const isAdmin = isAdminRole(user?.role);
+
   if (loading) {
     return (
       <div className="bg-background min-h-screen flex items-center justify-center">
@@ -62,9 +65,20 @@ export default function Profile() {
 
   return (
     <AppLayout>
-      <div className="mb-stack-lg">
-        <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">User Profile & settings</h2>
-        <p className="text-on-surface-variant text-sm mt-1">Manage your account credentials, preferences, and developer API keys.</p>
+      <div className="mb-stack-lg flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">User Profile & settings</h2>
+          <p className="text-on-surface-variant text-sm mt-1">Manage your account credentials, preferences, and developer API keys.</p>
+        </div>
+        {isAdmin && (
+          <Link 
+            to="/admin" 
+            className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs font-bold flex items-center gap-2 self-start md:self-auto"
+          >
+            <span className="material-symbols-outlined text-base">admin_panel_settings</span>
+            Open Admin Control Center
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter mb-stack-lg">
@@ -82,7 +96,13 @@ export default function Profile() {
             </div>
             
             <h3 className="font-headline-md text-lg font-bold text-white mb-1">{user?.name}</h3>
-            <p className="font-label-mono text-[9px] text-primary uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20">Solar Director</p>
+            <div className="flex items-center gap-2">
+              <span className={`font-label-mono text-[9px] uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${
+                isAdmin ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-primary/10 text-primary border-primary/20'
+              }`}>
+                {isAdmin ? 'ADMINISTRATOR' : (user?.role?.toUpperCase() || 'USER')}
+              </span>
+            </div>
             
             <div className="w-full text-left space-y-3 mt-6 text-xs border-t border-glass-stroke pt-4">
               <div>
@@ -90,13 +110,17 @@ export default function Profile() {
                 <p className="text-white font-semibold mt-0.5">{user?.company || 'Solar Installer Team'}</p>
               </div>
               <div>
-                <p className="text-[10px] font-label-mono text-on-surface-variant">MEMBER SINCE</p>
-                <p className="text-white font-semibold mt-0.5">June 2024</p>
+                <p className="text-[10px] font-label-mono text-on-surface-variant">ACCOUNT ROLE</p>
+                <p className="text-white font-semibold mt-0.5">{user?.role || 'user'}</p>
               </div>
-              <div>
-                <p className="text-[10px] font-label-mono text-on-surface-variant">REGIONAL LICENSE</p>
-                <p className="text-white font-semibold mt-0.5">CA-CSLB-990184</p>
-              </div>
+              {isAdmin && (
+                <div>
+                  <p className="text-[10px] font-label-mono text-on-surface-variant">ADMIN ACCESS</p>
+                  <Link to="/admin" className="text-primary hover:underline font-semibold mt-0.5 block">
+                    Full Operator Access →
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
