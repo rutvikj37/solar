@@ -1,21 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 
 const STATUS_CYCLE = [
   {
-    status: 'WARMING UP AI MODELS',
-    message: 'Preparing your satellite uplink...',
+    status: "WARMING UP AI MODELS",
+    message: "Preparing your satellite uplink...",
   },
   {
-    status: 'ESTABLISHING UPLINK',
-    message: 'Syncing lead intelligence...',
+    status: "ESTABLISHING UPLINK",
+    message: "Syncing lead intelligence...",
   },
   {
-    status: 'CALIBRATING SENSORS',
-    message: 'Locking orbital coordinates...',
+    status: "CALIBRATING SENSORS",
+    message: "Locking orbital coordinates...",
   },
 ];
 
-export default function SatelliteUplinkLoader({ visible = false, showClose = false, onClose }) {
+export default function SatelliteUplinkLoader({
+  visible = false,
+  showClose = false,
+  onClose,
+}) {
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [progress, setProgress] = useState(0);
 

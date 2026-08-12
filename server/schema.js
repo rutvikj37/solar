@@ -1,32 +1,55 @@
-import db from './db.js';
+import db from "./db.js";
 
 async function columnExists(table, column) {
   const [rows] = await db.query(
     `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-    [table, column]
+    [table, column],
   );
   return rows[0].cnt > 0;
 }
 
 async function ensureColumn(table, column, definition) {
   if (!(await columnExists(table, column))) {
-    await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+    await db.query(
+      `ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`,
+    );
     console.log(`[Schema] Added ${table}.${column}`);
   }
 }
 
 export async function migrateSchema() {
-  console.log('[Schema] Ensuring Tier-1 tables and columns...');
+  console.log("[Schema] Ensuring Tier-1 tables and columns...");
 
-  await ensureColumn('leads', 'notes', 'TEXT NULL');
-  await ensureColumn('leads', 'assigned_to', 'INT UNSIGNED NULL');
-  await ensureColumn('leads', 'updated_at', 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
-  await ensureColumn('leads', 'solar_json', 'LONGTEXT NULL');
-  await ensureColumn('leads', 'property_json', 'LONGTEXT NULL');
-  await ensureColumn('leads', 'image_url', 'VARCHAR(1024) NULL');
-  await ensureColumn('users', 'account_status', "VARCHAR(50) NOT NULL DEFAULT 'active'");
-  await ensureColumn('users', 'stripe_customer_id', 'VARCHAR(255) NULL');
+  await ensureColumn("leads", "notes", "TEXT NULL");
+  await ensureColumn("leads", "assigned_to", "INT UNSIGNED NULL");
+  await ensureColumn(
+    "leads",
+    "updated_at",
+    "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+  );
+  await ensureColumn("leads", "solar_json", "LONGTEXT NULL");
+  await ensureColumn("leads", "property_json", "LONGTEXT NULL");
+  await ensureColumn("leads", "image_url", "VARCHAR(1024) NULL");
+  await ensureColumn(
+    "users",
+    "account_status",
+    "VARCHAR(50) NOT NULL DEFAULT 'active'",
+  );
+  await ensureColumn("users", "stripe_customer_id", "VARCHAR(255) NULL");
+  await ensureColumn("users", "firebase_uid", "VARCHAR(128) NULL");
+  await ensureColumn("users", "auth_provider", "VARCHAR(50) NULL");
+  await ensureColumn("users", "job_title", "VARCHAR(255) NULL");
+  await ensureColumn("users", "lead_volume", "VARCHAR(100) NULL");
+
+  // OAuth users may not have a local password
+  try {
+    await db.query(
+      "ALTER TABLE users MODIFY COLUMN password_hash VARCHAR(255) NULL",
+    );
+  } catch (err) {
+    console.error("[Schema] password_hash nullable migration:", err.message);
+  }
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS lead_activities (
@@ -128,30 +151,46 @@ export async function migrateSchema() {
   `);
 
   // Seed package catalog if empty
-  const [pkgRows] = await db.query('SELECT COUNT(*) AS cnt FROM packages');
+  const [pkgRows] = await db.query("SELECT COUNT(*) AS cnt FROM packages");
   if (pkgRows[0].cnt === 0) {
     await db.query(
       `INSERT INTO packages (id, name, lead_limit, price, description, features, is_active, is_subscription, billing_interval) VALUES
        ('Starter', 'Starter', 20, 499.00, 'Essential monthly plan', '["20 High-Intent Leads/month","Basic Address Verification","CSV Download"]', 1, 1, 'month'),
        ('Growth', 'Growth', 50, 1199.00, 'Performance monthly plan', '["50 Verified Leads/month","Roof Analysis","Direct API Push"]', 1, 1, 'month'),
-       ('Enterprise', 'Enterprise', 100, 2249.00, 'Scale monthly plan', '["100 Premium Leads/month","Bulk Area Scan","Priority Support"]', 1, 1, 'month')`
+       ('Enterprise', 'Enterprise', 100, 2249.00, 'Scale monthly plan', '["100 Premium Leads/month","Bulk Area Scan","Priority Support"]', 1, 1, 'month')`,
     );
-    console.log('[Schema] Seeded packages catalog');
+    console.log("[Schema] Seeded packages catalog");
   }
 
   // Packages: admin-managed plan columns
-  await ensureColumn('packages', 'is_active', 'TINYINT(1) NOT NULL DEFAULT 1');
-  await ensureColumn('packages', 'stripe_price_id', 'VARCHAR(255) NULL');
-  await ensureColumn('packages', 'razorpay_plan_id', 'VARCHAR(255) NULL');
-  await ensureColumn('packages', 'billing_interval', "VARCHAR(20) NOT NULL DEFAULT 'month'");
-  await ensureColumn('packages', 'is_subscription', 'TINYINT(1) NOT NULL DEFAULT 1');
-  await ensureColumn('packages', 'created_at', 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP');
-  await ensureColumn('packages', 'updated_at', 'TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+  await ensureColumn("packages", "is_active", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("packages", "stripe_price_id", "VARCHAR(255) NULL");
+  await ensureColumn("packages", "razorpay_plan_id", "VARCHAR(255) NULL");
+  await ensureColumn(
+    "packages",
+    "billing_interval",
+    "VARCHAR(20) NOT NULL DEFAULT 'month'",
+  );
+  await ensureColumn(
+    "packages",
+    "is_subscription",
+    "TINYINT(1) NOT NULL DEFAULT 1",
+  );
+  await ensureColumn(
+    "packages",
+    "created_at",
+    "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
+  );
+  await ensureColumn(
+    "packages",
+    "updated_at",
+    "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+  );
 
   // Mark existing paid plans as monthly subscriptions
   await db.query(
     `UPDATE packages SET is_subscription = 1, billing_interval = 'month'
-     WHERE id != 'Free' AND price > 0`
+     WHERE id != 'Free' AND price > 0`,
   );
 
   await db.query(`
@@ -173,19 +212,33 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  await ensureColumn('invoices', 'stripe_subscription_id', 'VARCHAR(255) NULL');
-  await ensureColumn('invoices', 'stripe_invoice_id', 'VARCHAR(255) NULL');
-  await ensureColumn('invoices', 'billing_reason', "VARCHAR(50) NULL DEFAULT 'initial'");
-  await ensureColumn('invoices', 'razorpay_payment_id', 'VARCHAR(255) NULL');
-  await ensureColumn('user_subscriptions', 'razorpay_subscription_id', 'VARCHAR(255) NULL');
-  await ensureColumn('user_subscriptions', 'payment_provider', "VARCHAR(20) NULL DEFAULT 'stripe'");
+  await ensureColumn("invoices", "stripe_subscription_id", "VARCHAR(255) NULL");
+  await ensureColumn("invoices", "stripe_invoice_id", "VARCHAR(255) NULL");
+  await ensureColumn(
+    "invoices",
+    "billing_reason",
+    "VARCHAR(50) NULL DEFAULT 'initial'",
+  );
+  await ensureColumn("invoices", "razorpay_payment_id", "VARCHAR(255) NULL");
+  await ensureColumn(
+    "user_subscriptions",
+    "razorpay_subscription_id",
+    "VARCHAR(255) NULL",
+  );
+  await ensureColumn(
+    "user_subscriptions",
+    "payment_provider",
+    "VARCHAR(20) NULL DEFAULT 'stripe'",
+  );
 
   // Ensure Free plan exists (signup grant reference)
-  const [freeRows] = await db.query(`SELECT id FROM packages WHERE id = 'Free' LIMIT 1`);
+  const [freeRows] = await db.query(
+    `SELECT id FROM packages WHERE id = 'Free' LIMIT 1`,
+  );
   if (freeRows.length === 0) {
     await db.query(
       `INSERT INTO packages (id, name, lead_limit, price, description, features, is_active)
-       VALUES ('Free', 'Free Trial', 5, 0, 'Signup free credits', '["5 free lead unlocks"]', 0)`
+       VALUES ('Free', 'Free Trial', 5, 0, 'Signup free credits', '["5 free lead unlocks"]', 0)`,
     );
   }
 
@@ -216,6 +269,37 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  // Legacy support_tickets may only have subject/message/status — align columns
+  await ensureColumn(
+    "support_tickets",
+    "category",
+    "VARCHAR(100) NOT NULL DEFAULT 'general'",
+  );
+  await ensureColumn(
+    "support_tickets",
+    "priority",
+    "VARCHAR(50) NOT NULL DEFAULT 'normal'",
+  );
+  await ensureColumn(
+    "support_tickets",
+    "updated_at",
+    "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+  );
+  // Older schema required message inline; new flow stores body in support_messages
+  try {
+    await db.query(
+      "ALTER TABLE support_tickets MODIFY COLUMN message TEXT NULL",
+    );
+  } catch (err) {
+    // Column may not exist on fresh installs
+    if (!/Unknown column|check that.+exists/i.test(err.message || "")) {
+      console.error(
+        "[Schema] support_tickets.message nullable migration:",
+        err.message,
+      );
+    }
+  }
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS support_messages (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -225,6 +309,21 @@ export async function migrateSchema() {
       body TEXT NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_messages_ticket (ticket_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS support_attachments (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      ticket_id INT UNSIGNED NOT NULL,
+      message_id INT UNSIGNED NULL,
+      filename VARCHAR(255) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(120) NOT NULL,
+      size INT UNSIGNED NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_attachments_ticket (ticket_id),
+      INDEX idx_attachments_message (message_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
@@ -314,7 +413,7 @@ export async function migrateSchema() {
   await db.query(
     `UPDATE users SET role = 'super_admin'
      WHERE email = 'admin@techxsolutions.com'
-       AND (role IS NULL OR role = '' OR role = 'solar_company')`
+       AND (role IS NULL OR role = '' OR role = 'solar_company')`,
   );
 
   // Ensure indices for performance
@@ -323,21 +422,31 @@ export async function migrateSchema() {
       const [rows] = await db.query(
         `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
-        [table, indexName]
+        [table, indexName],
       );
       if (rows[0].cnt === 0) {
-        await db.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${columns})`);
+        await db.query(
+          `ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${columns})`,
+        );
         console.log(`[Schema] Added index ${indexName} on ${table}`);
       }
     } catch (err) {
-      console.error(`[Schema] Index creation error (${table}.${indexName}):`, err.message);
+      console.error(
+        `[Schema] Index creation error (${table}.${indexName}):`,
+        err.message,
+      );
     }
   }
 
-  await ensureIndex('users', 'idx_users_email', 'email');
-  await ensureIndex('leads', 'idx_leads_user_status', 'user_id, status');
-  await ensureIndex('leads', 'idx_leads_user_created', 'user_id, created_at');
-  await ensureIndex('user_packages', 'idx_user_packages_user_status', 'user_id, status');
+  await ensureIndex("users", "idx_users_email", "email");
+  await ensureIndex("users", "idx_users_firebase_uid", "firebase_uid");
+  await ensureIndex("leads", "idx_leads_user_status", "user_id, status");
+  await ensureIndex("leads", "idx_leads_user_created", "user_id, created_at");
+  await ensureIndex(
+    "user_packages",
+    "idx_user_packages_user_status",
+    "user_id, status",
+  );
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS admin_credit_adjustments (
@@ -557,16 +666,65 @@ export async function migrateSchema() {
   `);
 
   // AI Calling column upgrades
-  await ensureColumn('ai_calling_campaigns', 'elevenlabs_agent_id', 'VARCHAR(100) NULL');
-  await ensureColumn('ai_call_records', 'voice_provider', "VARCHAR(32) NULL DEFAULT 'openai'");
-  await ensureColumn('ai_call_records', 'elevenlabs_agent_id', 'VARCHAR(100) NULL');
-  await ensureColumn('ai_call_records', 'qa_score', 'INT NULL');
-  await ensureColumn('ai_call_records', 'qa_notes', 'JSON NULL');
-  await ensureColumn('ai_calling_appointments', 'reminder_24h_sent', 'TINYINT(1) NOT NULL DEFAULT 0');
-  await ensureColumn('ai_calling_appointments', 'reminder_1h_sent', 'TINYINT(1) NOT NULL DEFAULT 0');
-  await ensureColumn('ai_calling_appointments', 'invite_link', 'VARCHAR(512) NULL');
-  await ensureColumn('ai_calling_appointments', 'agency_id', 'INT UNSIGNED NULL');
+  await ensureColumn(
+    "ai_calling_campaigns",
+    "elevenlabs_agent_id",
+    "VARCHAR(100) NULL",
+  );
+  await ensureColumn("ai_calling_campaigns", "goals_json", "JSON NULL");
+  await ensureColumn(
+    "ai_call_records",
+    "voice_provider",
+    "VARCHAR(32) NULL DEFAULT 'elevenlabs'",
+  );
+  await ensureColumn(
+    "ai_call_records",
+    "elevenlabs_agent_id",
+    "VARCHAR(100) NULL",
+  );
+  await ensureColumn("ai_call_records", "qa_score", "INT NULL");
+  await ensureColumn("ai_call_records", "qa_notes", "JSON NULL");
+  await ensureColumn(
+    "ai_calling_appointments",
+    "reminder_24h_sent",
+    "TINYINT(1) NOT NULL DEFAULT 0",
+  );
+  await ensureColumn(
+    "ai_calling_appointments",
+    "reminder_1h_sent",
+    "TINYINT(1) NOT NULL DEFAULT 0",
+  );
+  await ensureColumn(
+    "ai_calling_appointments",
+    "invite_link",
+    "VARCHAR(512) NULL",
+  );
+  await ensureColumn(
+    "ai_calling_appointments",
+    "agency_id",
+    "INT UNSIGNED NULL",
+  );
 
+  // Company profile fields on ai_calling_settings
+  await ensureColumn("ai_calling_settings", "default_greeting", "TEXT NULL");
+  await ensureColumn(
+    "ai_calling_settings",
+    "transfer_phone",
+    "VARCHAR(20) NULL",
+  );
+  await ensureColumn("ai_calling_settings", "service_zip_codes", "JSON NULL");
+  await ensureColumn("ai_calling_settings", "languages", "JSON NULL");
+  await ensureColumn("ai_calling_settings", "goals_json", "JSON NULL");
+  await ensureColumn(
+    "ai_calling_settings",
+    "google_calendar_token",
+    "JSON NULL",
+  );
+  await ensureColumn(
+    "ai_calling_settings",
+    "outlook_calendar_token",
+    "JSON NULL",
+  );
   await db.query(`
     CREATE TABLE IF NOT EXISTS proposals (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -606,14 +764,34 @@ export async function migrateSchema() {
   `);
 
   // ===== DRIP AUTOMATION UPGRADES =====
-  await ensureColumn('drip_campaigns', 'enrollment_mode', "ENUM('all_leads','score_gated','manual') NOT NULL DEFAULT 'score_gated'");
-  await ensureColumn('drip_campaigns', 'description', 'TEXT NULL');
-  await ensureColumn('drip_campaigns', 'timezone', "VARCHAR(50) NOT NULL DEFAULT 'America/New_York'");
-  await ensureColumn('drip_campaigns', 'quiet_hours_start', "TIME NOT NULL DEFAULT '09:00:00'");
-  await ensureColumn('drip_campaigns', 'quiet_hours_end', "TIME NOT NULL DEFAULT '20:00:00'");
-  await ensureColumn('drip_campaigns', 'stop_on_reply', 'TINYINT(1) NOT NULL DEFAULT 1');
-  await ensureColumn('drip_campaigns', 'stop_on_statuses', 'JSON NULL');
-  await ensureColumn('drip_steps', 'delay_hours', 'INT NOT NULL DEFAULT 0');
+  await ensureColumn(
+    "drip_campaigns",
+    "enrollment_mode",
+    "ENUM('all_leads','score_gated','manual') NOT NULL DEFAULT 'score_gated'",
+  );
+  await ensureColumn("drip_campaigns", "description", "TEXT NULL");
+  await ensureColumn(
+    "drip_campaigns",
+    "timezone",
+    "VARCHAR(50) NOT NULL DEFAULT 'America/New_York'",
+  );
+  await ensureColumn(
+    "drip_campaigns",
+    "quiet_hours_start",
+    "TIME NOT NULL DEFAULT '09:00:00'",
+  );
+  await ensureColumn(
+    "drip_campaigns",
+    "quiet_hours_end",
+    "TIME NOT NULL DEFAULT '20:00:00'",
+  );
+  await ensureColumn(
+    "drip_campaigns",
+    "stop_on_reply",
+    "TINYINT(1) NOT NULL DEFAULT 1",
+  );
+  await ensureColumn("drip_campaigns", "stop_on_statuses", "JSON NULL");
+  await ensureColumn("drip_steps", "delay_hours", "INT NOT NULL DEFAULT 0");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS drip_step_executions (
@@ -648,18 +826,29 @@ export async function migrateSchema() {
       const [rows] = await db.query(
         `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.STATISTICS
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
-        [table, indexName]
+        [table, indexName],
       );
       if (rows[0].cnt === 0) {
-        await db.query(`ALTER TABLE \`${table}\` ADD UNIQUE INDEX \`${indexName}\` (${columns})`);
+        await db.query(
+          `ALTER TABLE \`${table}\` ADD UNIQUE INDEX \`${indexName}\` (${columns})`,
+        );
         console.log(`[Schema] Added unique index ${indexName} on ${table}`);
       }
     } catch (err) {
-      console.error(`[Schema] Unique index error (${table}.${indexName}):`, err.message);
+      console.error(
+        `[Schema] Unique index error (${table}.${indexName}):`,
+        err.message,
+      );
     }
   }
 
-  await ensureUniqueIndex('drip_enrollments', 'uniq_campaign_lead', 'campaign_id, lead_id');
+  await ensureUniqueIndex(
+    "drip_enrollments",
+    "uniq_campaign_lead",
+    "campaign_id, lead_id",
+  );
 
-  console.log('[Schema] Migration complete (including AI Calling, Proposals & Drip Automation)');
+  console.log(
+    "[Schema] Migration complete (including AI Calling, Proposals & Drip Automation)",
+  );
 }
