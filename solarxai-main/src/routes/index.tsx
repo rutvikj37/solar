@@ -10,7 +10,7 @@ import { WhyUs } from "@/components/site/WhyUs";
 import { Pricing } from "@/components/site/Pricing";
 import { FinalCTA, Footer } from "@/components/site/FinalCTA";
 
-const TITLE = "Helios — AI Solar Intelligence for Residential Installers";
+const TITLE = "SolarX.live — AI Solar Intelligence for Residential Installers";
 const DESC =
   "AI-powered property intelligence that helps residential solar companies discover qualified homes, analyze rooftops, and accelerate sales.";
 

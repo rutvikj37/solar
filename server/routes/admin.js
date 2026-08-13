@@ -6,6 +6,12 @@ import { authenticateToken, requireAdmin, JWT_SECRET } from '../middleware/auth.
 import jwt from 'jsonwebtoken';
 import { getUsageSummary } from '../services/apiUsage.js';
 import { createRazorpayPlan, isRazorpayConfigured } from '../services/razorpayBilling.js';
+import {
+  listUserInvoices,
+  recordInvoice,
+  setSubscriptionCredits,
+  upsertUserSubscription
+} from './billing.js';
 
 const router = express.Router();
 
@@ -37,6 +43,121 @@ async function attachRole(req, res, next) {
 }
 
 const adminChain = [authenticateToken, attachRole, requireAdmin];
+
+function packageLabel(pkg) {
+  if (!pkg) return 'None';
+  return pkg.name || pkg.id || 'None';
+}
+
+async function loadPackageById(packageId) {
+  if (!packageId) return null;
+  const [rows] = await db.query('SELECT * FROM packages WHERE id = ? LIMIT 1', [packageId]);
+  return rows[0] || null;
+}
+
+async function loadUserPlanContext(userId) {
+  const [users] = await db.query('SELECT id, email, name, account_status FROM users WHERE id = ?', [userId]);
+  if (!users.length) return null;
+  const [packages] = await db.query(
+    `SELECT p.package_id, p.remaining_leads, pkg.name AS package_name, pkg.lead_limit, pkg.price
+     FROM user_packages p
+     LEFT JOIN packages pkg ON pkg.id = p.package_id
+     WHERE p.user_id = ? AND p.status = 'active'
+     ORDER BY p.id DESC LIMIT 1`,
+    [userId]
+  );
+  const [subs] = await db.query('SELECT * FROM user_subscriptions WHERE user_id = ? LIMIT 1', [userId]);
+  return {
+    user: users[0],
+    packageRow: packages[0] || null,
+    subscription: subs[0] || null,
+    currentPlanId: packages[0]?.package_id || 'Free',
+    currentPlanName: packages[0]?.package_name || packages[0]?.package_id || 'Free',
+    credits: packages[0]?.remaining_leads ?? 0
+  };
+}
+
+async function recordAdminInvoice({
+  userId,
+  adminId,
+  packageId,
+  credits = 0,
+  amountCents = 0,
+  billingReason,
+  description,
+  note,
+  status = 'adjusted',
+  method = 'admin'
+}) {
+  const extra = (note || '').toString().trim().slice(0, 400);
+  const fullDescription = extra ? `${description} — ${extra}` : description;
+  return recordInvoice({
+    userId,
+    packageId: packageId || 'Free',
+    amountCents: Math.max(0, Number(amountCents) || 0),
+    credits: Number(credits) || 0,
+    status,
+    method,
+    billingReason,
+    description: fullDescription.slice(0, 500),
+    adminId
+  });
+}
+
+function formatUsd(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '$0.00';
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+const PLAN_GRANT_LOCK_SECONDS = 10;
+const PLAN_GRANT_IDEM_SECONDS = 30;
+
+async function assignUserPlan({
+  userId,
+  pkg,
+  keepCredits = false,
+  subscriptionStatus = 'active',
+  cancelAtPeriodEnd = false
+}) {
+  const existing = await loadUserPlanContext(userId);
+  const previousCredits = existing?.credits ?? 0;
+  const nextCredits = keepCredits
+    ? previousCredits
+    : Math.max(0, Number(pkg.lead_limit) || 0);
+
+  await setSubscriptionCredits(userId, pkg.id, nextCredits);
+
+  const [subRows] = await db.query('SELECT * FROM user_subscriptions WHERE user_id = ? LIMIT 1', [userId]);
+  const existingSub = subRows[0] || null;
+
+  if (pkg.id === 'Free') {
+    if (existingSub) {
+      await db.query('DELETE FROM user_subscriptions WHERE user_id = ?', [userId]);
+    }
+  } else {
+    const periodStart = existingSub?.current_period_start || new Date();
+    const periodEnd = existingSub?.current_period_end || (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      return d;
+    })();
+    await upsertUserSubscription({
+      userId,
+      packageId: pkg.id,
+      paymentProvider: existingSub?.payment_provider || 'admin',
+      stripeCustomerId: existingSub?.stripe_customer_id || null,
+      stripeSubscriptionId: existingSub?.stripe_subscription_id || null,
+      razorpaySubscriptionId: existingSub?.razorpay_subscription_id || null,
+      status: subscriptionStatus,
+      periodStart,
+      periodEnd,
+      cancelAtPeriodEnd
+    });
+  }
+
+  return { previousCredits, credits: nextCredits, previousPlanId: existing?.currentPlanId || 'Free', previousPlanName: existing?.currentPlanName || 'Free' };
+}
 
 router.get('/stats', ...adminChain, async (_req, res) => {
   try {
@@ -178,6 +299,8 @@ router.get('/users/:id', ...adminChain, async (req, res) => {
       [userId]
     );
 
+    const invoices = await listUserInvoices(userId, 25);
+
     const pkg = packages[0] || null;
     const sub = subs[0] || null;
 
@@ -219,7 +342,8 @@ router.get('/users/:id', ...adminChain, async (req, res) => {
         open: ticketCount[0]?.open_count ?? 0
       },
       recentActivity,
-      creditHistory
+      creditHistory,
+      invoices
     });
   } catch (error) {
     console.error('Admin user detail error:', error);
@@ -229,10 +353,7 @@ router.get('/users/:id', ...adminChain, async (req, res) => {
 
 router.get('/users/:id/invoices', ...adminChain, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
-      [req.params.id]
-    );
+    const rows = await listUserInvoices(req.params.id, 100);
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: 'Failed to load invoices' });
@@ -261,8 +382,8 @@ router.get('/subscriptions', ...adminChain, async (_req, res) => {
 
 router.patch('/users/:id/status', ...adminChain, async (req, res) => {
   const { status } = req.body;
-  if (!['active', 'suspended'].includes(status)) {
-    return res.status(400).json({ error: 'status must be active or suspended' });
+  if (!['active', 'suspended', 'restricted'].includes(status)) {
+    return res.status(400).json({ error: 'status must be active, restricted, or suspended' });
   }
   try {
     await db.query('UPDATE users SET account_status = ? WHERE id = ?', [status, req.params.id]);
@@ -272,55 +393,288 @@ router.patch('/users/:id/status', ...adminChain, async (req, res) => {
   }
 });
 
+router.post('/users/:id/plan', ...adminChain, async (req, res) => {
+  const packageId = (req.body.packageId || req.body.package_id || '').toString().trim();
+  const note = (req.body.note || '').toString().trim().slice(0, 500) || null;
+  const keepCredits = Boolean(req.body.keepCredits);
+  const invoiceReasonRaw = (req.body.invoiceReason || req.body.reason || '').toString().trim().toLowerCase();
+  const complimentary = Boolean(
+    req.body.complimentary ||
+      req.body.comp ||
+      invoiceReasonRaw === 'comp' ||
+      invoiceReasonRaw === 'complimentary'
+  );
+  const invoiceReason =
+    complimentary
+      ? 'comp'
+      : invoiceReasonRaw === 'paid offline' || invoiceReasonRaw === 'offline'
+        ? 'paid offline'
+        : invoiceReasonRaw || 'manual grant';
+
+  if (!packageId) {
+    return res.status(400).json({ error: 'packageId required' });
+  }
+
+  const userId = req.params.id;
+  const lockName = `admin_plan_grant_${userId}`;
+  const conn = await db.getConnection();
+  let lockHeld = false;
+
+  try {
+    const [lockRows] = await conn.query('SELECT GET_LOCK(?, ?) AS got', [lockName, PLAN_GRANT_LOCK_SECONDS]);
+    if (!Number(lockRows[0]?.got)) {
+      return res.status(409).json({ error: 'Plan grant already in progress. Try again.' });
+    }
+    lockHeld = true;
+
+    const ctx = await loadUserPlanContext(userId);
+    if (!ctx) return res.status(404).json({ error: 'User not found' });
+
+    const pkg = await loadPackageById(packageId);
+    if (!pkg) return res.status(400).json({ error: 'Invalid package id' });
+
+    const [recentRows] = await db.query(
+      `SELECT id, amount_cents, credits, description
+       FROM invoices
+       WHERE user_id = ? AND package_id = ?
+         AND billing_reason = 'admin_plan_grant'
+         AND created_at >= DATE_SUB(NOW(), INTERVAL ${PLAN_GRANT_IDEM_SECONDS} SECOND)
+       ORDER BY id DESC
+       LIMIT 1`,
+      [userId, pkg.id]
+    );
+
+    if (recentRows.length) {
+      const recent = recentRows[0];
+      return res.json({
+        success: true,
+        idempotent: true,
+        packageId: pkg.id,
+        packageName: packageLabel(pkg),
+        previousPackageId: ctx.currentPlanId,
+        previousPackageName: ctx.currentPlanName,
+        credits: ctx.credits,
+        amountCents: recent.amount_cents,
+        complimentary,
+        invoiceReason,
+        invoiceId: recent.id,
+        description: recent.description
+      });
+    }
+
+    const fromLabel = ctx.currentPlanName;
+    const toLabel = packageLabel(pkg);
+    const planPrice = Number(pkg.price) || 0;
+    const amountCents = complimentary ? 0 : Math.round(planPrice * 100);
+
+    const assigned = await assignUserPlan({
+      userId,
+      pkg,
+      keepCredits,
+      subscriptionStatus: 'active',
+      cancelAtPeriodEnd: false
+    });
+
+    if (ctx.user.account_status === 'restricted' && pkg.id !== 'Free') {
+      await db.query(`UPDATE users SET account_status = 'active' WHERE id = ?`, [userId]);
+    }
+
+    const changePart =
+      fromLabel === toLabel ? `Admin plan grant: ${toLabel}` : `Admin plan change: ${fromLabel} → ${toLabel}`;
+    const pricePart = complimentary || amountCents === 0 ? 'comp' : formatUsd(amountCents / 100);
+    const description = `${changePart} (${pricePart})`;
+    const invoiceNote = note || invoiceReason;
+
+    const invoiceId = await recordAdminInvoice({
+      userId,
+      adminId: req.user.id,
+      packageId: pkg.id,
+      credits: assigned.credits,
+      amountCents,
+      billingReason: 'admin_plan_grant',
+      description,
+      note: invoiceNote,
+      status: 'paid',
+      method: complimentary ? 'admin_comp' : invoiceReason === 'paid offline' ? 'admin_offline' : 'admin'
+    });
+
+    res.json({
+      success: true,
+      packageId: pkg.id,
+      packageName: toLabel,
+      previousPackageId: assigned.previousPlanId,
+      previousPackageName: fromLabel,
+      credits: assigned.credits,
+      amountCents,
+      complimentary,
+      invoiceReason,
+      invoiceId,
+      description
+    });
+  } catch (error) {
+    console.error('Admin plan change error:', error);
+    res.status(500).json({ error: 'Failed to change user plan' });
+  } finally {
+    if (lockHeld) {
+      try {
+        await conn.query('SELECT RELEASE_LOCK(?)', [lockName]);
+      } catch (releaseErr) {
+        console.error('Failed to release plan grant lock:', releaseErr);
+      }
+    }
+    conn.release();
+  }
+});
+
+router.post('/users/:id/restrict-plan', ...adminChain, async (req, res) => {
+  const restrict = req.body.restrict !== false && req.body.restrict !== 0 && req.body.restrict !== '0';
+  const note = (req.body.note || '').toString().trim().slice(0, 500) || null;
+  const requestedPackageId = (req.body.packageId || req.body.package_id || '').toString().trim();
+
+  try {
+    const userId = req.params.id;
+    const ctx = await loadUserPlanContext(userId);
+    if (!ctx) return res.status(404).json({ error: 'User not found' });
+
+    if (!restrict) {
+      await db.query(`UPDATE users SET account_status = 'active' WHERE id = ?`, [userId]);
+      const description = `Admin plan restriction lifted (${ctx.currentPlanName})`;
+      const invoiceId = await recordAdminInvoice({
+        userId,
+        adminId: req.user.id,
+        packageId: ctx.currentPlanId,
+        credits: ctx.credits,
+        amountCents: 0,
+        billingReason: 'admin_plan_unrestrict',
+        description,
+        note
+      });
+      return res.json({
+        success: true,
+        restricted: false,
+        accountStatus: 'active',
+        packageId: ctx.currentPlanId,
+        credits: ctx.credits,
+        invoiceId,
+        description
+      });
+    }
+
+    const targetId = requestedPackageId || 'Free';
+    const pkg = await loadPackageById(targetId);
+    if (!pkg) return res.status(400).json({ error: 'Invalid package id' });
+
+    const fromLabel = ctx.currentPlanName;
+    const toLabel = packageLabel(pkg);
+    const assigned = await assignUserPlan({
+      userId,
+      pkg,
+      keepCredits: false,
+      subscriptionStatus: pkg.id === 'Free' ? 'canceled' : 'active',
+      cancelAtPeriodEnd: true
+    });
+
+    await db.query(`UPDATE users SET account_status = 'restricted' WHERE id = ?`, [userId]);
+
+    const description = `Admin plan restrict: ${fromLabel} → ${toLabel}`;
+    const invoiceId = await recordAdminInvoice({
+      userId,
+      adminId: req.user.id,
+      packageId: pkg.id,
+      credits: assigned.credits,
+      amountCents: 0,
+      billingReason: 'admin_plan_restrict',
+      description,
+      note
+    });
+
+    res.json({
+      success: true,
+      restricted: true,
+      accountStatus: 'restricted',
+      packageId: pkg.id,
+      packageName: toLabel,
+      previousPackageId: assigned.previousPlanId,
+      credits: assigned.credits,
+      invoiceId,
+      description
+    });
+  } catch (error) {
+    console.error('Admin restrict plan error:', error);
+    res.status(500).json({ error: 'Failed to restrict user plan' });
+  }
+});
+
 router.post('/users/:id/credits', ...adminChain, async (req, res) => {
   const rawAmount = req.body.amount;
   const amount = Number(rawAmount);
-  const mode = req.body.mode === 'set' ? 'set' : 'add';
+  const requestedMode = (req.body.mode || 'add').toString().toLowerCase();
   const note = (req.body.note || '').toString().trim().slice(0, 500) || null;
+
+  let mode = 'add';
+  if (requestedMode === 'set') mode = 'set';
+  else if (requestedMode === 'subtract' || requestedMode === 'minus' || requestedMode === 'remove') mode = 'subtract';
+  else mode = 'add';
 
   if (rawAmount === undefined || rawAmount === null || rawAmount === '' || Number.isNaN(amount)) {
     return res.status(400).json({ error: 'amount required' });
   }
-  if (mode === 'add' && amount === 0) {
-    return res.status(400).json({ error: 'amount must be non-zero for add mode' });
-  }
   if (mode === 'set' && amount < 0) {
     return res.status(400).json({ error: 'balance cannot be negative' });
+  }
+  if (mode === 'subtract' && amount <= 0) {
+    return res.status(400).json({ error: 'amount must be a positive number to subtract' });
+  }
+  if (mode === 'add' && amount === 0) {
+    return res.status(400).json({ error: 'amount must be non-zero' });
   }
 
   try {
     const userId = req.params.id;
-    const [userRows] = await db.query('SELECT id FROM users WHERE id = ?', [userId]);
-    if (userRows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const ctx = await loadUserPlanContext(userId);
+    if (!ctx) return res.status(404).json({ error: 'User not found' });
 
     const [packages] = await db.query(
-      'SELECT id, remaining_leads, purchased_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
+      'SELECT id, remaining_leads, purchased_leads, package_id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
       [userId]
     );
 
+    const currentBalance = packages[0]?.remaining_leads ?? 0;
+    let delta;
     let balanceAfter;
-    const delta = mode === 'set' ? amount - (packages[0]?.remaining_leads ?? 0) : amount;
+    let clamped = false;
+    let applied = 0;
+
+    if (mode === 'set') {
+      delta = amount - currentBalance;
+      applied = delta;
+      balanceAfter = amount;
+    } else if (mode === 'subtract') {
+      applied = Math.min(amount, currentBalance);
+      clamped = amount > currentBalance;
+      delta = -applied;
+      balanceAfter = Math.max(0, currentBalance - applied);
+    } else if (amount < 0) {
+      // backward-compat: add mode with a negative number
+      applied = Math.min(Math.abs(amount), currentBalance);
+      clamped = Math.abs(amount) > currentBalance;
+      delta = -applied;
+      balanceAfter = Math.max(0, currentBalance - applied);
+      mode = 'subtract';
+    } else {
+      delta = amount;
+      applied = amount;
+      balanceAfter = currentBalance + amount;
+    }
 
     if (packages.length === 0) {
-      balanceAfter = mode === 'set' ? amount : Math.max(0, amount);
       await db.query(
         `INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status)
          VALUES (?, 'Free', ?, ?, 'active')`,
         [userId, balanceAfter, Math.max(0, delta > 0 ? delta : 0)]
       );
-    } else if (mode === 'set') {
-      balanceAfter = amount;
-      const purchasedBump = Math.max(0, amount - packages[0].remaining_leads);
-      await db.query(
-        `UPDATE user_packages
-         SET remaining_leads = ?,
-             purchased_leads = purchased_leads + ?
-         WHERE id = ?`,
-        [balanceAfter, purchasedBump, packages[0].id]
-      );
     } else {
-      balanceAfter = Math.max(0, packages[0].remaining_leads + amount);
-      const purchasedBump = amount > 0 ? amount : 0;
+      const purchasedBump = delta > 0 ? delta : 0;
       await db.query(
         `UPDATE user_packages
          SET remaining_leads = ?,
@@ -333,10 +687,42 @@ router.post('/users/:id/credits', ...adminChain, async (req, res) => {
     await db.query(
       `INSERT INTO admin_credit_adjustments (user_id, admin_id, amount, balance_after, mode, note)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, req.user.id, mode === 'set' ? delta : amount, balanceAfter, mode, note]
+      [userId, req.user.id, delta, balanceAfter, mode, note]
     );
 
-    res.json({ success: true, credits: balanceAfter, mode, amount: mode === 'set' ? delta : amount });
+    const signed = delta > 0 ? `+${delta}` : String(delta);
+    const description =
+      mode === 'set'
+        ? `Admin credit adjustment: set to ${balanceAfter} (${signed})`
+        : `Admin credit adjustment: ${signed}`;
+
+    const invoiceId = await recordAdminInvoice({
+      userId,
+      adminId: req.user.id,
+      packageId: packages[0]?.package_id || ctx.currentPlanId || 'Free',
+      credits: delta,
+      amountCents: 0,
+      billingReason: 'admin_credit_adjustment',
+      description,
+      note
+    });
+
+    let message = `Credits updated — new balance: ${balanceAfter}`;
+    if (clamped) {
+      message = `Subtracted ${applied} (balance floored at 0; requested ${amount})`;
+    }
+
+    res.json({
+      success: true,
+      credits: balanceAfter,
+      mode,
+      amount: delta,
+      applied,
+      clamped,
+      invoiceId,
+      description,
+      message
+    });
   } catch (error) {
     console.error('Admin credit adjust error:', error);
     res.status(500).json({ error: 'Failed to adjust credits' });
@@ -346,7 +732,7 @@ router.post('/users/:id/credits', ...adminChain, async (req, res) => {
 router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
   const userId = req.params.id;
   const generate = Boolean(req.body.generate);
-  let password = (req.body.password ?? '').toString();
+  let password = (req.body.password ?? req.body.newPassword ?? req.body.new_password ?? '').toString();
 
   if (generate) {
     password = generateTemporaryPassword(12);
@@ -369,17 +755,14 @@ router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
     await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
 
-    console.log(
-      `[admin] password reset for user ${userId} (${users[0].email}) by admin ${req.user.id}`
-    );
+    console.log(`[admin] password reset for user ${userId} (${users[0].email}) by admin ${req.user.id}`);
 
     res.json({
       success: true,
       userId: Number(userId),
       email: users[0].email,
-      temporaryPassword: password,
       generated: generate,
-      note: `Password reset by admin ${req.user.id}`
+      ...(generate ? { temporaryPassword: password } : {})
     });
   } catch (error) {
     console.error('Admin password reset error:', error);

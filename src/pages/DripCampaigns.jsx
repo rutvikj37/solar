@@ -52,7 +52,6 @@ export default function DripCampaigns() {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [steps, setSteps] = useState(DEFAULT_STEPS);
   const [saving, setSaving] = useState(false);
-  const [runningPending, setRunningPending] = useState(false);
   const [message, setMessage] = useState('');
 
   const fetchCampaigns = useCallback(async () => {
@@ -144,7 +143,7 @@ export default function DripCampaigns() {
       setShowCreate(false);
       setForm(DEFAULT_FORM);
       setSteps(DEFAULT_STEPS);
-      setMessage('Campaign created — automation runs every minute.');
+      setMessage('Campaign created — SolarX.live server delivers steps automatically.');
       await fetchCampaigns();
       setSelectedId(result.id);
     } catch (err) {
@@ -181,24 +180,6 @@ export default function DripCampaigns() {
     }
   };
 
-  const handleRunNow = async () => {
-    setRunningPending(true);
-    setMessage('');
-    try {
-      const data = await apiService.runPendingDrip();
-      setMessage(`Processed ${data.processedCount || 0} due step(s).`);
-      fetchCampaigns();
-      if (selectedId) {
-        fetchDetail(selectedId);
-        fetchEnrollments(selectedId);
-      }
-    } catch (err) {
-      setMessage(err.message || 'Run failed');
-    } finally {
-      setRunningPending(false);
-    }
-  };
-
   const handleBulkEnroll = async () => {
     if (!selectedId) return;
     try {
@@ -230,25 +211,14 @@ export default function DripCampaigns() {
             <div className="flex items-center gap-2 mb-1">
               <h2 className="font-headline-lg text-2xl font-bold text-primary">Automated Drip Workflows</h2>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase">
-                Auto-running every minute
+                Runs on SolarX.live server
               </span>
             </div>
             <p className="text-on-surface-variant text-xs">
-              SMS and email nurture sequences with score-gated enrollment, business hours, and stop-on-reply.
+              SMS and email nurture sequences with score-gated enrollment, business hours, and stop-on-reply. Delivery runs on the API process, not this browser.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={handleRunNow}
-              disabled={runningPending}
-              className="bg-white/10 hover:bg-white/15 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2"
-            >
-              <span className="material-symbols-outlined text-base" style={{ animation: runningPending ? 'spin 1s linear infinite' : 'none' }}>
-                autorenew
-              </span>
-              Run Now (Debug)
-            </button>
             <button
               type="button"
               onClick={() => { setShowCreate(true); setForm(DEFAULT_FORM); setSteps(DEFAULT_STEPS); }}

@@ -1,5 +1,6 @@
 /**
  * Background drip worker — processes due enrollments every ~60s.
+ * Started from server/index.js on API boot (not from the Vite client).
  */
 import { processDueEnrollments } from './dripEngine.js';
 

@@ -191,7 +191,7 @@ export function Footer() {
               <SatIcon className="size-4 text-primary-glow" />
             </span>
             <span className="font-display text-sm font-semibold">
-              SollarX<span className="text-primary-glow">.ai</span>
+              SolarX<span className="text-primary-glow">.live</span>
             </span>
           </div>
           <p className="mt-5 max-w-xs text-sm text-muted-foreground">
@@ -219,7 +219,7 @@ export function Footer() {
       </div>
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <span>© {new Date().getFullYear()} SollarX.ai Solar Intelligence. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} SolarX.live Solar Intelligence. All rights reserved.</span>
           <span className="font-mono">33.4484° N · 112.0740° W</span>
         </div>
       </div>

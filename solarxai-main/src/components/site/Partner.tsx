@@ -49,7 +49,7 @@ export function Partner() {
             <span className="text-gradient">Grow Your Solar Business Smarter</span>
           </h2>
           <p className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground">
-            Helios replaces guesswork with orbital certainty. We continuously scan residential
+            SolarX.live replaces guesswork with orbital certainty. We continuously scan residential
             markets, score every rooftop for installable potential, and hand your team a ranked
             list of homeowners who are physically and financially ready for solar. No cold lists,
             no wasted truck rolls — just verified opportunity, delivered daily.

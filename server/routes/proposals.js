@@ -129,7 +129,7 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
            updated_at = NOW()
          WHERE id = ?`,
         [
-          companyName || 'SollarX Energy Solutions',
+          companyName || 'SolarX Energy Solutions',
           systemSizeKw || 8.50,
           panelCount || 20,
           roi.grossCost,
@@ -161,7 +161,7 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
           slug,
           leadId,
           userId,
-          companyName || 'SollarX Energy Solutions',
+          companyName || 'SolarX Energy Solutions',
           systemSizeKw || 8.50,
           panelCount || 20,
           roi.grossCost,

@@ -46,7 +46,7 @@ function Partner() {
           children: [
             /* @__PURE__ */ jsx("p", { className: "font-mono text-[11px] tracking-[0.3em] text-primary-glow uppercase", children: "Partner program" }),
             /* @__PURE__ */ jsx("h2", { className: "mt-4 text-4xl font-semibold text-balance sm:text-5xl lg:text-6xl", children: /* @__PURE__ */ jsx("span", { className: "text-gradient", children: "Grow Your Solar Business Smarter" }) }),
-            /* @__PURE__ */ jsx("p", { className: "mt-6 max-w-lg text-base leading-relaxed text-muted-foreground", children: "Helios replaces guesswork with orbital certainty. We continuously scan residential markets, score every rooftop for installable potential, and hand your team a ranked list of homeowners who are physically and financially ready for solar. No cold lists, no wasted truck rolls \u2014 just verified opportunity, delivered daily." }),
+            /* @__PURE__ */ jsx("p", { className: "mt-6 max-w-lg text-base leading-relaxed text-muted-foreground", children: "SolarX.live replaces guesswork with orbital certainty. We continuously scan residential markets, score every rooftop for installable potential, and hand your team a ranked list of homeowners who are physically and financially ready for solar. No cold lists, no wasted truck rolls \u2014 just verified opportunity, delivered daily." }),
             /* @__PURE__ */ jsxs("div", { className: "mt-10 flex flex-wrap gap-4", children: [
               /* @__PURE__ */ jsxs(
                 "a",

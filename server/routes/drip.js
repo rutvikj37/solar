@@ -10,7 +10,6 @@ import {
   getCampaignFunnel,
   computeInitialNextRun,
 } from '../services/drip/dripEngine.js';
-import { runDripOnce } from '../services/drip/dripWorker.js';
 import { DEFAULT_DRIP_STEPS } from '../services/drip/dripTemplates.js';
 
 const router = express.Router();
@@ -425,11 +424,6 @@ router.get('/leads/:leadId/enrollments', authenticateToken, asyncHandler(async (
     nextRunAt: e.next_run_at,
     status: e.status,
   })));
-}));
-
-router.post('/run-pending', authenticateToken, asyncHandler(async (req, res) => {
-  const result = await runDripOnce(req.user.id);
-  res.json({ success: true, ...result });
 }));
 
 export default router;

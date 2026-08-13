@@ -77,14 +77,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Helios — AI Solar Intelligence" },
+      { title: "SolarX.live — AI Solar Intelligence" },
       {
         name: "description",
         content:
           "AI-powered property intelligence for residential solar companies: discover qualified homes, analyze rooftops, accelerate sales.",
       },
-      { name: "author", content: "Helios" },
-      { property: "og:title", content: "Helios — AI Solar Intelligence" },
+      { name: "author", content: "SolarX.live" },
+      { property: "og:title", content: "SolarX.live — AI Solar Intelligence" },
       {
         property: "og:description",
         content:

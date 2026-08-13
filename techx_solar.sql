@@ -808,7 +808,7 @@ CREATE TABLE `proposals` (
   `slug` varchar(64) NOT NULL,
   `lead_id` int(10) UNSIGNED NOT NULL,
   `user_id` int(10) UNSIGNED NOT NULL,
-  `company_name` varchar(255) DEFAULT 'SollarX Energy Solutions',
+  `company_name` varchar(255) DEFAULT 'SolarX Energy Solutions',
   `system_size_kw` decimal(6,2) NOT NULL DEFAULT 8.50,
   `panel_count` int(11) NOT NULL DEFAULT 20,
   `gross_cost` decimal(10,2) NOT NULL DEFAULT 25500.00,

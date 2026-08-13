@@ -364,7 +364,7 @@ Prioritize cinematic storytelling over traditional sections.
 
 This project was built with [Lovable](https://lovable.dev).
 
-**Live app**: https://solarxai.lovable.app
+**Live app**: https://solarx.live
 
 ## Build with Lovable
 

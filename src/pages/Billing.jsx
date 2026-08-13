@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
+import { invoiceNumber, openInvoicePdf } from '../utils/invoicePdf.js';
 
 const API = API_BASE;
 
@@ -30,13 +31,17 @@ function StatusPill({ status, cancelAtPeriodEnd }) {
 }
 
 function InvoiceStatusPill({ status }) {
-  const paid = String(status || '').toLowerCase() === 'paid';
+  const s = String(status || '').toLowerCase();
+  const paid = s === 'paid';
+  const adjusted = s === 'adjusted' || s === 'admin';
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wide ${
         paid
           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
-          : 'bg-amber-500/10 text-amber-400 border-amber-500/25'
+          : adjusted
+            ? 'bg-sky-500/10 text-sky-300 border-sky-500/25'
+            : 'bg-amber-500/10 text-amber-400 border-amber-500/25'
       }`}
     >
       {status || 'pending'}
@@ -44,11 +49,29 @@ function InvoiceStatusPill({ status }) {
   );
 }
 
+function formatBillingReason(reason) {
+  const map = {
+    initial: 'Initial',
+    renewal: 'Renewal',
+    admin_plan_grant: 'Admin plan grant',
+    admin_plan_change: 'Admin plan change',
+    admin_plan_restrict: 'Admin plan restrict',
+    admin_plan_unrestrict: 'Admin restriction lifted',
+    admin_credit_adjustment: 'Admin credit adjustment'
+  };
+  return map[reason] || String(reason || 'initial').replace(/_/g, ' ');
+}
+
 export default function Billing() {
   const [credits, setCredits] = useState(0);
   const [activePackage, setActivePackage] = useState('Free');
   const [subscription, setSubscription] = useState(null);
   const [invoices, setInvoices] = useState([]);
+  const [viewingInvoice, setViewingInvoice] = useState(null);
+  const [invoiceDetailLoading, setInvoiceDetailLoading] = useState(false);
+  const [invoiceDetailError, setInvoiceDetailError] = useState('');
+  const [invoicePdfBusyId, setInvoicePdfBusyId] = useState(null);
+  const [invoicePdfError, setInvoicePdfError] = useState('');
   const [packages, setPackages] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('');
   const [purchasing, setPurchasing] = useState(false);
@@ -141,7 +164,15 @@ export default function Billing() {
       setCredits(me.credits);
       setActivePackage(me.activePackage || 'Free');
       setSubscription(me.subscription || null);
-      if (invRes.ok) setInvoices(await invRes.json());
+      if (invRes.ok) {
+        const invData = await invRes.json();
+        const list = Array.isArray(invData)
+          ? invData
+          : Array.isArray(invData?.invoices)
+            ? invData.invoices
+            : [];
+        setInvoices(list);
+      }
       if (subRes.ok) {
         const subData = await subRes.json();
         if (subData.subscription) setSubscription(subData.subscription);
@@ -250,6 +281,55 @@ export default function Billing() {
     const n = Number(cents || 0) / 100;
     return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
   };
+
+  const closeInvoice = () => {
+    setViewingInvoice(null);
+    setInvoiceDetailError('');
+    setInvoiceDetailLoading(false);
+    setInvoicePdfError('');
+  };
+
+  const viewInvoicePdf = async (id, { download = false } = {}) => {
+    if (!id || invoicePdfBusyId) return;
+    setInvoicePdfBusyId(id);
+    setInvoicePdfError('');
+    try {
+      await openInvoicePdf(id, { download });
+    } catch (err) {
+      setInvoicePdfError(err.message || 'Could not open invoice PDF');
+    } finally {
+      setInvoicePdfBusyId(null);
+    }
+  };
+
+  const openInvoice = async (tx) => {
+    if (!tx?.id) return;
+    setViewingInvoice(tx);
+    setInvoiceDetailError('');
+    setInvoiceDetailLoading(true);
+    try {
+      const token = localStorage.getItem('solar_token');
+      const res = await fetch(`${API}/api/billing/invoices/${tx.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load invoice');
+      setViewingInvoice(data);
+    } catch (err) {
+      setInvoiceDetailError(err.message || 'Could not load invoice');
+    } finally {
+      setInvoiceDetailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!viewingInvoice) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeInvoice();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewingInvoice]);
 
   if (loading) {
     return (
@@ -454,7 +534,7 @@ export default function Billing() {
           <div>
             <h3 className="font-headline-md text-base font-bold text-on-surface">Invoice History</h3>
             <p className="text-[11px] text-on-surface-variant mt-0.5">
-              Receipts from Stripe and Razorpay checkouts and renewals.
+              Stripe/Razorpay receipts plus admin plan grants and credit adjustments.
             </p>
           </div>
           {invoices.length > 0 && (
@@ -464,6 +544,10 @@ export default function Billing() {
           )}
         </div>
 
+        {invoicePdfError && !viewingInvoice && (
+          <p className="px-6 py-2 text-[11px] text-amber-300 border-b border-glass-stroke">{invoicePdfError}</p>
+        )}
+
         {invoices.length === 0 ? (
           <div className="px-6 py-14 flex flex-col items-center text-center">
             <div className="w-12 h-12 rounded-2xl bg-white/5 border border-glass-stroke flex items-center justify-center mb-4">
@@ -471,7 +555,7 @@ export default function Billing() {
             </div>
             <p className="text-sm font-semibold text-white mb-1">No invoices yet</p>
             <p className="text-xs text-on-surface-variant max-w-sm leading-relaxed mb-5">
-              When you subscribe to a monthly plan, payment receipts will appear here after each successful charge.
+              Subscription charges and admin plan or credit adjustments will appear here.
             </p>
             <a
               href="#plans"
@@ -485,9 +569,9 @@ export default function Billing() {
             <table className="w-full border-collapse text-xs text-left min-w-[720px]">
               <thead>
                 <tr className="bg-white/[0.03]">
-                  {['Invoice', 'Date', 'Package', 'Type', 'Amount', 'Credits', 'Status'].map((h) => (
+                  {['Invoice', 'Date', 'Package', 'Type', 'Amount', 'Credits', 'Status', ''].map((h) => (
                     <th
-                      key={h}
+                      key={h || 'actions'}
                       className="px-6 py-3.5 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
                     >
                       {h}
@@ -497,16 +581,28 @@ export default function Billing() {
               </thead>
               <tbody className="divide-y divide-glass-stroke">
                 {invoices.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-white/[0.03] transition-colors">
-                    <td className="px-6 py-4 font-semibold text-white font-mono text-[11px]">
-                      INV-{String(tx.id).padStart(4, '0')}
+                  <tr
+                    key={tx.id}
+                    className="hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    onClick={() => openInvoice(tx)}
+                  >
+                    <td className="px-6 py-4 text-white">
+                      <p className="font-semibold font-mono text-[11px]">{invoiceNumber(tx.id)}</p>
+                      {tx.description && (
+                        <p className="text-[10px] text-on-surface-variant mt-0.5 leading-snug max-w-xs">
+                          {tx.description}
+                        </p>
+                      )}
+                      {tx.admin_name && (
+                        <p className="text-[10px] text-on-surface-variant/80 mt-0.5">by {tx.admin_name}</p>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-on-surface-variant whitespace-nowrap">
                       {tx.created_at ? formatDate(tx.created_at) : '—'}
                     </td>
-                    <td className="px-6 py-4 text-on-surface">{tx.package_id || '—'}</td>
+                    <td className="px-6 py-4 text-on-surface">{tx.package_name || tx.package_id || '—'}</td>
                     <td className="px-6 py-4 text-on-surface-variant capitalize">
-                      {(tx.billing_reason || 'initial').replace(/_/g, ' ')}
+                      {formatBillingReason(tx.billing_reason)}
                     </td>
                     <td className="px-6 py-4 font-semibold text-white tabular-nums">
                       {formatAmount(tx.amount_cents)}
@@ -514,6 +610,29 @@ export default function Billing() {
                     <td className="px-6 py-4 text-on-surface-variant tabular-nums">{tx.credits ?? '—'}</td>
                     <td className="px-6 py-4">
                       <InvoiceStatusPill status={tx.status} />
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openInvoice(tx);
+                        }}
+                        className="text-primary font-bold text-[10px] hover:underline"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        disabled={invoicePdfBusyId === tx.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          viewInvoicePdf(tx.id);
+                        }}
+                        className="ml-3 text-primary font-bold text-[10px] hover:underline disabled:opacity-50"
+                      >
+                        {invoicePdfBusyId === tx.id ? 'Opening…' : 'View PDF'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -599,6 +718,123 @@ export default function Billing() {
           </div>
         )}
       </section>
+
+      {viewingInvoice && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={closeInvoice}
+          role="presentation"
+        >
+          <div
+            className="glass-card rounded-2xl w-full max-w-lg border border-glass-stroke p-6 relative"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-detail-title"
+          >
+            <div className="flex items-start justify-between gap-3 mb-5">
+              <div>
+                <p className="font-label-mono text-[9px] text-primary uppercase tracking-[0.2em] mb-1">
+                  Invoice
+                </p>
+                <h3 id="invoice-detail-title" className="text-lg font-bold text-white font-mono">
+                  {invoiceNumber(viewingInvoice.id)}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeInvoice}
+                className="text-on-surface-variant hover:text-white"
+                aria-label="Close invoice"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {invoiceDetailLoading && (
+              <p className="text-[11px] text-on-surface-variant mb-4">Refreshing invoice details…</p>
+            )}
+            {invoiceDetailError && (
+              <p className="text-[11px] text-amber-300 mb-4">{invoiceDetailError}</p>
+            )}
+            {invoicePdfError && (
+              <p className="text-[11px] text-amber-300 mb-4">{invoicePdfError}</p>
+            )}
+
+            <dl className="grid grid-cols-2 gap-3 text-xs">
+              {[
+                ['Date', viewingInvoice.created_at ? formatDate(viewingInvoice.created_at) : '—'],
+                ['Package', viewingInvoice.package_name || viewingInvoice.package_id || '—'],
+                ['Type', formatBillingReason(viewingInvoice.billing_reason)],
+                ['Amount', formatAmount(viewingInvoice.amount_cents)],
+                ['Credits', viewingInvoice.credits ?? '—']
+              ].map(([label, value]) => (
+                <div key={label} className="bg-white/5 rounded-lg p-3">
+                  <dt className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
+                    {label}
+                  </dt>
+                  <dd className="text-white font-semibold mt-1 break-words">{value}</dd>
+                </div>
+              ))}
+              <div className="bg-white/5 rounded-lg p-3">
+                <dt className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
+                  Status
+                </dt>
+                <dd className="mt-1">
+                  <InvoiceStatusPill status={viewingInvoice.status} />
+                </dd>
+              </div>
+            </dl>
+
+            {viewingInvoice.description && (
+              <div className="mt-3 bg-white/5 rounded-lg p-3">
+                <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
+                  Description
+                </p>
+                <p className="text-white text-xs mt-1 leading-relaxed">{viewingInvoice.description}</p>
+              </div>
+            )}
+
+            {viewingInvoice.admin_name && (
+              <div className="mt-3 bg-white/5 rounded-lg p-3">
+                <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
+                  Admin
+                </p>
+                <p className="text-white text-xs mt-1">
+                  {viewingInvoice.admin_name}
+                  {viewingInvoice.admin_email ? ` · ${viewingInvoice.admin_email}` : ''}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={invoicePdfBusyId === viewingInvoice.id}
+                onClick={() => viewInvoicePdf(viewingInvoice.id, { download: true })}
+                className="px-4 py-2 rounded-xl bg-white/5 border border-glass-stroke text-on-surface text-xs font-bold hover:bg-white/10 disabled:opacity-50"
+              >
+                {invoicePdfBusyId === viewingInvoice.id ? 'Preparing…' : 'Download PDF'}
+              </button>
+              <button
+                type="button"
+                disabled={invoicePdfBusyId === viewingInvoice.id}
+                onClick={() => viewInvoicePdf(viewingInvoice.id)}
+                className="px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:brightness-110 disabled:opacity-50"
+              >
+                {invoicePdfBusyId === viewingInvoice.id ? 'Opening…' : 'View PDF'}
+              </button>
+              <button
+                type="button"
+                onClick={closeInvoice}
+                className="px-4 py-2 rounded-xl bg-white/5 border border-glass-stroke text-on-surface text-xs font-bold hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

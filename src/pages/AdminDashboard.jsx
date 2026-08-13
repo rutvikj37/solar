@@ -1,10 +1,31 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { toast, Toaster } from 'sonner';
 import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
+import { invoiceNumber, openInvoicePdf } from '../utils/invoicePdf.js';
 
 import TeamWorkspacePanel from '../components/TeamWorkspacePanel';
 import TerritoryAnalyticsPanel from '../components/TerritoryAnalyticsPanel';
+
+function ActionBanner({ type, message }) {
+  if (!message) return null;
+  const ok = type === 'success';
+  return (
+    <div
+      className={`rounded-lg px-3 py-2.5 text-xs font-semibold flex items-start gap-2 border ${
+        ok
+          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+          : 'bg-red-500/15 text-red-300 border-red-500/30'
+      }`}
+    >
+      <span className="material-symbols-outlined text-base leading-none mt-0.5">
+        {ok ? 'check_circle' : 'error'}
+      </span>
+      <span>{message}</span>
+    </div>
+  );
+}
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -35,9 +56,20 @@ export default function AdminDashboard() {
   const [creditNote, setCreditNote] = useState('');
   const [creditMode, setCreditMode] = useState('add');
   const [creditMsg, setCreditMsg] = useState('');
+  const [creditMsgType, setCreditMsgType] = useState('success');
+  const [creditBusy, setCreditBusy] = useState(false);
+  const [assignPlanId, setAssignPlanId] = useState('');
+  const [planNote, setPlanNote] = useState('');
+  const [planInvoiceReason, setPlanInvoiceReason] = useState('manual grant');
+  const [planComplimentary, setPlanComplimentary] = useState(false);
+  const [planMsg, setPlanMsg] = useState('');
+  const [planMsgType, setPlanMsgType] = useState('success');
+  const [planBusy, setPlanBusy] = useState(false);
+  const planBusyRef = useRef(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
+  const [passwordMsgType, setPasswordMsgType] = useState('success');
   const [revealedPassword, setRevealedPassword] = useState('');
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [planForm, setPlanForm] = useState({
@@ -81,11 +113,13 @@ export default function AdminDashboard() {
         setStats(await res.json());
       }
       if (active === 'users') {
-        const res = await fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}`, {
-          headers: authHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to load users');
-        setUsers(await res.json());
+        const [usersRes, plansRes] = await Promise.all([
+          fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}`, { headers: authHeaders() }),
+          fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() })
+        ]);
+        if (!usersRes.ok) throw new Error('Failed to load users');
+        setUsers(await usersRes.json());
+        if (plansRes.ok) setPlans(await plansRes.json());
       }
       if (active === 'subscriptions') {
         const res = await fetch(`${API_BASE}/api/admin/subscriptions`, { headers: authHeaders() });
@@ -150,20 +184,127 @@ export default function AdminDashboard() {
     loadTab(tab);
   };
 
-  const openUser = async (id) => {
+  const openUser = async (id, { keepFeedback = false } = {}) => {
     setSelectedUserId(id);
-    setCreditMsg('');
-    setPasswordMsg('');
-    setRevealedPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
+    if (!keepFeedback) {
+      setCreditMsg('');
+      setPlanMsg('');
+      setPasswordMsg('');
+      setRevealedPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
     const res = await fetch(`${API_BASE}/api/admin/users/${id}`, { headers: authHeaders() });
     if (res.ok) {
-      setUserDetail(await res.json());
+      const data = await res.json();
+      setUserDetail(data);
+      setAssignPlanId(data.package?.packageId || data.subscription?.packageId || '');
     } else {
       const data = await res.json().catch(() => ({}));
-      setCreditMsg(data.error || 'Failed to load user profile');
+      const err = data.error || 'Failed to load user profile';
+      setCreditMsg(err);
+      setCreditMsgType('error');
+      toast.error(err);
       setUserDetail(null);
+    }
+  };
+
+  const viewUserInvoicePdf = async (invoiceId, { download = false } = {}) => {
+    if (!invoiceId) return;
+    try {
+      await openInvoicePdf(invoiceId, { download });
+    } catch (err) {
+      toast.error(err.message || 'Could not open invoice PDF');
+    }
+  };
+
+  const selectedPlanMeta = plans.find((p) => p.id === assignPlanId);
+  const selectedPlanPrice = Number(selectedPlanMeta?.price || 0);
+  const invoicePreviewAmount = planComplimentary ? 0 : selectedPlanPrice;
+
+  const grantPlan = async (e) => {
+    if (!selectedUserId || !assignPlanId || planBusyRef.current) return;
+    planBusyRef.current = true;
+    if (e?.currentTarget) e.currentTarget.disabled = true;
+    setPlanBusy(true);
+    setPlanMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/plan`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          packageId: assignPlanId,
+          complimentary: planComplimentary,
+          invoiceReason: planComplimentary ? 'comp' : planInvoiceReason,
+          note: planNote.trim() || undefined
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = data.error || 'Plan grant failed';
+        setPlanMsgType('error');
+        setPlanMsg(err);
+        toast.error(err);
+        return;
+      }
+      const successMsg =
+        planComplimentary || data.complimentary
+          ? 'Complimentary plan applied — $0 invoice created'
+          : 'Plan added and invoice generated';
+      setPlanMsgType('success');
+      setPlanMsg(successMsg);
+      toast.success(successMsg);
+      setPlanNote('');
+      await openUser(selectedUserId, { keepFeedback: true });
+      loadTab('users');
+    } catch {
+      const err = 'Plan grant failed';
+      setPlanMsgType('error');
+      setPlanMsg(err);
+      toast.error(err);
+    } finally {
+      planBusyRef.current = false;
+      setPlanBusy(false);
+    }
+  };
+
+  const restrictPlan = async (restrict) => {
+    if (!selectedUserId || planBusyRef.current) return;
+    planBusyRef.current = true;
+    setPlanBusy(true);
+    setPlanMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/restrict-plan`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          restrict,
+          packageId: restrict ? assignPlanId || 'Free' : undefined,
+          note: planNote.trim() || undefined
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = data.error || 'Restrict plan failed';
+        setPlanMsgType('error');
+        setPlanMsg(err);
+        toast.error(err);
+        return;
+      }
+      const successMsg = restrict ? 'Plan restricted' : 'Restriction lifted';
+      setPlanMsgType('success');
+      setPlanMsg(successMsg);
+      toast.success(successMsg);
+      await openUser(selectedUserId, { keepFeedback: true });
+      loadTab('users');
+    } catch {
+      const err = 'Restrict plan failed';
+      setPlanMsgType('error');
+      setPlanMsg(err);
+      toast.error(err);
+    } finally {
+      planBusyRef.current = false;
+      setPlanBusy(false);
     }
   };
 
@@ -174,11 +315,17 @@ export default function AdminDashboard() {
 
     if (!generate) {
       if (newPassword.length < 8) {
-        setPasswordMsg('Password must be at least 8 characters');
+        const err = 'Password must be at least 8 characters';
+        setPasswordMsgType('error');
+        setPasswordMsg(err);
+        toast.error(err);
         return;
       }
       if (newPassword !== confirmPassword) {
-        setPasswordMsg('Passwords do not match');
+        const err = 'Passwords do not match';
+        setPasswordMsgType('error');
+        setPasswordMsg(err);
+        toast.error(err);
         return;
       }
     }
@@ -188,49 +335,81 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/reset-password`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify(generate ? { generate: true } : { password: newPassword })
+        body: JSON.stringify(generate ? { generate: true } : { password: newPassword, newPassword })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setPasswordMsg(data.error || 'Password reset failed');
+        const err = data.error || 'Password reset failed';
+        setPasswordMsgType('error');
+        setPasswordMsg(err);
+        toast.error(err);
         return;
       }
+      const successMsg = generate
+        ? 'Password reset successfully — copy the temporary password now'
+        : 'Password reset successfully';
+      setPasswordMsgType('success');
+      setPasswordMsg(successMsg);
+      toast.success(successMsg);
       setRevealedPassword(data.temporaryPassword || '');
-      setPasswordMsg(
-        generate
-          ? 'Temporary password generated — copy it now; it will not be shown again.'
-          : 'Password updated — copy it now if you need to share it with the user.'
-      );
       setNewPassword('');
       setConfirmPassword('');
     } catch {
-      setPasswordMsg('Password reset failed');
+      const err = 'Password reset failed';
+      setPasswordMsgType('error');
+      setPasswordMsg(err);
+      toast.error(err);
     } finally {
       setPasswordBusy(false);
     }
   };
 
   const applyCredits = async () => {
-    if (!selectedUserId) return;
+    if (!selectedUserId || creditBusy) return;
     setCreditMsg('');
-    const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/credits`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        amount: Number(creditAdjustAmount),
-        mode: creditMode,
-        note: creditNote.trim() || undefined
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setCreditMsg(data.error || 'Credit adjustment failed');
-      return;
+    setCreditBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/credits`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          amount: Number(creditAdjustAmount),
+          mode: creditMode,
+          note: creditNote.trim() || undefined
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = data.error || 'Credit adjustment failed';
+        setCreditMsgType('error');
+        setCreditMsg(err);
+        toast.error(err);
+        return;
+      }
+      const applied = Math.abs(Number(data.applied ?? data.amount ?? creditAdjustAmount) || 0);
+      let successMsg = `Credits updated — new balance: ${data.credits}`;
+      if (creditMode === 'add' || data.mode === 'add') {
+        successMsg = `${applied} credits added`;
+      } else if (creditMode === 'subtract' || data.mode === 'subtract') {
+        successMsg = `${applied} credits deducted`;
+        if (data.clamped) successMsg += ' (balance floored at 0)';
+      } else if (creditMode === 'set' || data.mode === 'set') {
+        successMsg = `Credit balance set to ${data.credits}`;
+      }
+      setCreditMsgType('success');
+      setCreditMsg(successMsg);
+      toast.success(successMsg);
+      setCreditNote('');
+      await openUser(selectedUserId, { keepFeedback: true });
+      loadTab('users');
+    } catch {
+      const err = 'Credit adjustment failed';
+      setCreditMsgType('error');
+      setCreditMsg(err);
+      toast.error(err);
+    } finally {
+      setCreditBusy(false);
     }
-    setCreditMsg(`Credits updated — new balance: ${data.credits}`);
-    setCreditNote('');
-    openUser(selectedUserId);
-    loadTab('users');
   };
 
   const toggleStatus = async (userId, current) => {
@@ -310,10 +489,11 @@ export default function AdminDashboard() {
 
   return (
     <AppLayout>
+      <Toaster theme="dark" position="top-center" richColors />
       <div className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 font-label-mono text-[9px] font-bold uppercase mb-2">
-            SollarX Operator Console
+            SolarX.live Operator Console
           </div>
           <h2 className="font-headline-lg text-2xl font-bold text-white">Admin Control Center</h2>
           <p className="text-on-surface-variant text-sm mt-1">Users, plans, billing, API health, and support.</p>
@@ -409,7 +589,15 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3 text-white">{u.plan}</td>
                       <td className="px-4 py-3 font-mono text-white">{u.credits}</td>
                       <td className="px-4 py-3">
-                        <span className={u.account_status === 'suspended' ? 'text-red-400' : 'text-green-400'}>
+                        <span
+                          className={
+                            u.account_status === 'suspended'
+                              ? 'text-red-400'
+                              : u.account_status === 'restricted'
+                                ? 'text-amber-400'
+                                : 'text-green-400'
+                          }
+                        >
                           {u.account_status || 'active'}
                         </span>
                       </td>
@@ -427,7 +615,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="glass-card p-4 rounded-xl min-h-[420px] flex flex-col">
+          <div className="glass-card p-4 rounded-xl min-h-[420px] max-h-[85vh] overflow-y-auto flex flex-col">
             {!userDetail ? (
               <p className="text-on-surface-variant m-auto">Select a user to view profile</p>
             ) : (
@@ -461,7 +649,7 @@ export default function AdminDashboard() {
                   ))}
                 </div>
 
-                <div className="mb-4 p-3 rounded-lg bg-white/5 space-y-1">
+                <div className="mb-4 p-3 rounded-lg bg-white/5 space-y-2">
                   <p className="text-[9px] text-on-surface-variant uppercase">Package & Subscription</p>
                   <p className="text-white">
                     Plan: {userDetail.package?.packageName || 'None'}{' '}
@@ -485,6 +673,96 @@ export default function AdminDashboard() {
                   ) : (
                     <p className="text-on-surface-variant">No active billing subscription record.</p>
                   )}
+                  {userDetail.user.account_status === 'restricted' && (
+                    <p className="text-amber-400 text-[10px]">Upgrades locked — plan is restricted.</p>
+                  )}
+
+                  <div className="pt-2 border-t border-white/10 space-y-2">
+                    <p className="text-[9px] text-on-surface-variant uppercase">Add plan & generate invoice</p>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <select
+                        value={assignPlanId}
+                        onChange={(e) => setAssignPlanId(e.target.value)}
+                        className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      >
+                        <option value="">Select plan…</option>
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.id}) · ${Number(p.price || 0).toLocaleString()} · {p.lead_limit} credits
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={planInvoiceReason}
+                        onChange={(e) => {
+                          setPlanInvoiceReason(e.target.value);
+                          if (e.target.value === 'comp') setPlanComplimentary(true);
+                          else if (planComplimentary && e.target.value !== 'comp') setPlanComplimentary(false);
+                        }}
+                        className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      >
+                        <option value="manual grant">manual grant</option>
+                        <option value="paid offline">paid offline</option>
+                        <option value="comp">comp</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-on-surface-variant">
+                      <input
+                        type="checkbox"
+                        checked={planComplimentary}
+                        onChange={(e) => {
+                          setPlanComplimentary(e.target.checked);
+                          if (e.target.checked) setPlanInvoiceReason('comp');
+                          else if (planInvoiceReason === 'comp') setPlanInvoiceReason('manual grant');
+                        }}
+                      />
+                      Complimentary (invoice $0)
+                    </label>
+                    <input
+                      value={planNote}
+                      onChange={(e) => setPlanNote(e.target.value)}
+                      placeholder="Invoice note / reason (optional)"
+                      className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                    />
+                    <p className="text-[10px] text-on-surface-variant">
+                      Invoice amount:{' '}
+                      <span className="text-white font-semibold">
+                        ${invoicePreviewAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      {planComplimentary ? ' · comp' : ''}
+                      {selectedPlanMeta ? ` · ${selectedPlanMeta.lead_limit} credits` : ''}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={planBusy || !assignPlanId}
+                        onClick={grantPlan}
+                        className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {planBusy ? 'Saving…' : 'Add plan & generate invoice'}
+                      </button>
+                      {userDetail.user.account_status === 'restricted' ? (
+                        <button
+                          type="button"
+                          disabled={planBusy}
+                          onClick={() => restrictPlan(false)}
+                          className="bg-white/10 text-white px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          Lift restriction
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={planBusy}
+                          onClick={() => restrictPlan(true)}
+                          className="bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
+                        >
+                          Restrict plan
+                        </button>
+                      )}
+                    </div>
+                    <ActionBanner type={planMsgType} message={planMsg} />
+                  </div>
                 </div>
 
                 <div className="mb-4 p-3 rounded-lg bg-white/5">
@@ -521,7 +799,7 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
-                <div className="mt-auto pt-3 border-t border-glass-stroke space-y-2">
+                <div className="pt-3 border-t border-glass-stroke space-y-2">
                   <p className="text-[9px] text-on-surface-variant uppercase">Adjust Credits</p>
                   <p className="text-white font-mono text-sm">Current balance: {userDetail.credits}</p>
                   <div className="flex flex-wrap gap-2 items-center">
@@ -530,7 +808,8 @@ export default function AdminDashboard() {
                       onChange={(e) => setCreditMode(e.target.value)}
                       className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
                     >
-                      <option value="add">Add credits (+/−)</option>
+                      <option value="add">Add credits</option>
+                      <option value="subtract">Subtract credits</option>
                       <option value="set">Set absolute balance</option>
                     </select>
                     <input
@@ -546,17 +825,15 @@ export default function AdminDashboard() {
                       className="flex-1 min-w-[120px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
                     />
                     <button
+                      type="button"
+                      disabled={creditBusy}
                       onClick={applyCredits}
-                      className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold"
+                      className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
                     >
-                      Apply
+                      {creditBusy ? 'Saving…' : 'Apply'}
                     </button>
                   </div>
-                  {creditMsg && (
-                    <p className={`text-[10px] ${creditMsg.startsWith('Credits updated') ? 'text-green-400' : 'text-red-400'}`}>
-                      {creditMsg}
-                    </p>
-                  )}
+                  <ActionBanner type={creditMsgType} message={creditMsg} />
                   {userDetail.creditHistory?.length > 0 && (
                     <div className="max-h-24 overflow-y-auto space-y-1 pt-1">
                       <p className="text-[9px] text-on-surface-variant uppercase">Credit history</p>
@@ -571,6 +848,40 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
+
+                {userDetail.invoices?.length > 0 && (
+                  <div className="pt-3 border-t border-glass-stroke space-y-1">
+                    <p className="text-[9px] text-on-surface-variant uppercase">Invoices / billing history</p>
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                      {userDetail.invoices.map((inv) => (
+                        <div key={inv.id} className="text-[10px] bg-white/5 rounded p-1.5 flex justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-white">
+                              {invoiceNumber(inv.id)} · {inv.package_name || inv.package_id || '—'} · $
+                              {(Number(inv.amount_cents || 0) / 100).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                              })}
+                              <span className="text-on-surface-variant"> · {inv.status}</span>
+                            </p>
+                            <p className="text-on-surface-variant">
+                              {inv.created_at ? new Date(inv.created_at).toLocaleString() : ''}
+                              {inv.description ? ` · ${inv.description}` : ''}
+                              {inv.admin_name ? ` · by ${inv.admin_name}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => viewUserInvoicePdf(inv.id)}
+                            className="text-primary font-bold shrink-0 self-start hover:underline"
+                          >
+                            View PDF
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-3 border-t border-glass-stroke space-y-2">
                   <p className="text-[9px] text-on-surface-variant uppercase">Reset Password</p>
@@ -599,7 +910,7 @@ export default function AdminDashboard() {
                       onClick={() => resetUserPassword({ generate: false })}
                       className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
                     >
-                      Set new password
+                      {passwordBusy ? 'Saving…' : 'Reset password'}
                     </button>
                     <button
                       type="button"
@@ -607,18 +918,10 @@ export default function AdminDashboard() {
                       onClick={() => resetUserPassword({ generate: true })}
                       className="bg-white/10 text-white px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
                     >
-                      Generate temporary password
+                      {passwordBusy ? 'Saving…' : 'Generate temporary password'}
                     </button>
                   </div>
-                  {passwordMsg && (
-                    <p
-                      className={`text-[10px] ${
-                        revealedPassword ? 'text-green-400' : 'text-red-400'
-                      }`}
-                    >
-                      {passwordMsg}
-                    </p>
-                  )}
+                  <ActionBanner type={passwordMsgType} message={passwordMsg} />
                   {revealedPassword && (
                     <div className="flex flex-wrap gap-2 items-center bg-white/5 rounded-lg p-2">
                       <code className="text-white font-mono text-xs break-all flex-1">{revealedPassword}</code>

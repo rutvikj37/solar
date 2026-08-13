@@ -220,6 +220,8 @@ export async function migrateSchema() {
     "VARCHAR(50) NULL DEFAULT 'initial'",
   );
   await ensureColumn("invoices", "razorpay_payment_id", "VARCHAR(255) NULL");
+  await ensureColumn("invoices", "description", "TEXT NULL");
+  await ensureColumn("invoices", "admin_id", "INT UNSIGNED NULL");
   await ensureColumn(
     "user_subscriptions",
     "razorpay_subscription_id",
@@ -731,7 +733,7 @@ export async function migrateSchema() {
       slug VARCHAR(64) NOT NULL UNIQUE,
       lead_id INT UNSIGNED NOT NULL,
       user_id INT UNSIGNED NOT NULL,
-      company_name VARCHAR(255) NULL DEFAULT 'SollarX Energy Solutions',
+      company_name VARCHAR(255) NULL DEFAULT 'SolarX Energy Solutions',
       system_size_kw DECIMAL(6,2) NOT NULL DEFAULT 8.50,
       panel_count INT NOT NULL DEFAULT 20,
       gross_cost DECIMAL(10,2) NOT NULL DEFAULT 25500.00,

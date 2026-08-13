@@ -1,6 +1,6 @@
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { migrateSchema } from './schema.js';
@@ -23,10 +23,18 @@ import dripRoutes from './routes/drip.js';
 import teamRoutes from './routes/team.js';
 import aiCallingRoutes from './routes/ai-calling.js';
 import proposalRoutes from './routes/proposals.js';
-import { startDialerWorker } from './services/ai-calling/dialerWorker.js';
-import { startDripWorker } from './services/drip/dripWorker.js';
+import { startDialerWorker, stopDialerWorker } from './services/ai-calling/dialerWorker.js';
+import { startDripWorker, stopDripWorker } from './services/drip/dripWorker.js';
 
-dotenv.config();
+if (
+  !process.env.FIREBASE_PROJECT_ID ||
+  !process.env.FIREBASE_CLIENT_EMAIL ||
+  !process.env.FIREBASE_PRIVATE_KEY
+) {
+  console.warn(
+    '[Firebase] Admin credentials missing (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY). Social login is disabled.',
+  );
+}
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -78,21 +86,46 @@ wss.on('error', (err) => {
   console.error('[WebSocket] Server error:', err.message);
 });
 
-// Run DB Schema Migrations & Start Server
+function startBackgroundWorkers() {
+  startDialerWorker({ intervalMs: 15000 });
+  startDripWorker({ intervalMs: 60000 });
+  console.log('[SolarX.live] Background workers started: drip (60s), AI dialer (15s), appointment reminders (5m)');
+}
+
+function stopBackgroundWorkers() {
+  stopDialerWorker();
+  stopDripWorker();
+}
+
+// Schema migrate + HTTP listen + workers all belong to this process (not the Vite client).
 async function startServer() {
   try {
     await migrateSchema();
-    server.listen(PORT, () => {
-      console.log(`[Solar Velocity Server] Running on http://localhost:${PORT}`);
-      console.log(`[WebSocket] Media Stream endpoint ready at ws://localhost:${PORT}/media-stream`);
-      startDialerWorker({ intervalMs: 15000 });
-      startDripWorker({ intervalMs: 60000 });
-    });
   } catch (err) {
-    console.error('Failed to start server:', err);
-    process.exit(1);
+    console.error('[Schema] Migration failed; API will still start and workers will retry:', err.message);
   }
+
+  server.on('error', (err) => {
+    console.error('[SolarX.live] Failed to bind HTTP server:', err.message);
+    process.exit(1);
+  });
+
+  server.listen(PORT, () => {
+    console.log(`[SolarX.live] API running on http://localhost:${PORT}`);
+    console.log(`[WebSocket] Media Stream endpoint ready at ws://localhost:${PORT}/media-stream`);
+    startBackgroundWorkers();
+  });
 }
+
+function shutdown(signal) {
+  console.log(`[SolarX.live] ${signal} received, stopping workers`);
+  stopBackgroundWorkers();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 startServer();
 

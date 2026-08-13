@@ -125,7 +125,7 @@ export function NetworkMap() {
           className="absolute inset-x-0 bottom-0 px-6 pb-20 text-center"
         >
           <p className="font-mono text-[11px] tracking-[0.3em] text-primary-glow uppercase">
-            The Helios Grid
+            The SolarX Grid
           </p>
           <h2 className="mx-auto mt-4 max-w-3xl text-4xl font-semibold text-balance sm:text-5xl">
             <span className="text-gradient">

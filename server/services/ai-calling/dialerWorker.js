@@ -1,5 +1,6 @@
 /**
  * Campaign Dialer Worker — processes active campaign queues automatically.
+ * Started from server/index.js on API boot (not from the Vite client).
  */
 import db from '../../db.js';
 import {

@@ -221,7 +221,7 @@ export default function PublicProposalView() {
             <span className="material-symbols-outlined text-xl">bolt</span>
           </div>
           <div>
-            <h1 className="font-bold text-white text-sm tracking-tight">{p.company_name || 'SollarX Energy Solutions'}</h1>
+            <h1 className="font-bold text-white text-sm tracking-tight">{p.company_name || 'SolarX Energy Solutions'}</h1>
             <p className="text-[9px] font-mono text-primary uppercase tracking-widest">Verified Rooftop Energy Assessment</p>
           </div>
         </div>

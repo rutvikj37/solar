@@ -108,7 +108,7 @@ function NetworkMap() {
         style: { opacity: headline },
         className: "absolute inset-x-0 bottom-0 px-6 pb-20 text-center",
         children: [
-          /* @__PURE__ */ jsx("p", { className: "font-mono text-[11px] tracking-[0.3em] text-primary-glow uppercase", children: "The Helios Grid" }),
+          /* @__PURE__ */ jsx("p", { className: "font-mono text-[11px] tracking-[0.3em] text-primary-glow uppercase", children: "The SolarX Grid" }),
           /* @__PURE__ */ jsx("h2", { className: "mx-auto mt-4 max-w-3xl text-4xl font-semibold text-balance sm:text-5xl", children: /* @__PURE__ */ jsx("span", { className: "text-gradient", children: "A nationwide intelligence layer across 128 million rooftops." }) }),
           /* @__PURE__ */ jsxs("div", { className: "mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground", children: [
             /* @__PURE__ */ jsxs("span", { className: "inline-flex items-center gap-2", children: [

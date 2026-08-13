@@ -46,7 +46,7 @@ export default function TopBar({ onMenuToggle, showBanner }) {
   return (
     <header className={`fixed ${topPosition} left-0 right-0 h-16 bg-deep/95 backdrop-blur-xl border-b border-glass-stroke flex justify-between items-center px-6 z-40 transition-all`}>
       
-      {/* Left side: Hamburger button + SollarX Logo */}
+      {/* Left side: Hamburger button + SolarX.live Logo */}
       <div className="flex items-center gap-4">
         <button 
           onClick={onMenuToggle}
@@ -57,8 +57,8 @@ export default function TopBar({ onMenuToggle, showBanner }) {
 
         <Link to="/map" className="flex flex-col text-left select-none">
           <div className="flex items-baseline leading-none font-display">
-            <span className="text-on-surface font-semibold text-lg tracking-tight">SollarX</span>
-            <span className="text-primary-glow font-semibold text-lg tracking-tight">.ai</span>
+            <span className="text-on-surface font-semibold text-lg tracking-tight">SolarX</span>
+            <span className="text-primary-glow font-semibold text-lg tracking-tight">.live</span>
           </div>
           <span className="text-[7px] text-on-surface-variant font-bold uppercase tracking-[0.25em] leading-none mt-0.5">
             LEAD INTELLIGENCE

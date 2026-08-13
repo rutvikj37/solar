@@ -25,7 +25,7 @@ export function Nav() {
             <Satellite className="size-4 text-primary-glow" />
           </span>
           <span className="truncate font-display text-sm font-semibold tracking-tight">
-            SollarX<span className="text-primary-glow">.ai</span>
+            SolarX<span className="text-primary-glow">.live</span>
           </span>
         </a>
 

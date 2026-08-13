@@ -15,6 +15,46 @@ function defaultSolarScript(lead) {
   return `Hi ${lead.owner_name || 'there'}, this is calling from your local solar team about ${lead.address}. Based on your roof, you could save roughly $${Number(lead.estimated_savings || 0).toLocaleString()} over 25 years. Do you have 2 minutes to schedule a free site assessment?`;
 }
 
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+// Twilio inbound SMS → record on the server so drip stop-on-reply works without the UI open.
+router.post('/webhooks/sms', async (req, res) => {
+  const from = req.body?.From || req.body?.from;
+  const body = req.body?.Body || req.body?.body || '';
+  const sid = req.body?.MessageSid || req.body?.SmsSid || null;
+
+  res.type('text/xml').send('<Response></Response>');
+  if (!from) return;
+
+  const fromDigits = digitsOnly(from);
+  if (fromDigits.length < 7) return;
+  const suffix = fromDigits.slice(-10);
+
+  try {
+    const [leads] = await db.query(
+      `SELECT id, user_id, phone FROM leads
+       WHERE phone IS NOT NULL AND phone != '' AND phone != 'Not Available'
+         AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), '-', ''), '(', ''), ')', ''), ' ', ''), '.', '') LIKE ?
+       LIMIT 25`,
+      [`%${suffix}`]
+    );
+
+    for (const lead of leads) {
+      const leadDigits = digitsOnly(lead.phone);
+      if (!leadDigits.endsWith(suffix)) continue;
+      await db.query(
+        `INSERT INTO outreach_messages (user_id, lead_id, channel, direction, body, status, external_id)
+         VALUES (?, ?, 'sms', 'inbound', ?, 'received', ?)`,
+        [lead.user_id, lead.id, body, sid]
+      );
+    }
+  } catch (err) {
+    console.error('[Outreach] Inbound SMS webhook error:', err.message);
+  }
+});
+
 // Send SMS to a lead
 router.post('/sms', authenticateToken, async (req, res) => {
   const { leadId, message } = req.body;

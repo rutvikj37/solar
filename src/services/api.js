@@ -58,7 +58,6 @@ export const apiService = {
   enrollLeadsInCampaign: (id, payload = {}) => apiRequest(`/api/drip/campaigns/${id}/enroll`, { method: 'POST', body: JSON.stringify(payload) }),
   cancelDripEnrollment: (enrollmentId) => apiRequest(`/api/drip/enrollments/${enrollmentId}`, { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) }),
   getLeadDripEnrollments: (leadId) => apiRequest(`/api/drip/leads/${leadId}/enrollments`),
-  runPendingDrip: () => apiRequest('/api/drip/run-pending', { method: 'POST' }),
 
   // Team & Analytics
   getTeamMembers: () => apiRequest('/api/team/members'),

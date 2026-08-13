@@ -1,7 +1,8 @@
 import express from 'express';
 import Stripe from 'stripe';
 import db from '../db.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, isAdminRole } from '../middleware/auth.js';
+import { invoicePdfFilename, renderInvoicePdf } from '../utils/invoicePdf.js';
 import { logApiCall } from '../services/apiUsage.js';
 import {
   cancelRazorpaySubscription,
@@ -100,7 +101,7 @@ async function ensureStripeCustomer(stripe, userId) {
   return customer.id;
 }
 
-async function upsertUserSubscription({
+export async function upsertUserSubscription({
   userId,
   packageId,
   paymentProvider = 'stripe',
@@ -166,7 +167,7 @@ async function invoiceAlreadyProcessed(externalId) {
   return rows.length > 0;
 }
 
-async function recordInvoice({
+export async function recordInvoice({
   userId,
   packageId,
   amountCents,
@@ -177,13 +178,15 @@ async function recordInvoice({
   stripeSubscriptionId = null,
   stripeInvoiceId = null,
   razorpayPaymentId = null,
-  billingReason = 'initial'
+  billingReason = 'initial',
+  description = null,
+  adminId = null
 }) {
   const [inv] = await db.query(
     `INSERT INTO invoices
      (user_id, stripe_session_id, stripe_subscription_id, stripe_invoice_id, razorpay_payment_id,
-      package_id, amount_cents, credits, status, method, billing_reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      package_id, amount_cents, credits, status, method, billing_reason, description, admin_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       stripeSessionId,
@@ -195,10 +198,42 @@ async function recordInvoice({
       credits,
       status,
       method,
-      billingReason
+      billingReason,
+      description,
+      adminId
     ]
   );
   return inv.insertId;
+}
+
+const INVOICE_DETAIL_SELECT = `
+  SELECT i.*, admin_user.name AS admin_name, admin_user.email AS admin_email,
+         pkg.name AS package_name, pkg.price AS package_price
+  FROM invoices i
+  LEFT JOIN users admin_user ON admin_user.id = i.admin_id
+  LEFT JOIN packages pkg ON pkg.id = i.package_id
+`;
+
+export async function listUserInvoices(userId, limit = 50) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const [rows] = await db.query(
+    `${INVOICE_DETAIL_SELECT}
+     WHERE i.user_id = ?
+     ORDER BY i.created_at DESC
+     LIMIT ${safeLimit}`,
+    [userId]
+  );
+  return rows;
+}
+
+export async function getInvoiceById(invoiceId) {
+  const [rows] = await db.query(
+    `${INVOICE_DETAIL_SELECT}
+     WHERE i.id = ?
+     LIMIT 1`,
+    [invoiceId]
+  );
+  return rows[0] || null;
 }
 
 /** Check whether user can generate leads (credits + subscription state). */
@@ -414,6 +449,13 @@ router.post('/checkout', authenticateToken, async (req, res) => {
   const pkg = await loadActivePackage(packageId);
   if (!pkg || pkg.id === 'Free' || Number(pkg.price) <= 0 || Number(pkg.is_active) === 0) {
     return res.status(400).json({ error: 'Invalid or inactive package' });
+  }
+
+  const [accountRows] = await db.query('SELECT account_status FROM users WHERE id = ?', [req.user.id]);
+  if (accountRows[0]?.account_status === 'restricted') {
+    return res.status(403).json({
+      error: 'Your plan is restricted. Contact support to change or upgrade your plan.'
+    });
   }
 
   const credits = Number(pkg.lead_limit) || 0;
@@ -1026,14 +1068,65 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
 router.get('/invoices', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
-      [req.user.id]
-    );
+    // Include Stripe/Razorpay and admin_* invoices for the logged-in user.
+    const rows = await listUserInvoices(req.user.id, 50);
     res.json(rows);
   } catch (error) {
     console.error('Invoices fetch error:', error);
     res.status(500).json({ error: 'Server error fetching invoices' });
+  }
+});
+
+router.get('/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    const invoiceId = Number(req.params.id);
+    if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+      return res.status(400).json({ error: 'Invalid invoice id' });
+    }
+    const invoice = await getInvoiceById(invoiceId);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    const isOwner = Number(invoice.user_id) === Number(req.user.id);
+    if (!isOwner && !isAdminRole(req.user.role)) {
+      return res.status(403).json({ error: 'Not allowed to view this invoice' });
+    }
+    res.json(invoice);
+  } catch (error) {
+    console.error('Invoice fetch error:', error);
+    res.status(500).json({ error: 'Server error fetching invoice' });
+  }
+});
+
+router.get('/invoices/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const invoiceId = Number(req.params.id);
+    if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
+      return res.status(400).json({ error: 'Invalid invoice id' });
+    }
+    const invoice = await getInvoiceById(invoiceId);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    const isOwner = Number(invoice.user_id) === Number(req.user.id);
+    if (!isOwner && !isAdminRole(req.user.role)) {
+      return res.status(403).json({ error: 'Not allowed to view this invoice' });
+    }
+
+    const [users] = await db.query(
+      'SELECT name, email, company_name FROM users WHERE id = ? LIMIT 1',
+      [invoice.user_id]
+    );
+
+    const download = req.query.download === '1' || String(req.query.download).toLowerCase() === 'true';
+    const buffer = await renderInvoicePdf(invoice, users[0] || {});
+    const filename = invoicePdfFilename(invoice.id);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Invoice PDF error:', error);
+    res.status(500).json({ error: 'Server error generating invoice PDF' });
   }
 });
 

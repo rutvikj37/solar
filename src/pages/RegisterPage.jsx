@@ -87,10 +87,10 @@ export default function RegisterPage() {
             className="inline-flex items-baseline gap-0 mb-2 select-none font-display"
           >
             <span className="text-on-surface font-semibold text-2xl tracking-tight">
-              SollarX
+              SolarX
             </span>
             <span className="text-primary-glow font-semibold text-2xl tracking-tight">
-              .ai
+              .live
             </span>
           </Link>
           <p className="text-xs text-on-surface-variant">

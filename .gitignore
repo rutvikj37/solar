@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .env
 server/.env
+server/uploads/tickets/*
+!server/uploads/tickets/.gitkeep
 
 # Editor directories and files
 .vscode/*
@@ -24,5 +26,3 @@ server/.env
 *.njsproj
 *.sln
 *.sw?
-
-.env
