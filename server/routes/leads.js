@@ -1002,7 +1002,7 @@ router.post('/:id/webhook', authenticateToken, asyncHandler(async (req, res) => 
     });
   } catch (err) {
     console.error(`[Webhook Push Error] Lead #${id}:`, err.message);
-    res.status(500).json({ error: `Webhook push failed: ${err.message}` });
+    res.status(500).json({ error: 'Webhook push failed' });
   }
 }));
 

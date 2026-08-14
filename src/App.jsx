@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AppLayout from "./components/AppLayout";
 import AiCallingAdminGate from "./components/ai-calling/AiCallingAdminGate";
 import FullPageLoader from "./components/FullPageLoader";
 import PageTransitionLoader from "./components/PageTransitionLoader";
@@ -18,8 +19,6 @@ const InteractiveMap = lazy(() => import("./pages/InteractiveMap"));
 const PropertyAnalysis = lazy(() => import("./pages/PropertyAnalysis"));
 const GeneratingLead = lazy(() => import("./pages/GeneratingLead"));
 const LeadDetails = lazy(() => import("./pages/LeadDetails"));
-// Packages page hidden from users — keep LeadPackages for possible re-enable:
-// const LeadPackages = lazy(() => import('./pages/LeadPackages'));
 const Billing = lazy(() => import("./pages/Billing"));
 const Profile = lazy(() => import("./pages/Profile"));
 const MyLeads = lazy(() => import("./pages/MyLeads"));
@@ -30,7 +29,6 @@ const CompleteProfilePage = lazy(() => import("./pages/CompleteProfilePage"));
 const AutomationComingSoon = lazy(
   () => import("./components/AutomationComingSoon"),
 );
-// BulkAreaScan kept for re-enable: lazy(() => import('./pages/BulkAreaScan'))
 
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const Appointments = lazy(() => import("./pages/Appointments"));
@@ -65,14 +63,6 @@ const AiCallingCallDetail = lazy(
 
 const PublicProposalView = lazy(() => import("./pages/PublicProposalView"));
 
-function withAuth(element, { requireAdmin = false } = {}) {
-  return <ProtectedRoute requireAdmin={requireAdmin}>{element}</ProtectedRoute>;
-}
-
-function withAiCallingAuth(element) {
-  return withAuth(<AiCallingAdminGate>{element}</AiCallingAdminGate>);
-}
-
 function PackagesRedirect() {
   const { search } = useLocation();
   return (
@@ -80,6 +70,15 @@ function PackagesRedirect() {
       to={search ? `/billing${search}#plans` : "/billing#plans"}
       replace
     />
+  );
+}
+
+/** Persistent shell: auth once, AppLayout stays mounted across child routes. */
+function AuthenticatedLayout() {
+  return (
+    <ProtectedRoute>
+      <AppLayout />
+    </ProtectedRoute>
   );
 }
 
@@ -94,67 +93,68 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route
               path="/complete-profile"
-              element={withAuth(<CompleteProfilePage />)}
+              element={
+                <ProtectedRoute>
+                  <CompleteProfilePage />
+                </ProtectedRoute>
+              }
             />
             <Route path="/" element={<LandingPage />} />
             <Route path="/proposal/:slug" element={<PublicProposalView />} />
 
-            <Route path="/dashboard" element={withAuth(<Dashboard />)} />
-            <Route path="/map" element={withAuth(<InteractiveMap />)} />
-            <Route path="/analysis" element={withAuth(<PropertyAnalysis />)} />
-            <Route path="/generate" element={withAuth(<GeneratingLead />)} />
-            <Route path="/lead/:id" element={withAuth(<LeadDetails />)} />
-            <Route path="/packages" element={withAuth(<PackagesRedirect />)} />
-            <Route path="/billing" element={withAuth(<Billing />)} />
-            <Route path="/profile" element={withAuth(<Profile />)} />
-            <Route path="/my-leads" element={withAuth(<MyLeads />)} />
-            <Route path="/downloads" element={withAuth(<Downloads />)} />
-            <Route
-              path="/bulk-scan"
-              element={withAuth(<AutomationComingSoon />)}
-            />
-            <Route path="/appointments" element={withAuth(<Appointments />)} />
-            <Route path="/drip" element={withAuth(<DripCampaigns />)} />
-            <Route path="/support" element={withAuth(<Support />)} />
+            <Route element={<AuthenticatedLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/map" element={<InteractiveMap />} />
+              <Route path="/analysis" element={<PropertyAnalysis />} />
+              <Route path="/generate" element={<GeneratingLead />} />
+              <Route path="/lead/:id" element={<LeadDetails />} />
+              <Route path="/packages" element={<PackagesRedirect />} />
+              <Route path="/billing" element={<Billing />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/my-leads" element={<MyLeads />} />
+              <Route path="/downloads" element={<Downloads />} />
+              <Route path="/bulk-scan" element={<AutomationComingSoon />} />
+              <Route path="/appointments" element={<Appointments />} />
+              <Route path="/drip" element={<DripCampaigns />} />
+              <Route path="/support" element={<Support />} />
+              <Route path="/support/:id" element={<SupportTicket />} />
 
-            {/* AI Voice Calling Automation — admin only for now */}
-            <Route
-              path="/ai-calling"
-              element={withAiCallingAuth(<AiCallingDashboard />)}
-            />
-            <Route
-              path="/ai-calling/campaigns"
-              element={withAiCallingAuth(<AiCallingCampaigns />)}
-            />
-            <Route
-              path="/ai-calling/live"
-              element={withAiCallingAuth(<AiCallingLiveMonitor />)}
-            />
-            <Route
-              path="/ai-calling/knowledge-base"
-              element={withAiCallingAuth(<AiCallingKnowledgeBase />)}
-            />
-            <Route
-              path="/ai-calling/prompts"
-              element={withAiCallingAuth(<AiCallingPrompts />)}
-            />
-            <Route
-              path="/ai-calling/analytics"
-              element={withAiCallingAuth(<AiCallingAnalytics />)}
-            />
-            <Route
-              path="/ai-calling/settings"
-              element={withAiCallingAuth(<AiCallingSettings />)}
-            />
-            <Route
-              path="/ai-calling/calls/:id"
-              element={withAiCallingAuth(<AiCallingCallDetail />)}
-            />
-            <Route path="/support/:id" element={withAuth(<SupportTicket />)} />
-            <Route
-              path="/admin"
-              element={withAuth(<AdminDashboard />, { requireAdmin: true })}
-            />
+              <Route element={<AiCallingAdminGate />}>
+                <Route path="/ai-calling" element={<AiCallingDashboard />} />
+                <Route
+                  path="/ai-calling/campaigns"
+                  element={<AiCallingCampaigns />}
+                />
+                <Route
+                  path="/ai-calling/live"
+                  element={<AiCallingLiveMonitor />}
+                />
+                <Route
+                  path="/ai-calling/knowledge-base"
+                  element={<AiCallingKnowledgeBase />}
+                />
+                <Route
+                  path="/ai-calling/prompts"
+                  element={<AiCallingPrompts />}
+                />
+                <Route
+                  path="/ai-calling/analytics"
+                  element={<AiCallingAnalytics />}
+                />
+                <Route
+                  path="/ai-calling/settings"
+                  element={<AiCallingSettings />}
+                />
+                <Route
+                  path="/ai-calling/calls/:id"
+                  element={<AiCallingCallDetail />}
+                />
+              </Route>
+
+              <Route element={<ProtectedRoute requireAdmin />}>
+                <Route path="/admin" element={<AdminDashboard />} />
+              </Route>
+            </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

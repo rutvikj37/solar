@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
-import AppLayout from '../components/AppLayout';
 import UpgradeModal from '../components/UpgradeModal';
 import LeadManagerPanel from '../components/LeadManagerPanel';
 import MapModePill from '../components/map/MapModePill';
@@ -13,6 +12,7 @@ import BulkScanDialog from '../components/map/BulkScanDialog';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../config.js';
 import { buildScoreMarkerIcon } from '../lib/mapMarkers.js';
+import { getGoogleMapsApiKey } from '../lib/mapsKey.js';
 
 function ToggleSwitch({ id, checked, onChange, disabled = false }) {
   return (
@@ -221,25 +221,16 @@ export default function InteractiveMap() {
   }, [singleFamily, skipPaneled, minSavings]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/config`)
-      .then(res => res.json())
-      .then(data => {
-        const key = data.googleMapsApiKey;
-        const isMockKey = key && key.toLowerCase().includes('your_');
-        if (key && key.trim() !== '' && !isMockKey) {
-          setGoogleMapsKey(key);
-          setConfigStatus('ready');
-          loadGoogleMapsScript(key);
-        } else {
-          setConfigStatus('fallback');
-          setMapError('Google Maps API key is not configured in server/.env.');
-        }
-      })
-      .catch(err => {
-        console.error('Config fetch error:', err);
-        setConfigStatus('fallback');
-        setMapError('Failed to retrieve maps configuration.');
-      });
+    const key = getGoogleMapsApiKey();
+    const isMockKey = key && key.toLowerCase().includes('your_');
+    if (key && !isMockKey) {
+      setGoogleMapsKey(key);
+      setConfigStatus('ready');
+      loadGoogleMapsScript(key);
+    } else {
+      setConfigStatus('fallback');
+      setMapError('Google Maps API key is not configured (set VITE_GOOGLE_MAPS_API_KEY).');
+    }
   }, []);
 
   const loadGoogleMapsScript = (apiKey) => {
@@ -915,7 +906,7 @@ export default function InteractiveMap() {
   };
 
   return (
-    <AppLayout>
+    <>
       <div className="relative h-full w-full overflow-hidden bg-surface-container-lowest">
         <div ref={mapRef} className="w-full h-full z-10" />
 
@@ -1043,6 +1034,6 @@ export default function InteractiveMap() {
 
         <AskHeraFab className="absolute bottom-6 right-6 z-40" />
       </div>
-    </AppLayout>
+    </>
   );
 }

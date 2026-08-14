@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import KpiCard from '../components/ai-calling/KpiCard';
 import LeadStatusBadge from '../components/leads/LeadStatusBadge';
 import LeadScoreBadge from '../components/leads/LeadScoreBadge';
@@ -163,10 +162,13 @@ export default function MyLeads() {
     }
   };
 
-  const handleExport = () => {
-    const t = token();
-    if (!t) return;
-    window.open(`${API}/api/leads/export-csv?token=${encodeURIComponent(t)}`, '_blank');
+  const handleExport = async () => {
+    try {
+      const { downloadLeadsCsv } = await import('../lib/downloadLeadsCsv.js');
+      await downloadLeadsCsv();
+    } catch {
+      alert('Export failed');
+    }
   };
 
   const clearFilters = () => {
@@ -175,7 +177,7 @@ export default function MyLeads() {
   };
 
   return (
-    <AppLayout>
+    <>
       {/* Page header */}
       <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-4">
         <div className="space-y-0.5">
@@ -500,6 +502,6 @@ export default function MyLeads() {
           </section>
         </>
       )}
-    </AppLayout>
+    </>
   );
 }

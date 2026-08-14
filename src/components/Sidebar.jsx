@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { API_BASE } from '../config.js';
 import { isAdminRole } from '../lib/auth.js';
 
 export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
-  const location = useLocation();
   const handleClose = () => {
     if (typeof setIsOpen === 'function') setIsOpen(false);
     if (typeof onClose === 'function') onClose();
@@ -41,7 +40,7 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
     return () => {
       cancelled = true;
     };
-  }, [location.pathname]);
+  }, []);
 
   const menuCategories = [
     {
@@ -102,10 +101,9 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
       if (typeof window.exportCSV === 'function') {
         window.exportCSV();
       } else {
-        const token = localStorage.getItem('solar_token');
-        if (token) {
-          window.open(`${API_BASE}/api/leads/export-csv?token=` + token, '_blank');
-        }
+        import('../lib/downloadLeadsCsv.js')
+          .then(({ downloadLeadsCsv }) => downloadLeadsCsv())
+          .catch(() => alert('Export failed'));
       }
     }
   };
@@ -150,7 +148,7 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
                       <NavLink
                         key={item.name}
                         to={item.path}
-                        onClick={() => setIsOpen(false)}
+                        onClick={handleClose}
                         className={({ isActive }) =>
                           `relative flex items-center gap-3 px-4 py-2 text-xs font-semibold rounded-lg transition-all active:scale-[0.98] ${
                             isActive

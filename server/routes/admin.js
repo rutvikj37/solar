@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import db from '../db.js';
-import { authenticateToken, requireAdmin, JWT_SECRET } from '../middleware/auth.js';
+import { authenticateToken, adminAuth, JWT_SECRET } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
 import { getUsageSummary } from '../services/apiUsage.js';
 import { createRazorpayPlan, isRazorpayConfigured } from '../services/razorpayBilling.js';
@@ -28,21 +28,7 @@ function generateTemporaryPassword(length = 12) {
   return out;
 }
 
-async function attachRole(req, res, next) {
-  try {
-    const [users] = await db.query('SELECT id, email, name, role, account_status FROM users WHERE id = ?', [
-      req.user.id
-    ]);
-    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
-    req.user.role = users[0].role;
-    req.user.account_status = users[0].account_status;
-    next();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to verify admin role' });
-  }
-}
-
-const adminChain = [authenticateToken, attachRole, requireAdmin];
+const adminChain = adminAuth;
 
 function packageLabel(pkg) {
   if (!pkg) return 'None';
@@ -751,7 +737,7 @@ router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
     const [users] = await db.query('SELECT id, email FROM users WHERE id = ?', [userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
 
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
     await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
 
@@ -963,6 +949,9 @@ router.get('/inquiries', ...adminChain, async (req, res) => {
 });
 
 router.post('/bootstrap', authenticateToken, async (req, res) => {
+  if (process.env.ALLOW_ADMIN_BOOTSTRAP !== '1') {
+    return res.status(403).json({ error: 'Admin bootstrap is disabled' });
+  }
   try {
     const [admins] = await db.query(
       `SELECT id FROM users WHERE role IN ('admin', 'platform_admin', 'super_admin') LIMIT 1`
@@ -974,7 +963,7 @@ router.post('/bootstrap', authenticateToken, async (req, res) => {
     const token = jwt.sign(
       { id: req.user.id, email: req.user.email, name: req.user.name, role: 'admin' },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { algorithm: 'HS256', expiresIn: '24h' }
     );
     res.json({ success: true, token, role: 'admin' });
   } catch (error) {

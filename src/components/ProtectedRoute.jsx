@@ -1,37 +1,58 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { getToken, fetchMe, isAdminRole } from '../lib/auth.js';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import {
+  getToken,
+  isAdminRole,
+  loadAuthSession,
+  peekAuthSessionCache,
+} from '../lib/auth.js';
 import SatelliteUplinkLoader from './SatelliteUplinkLoader.jsx';
 
 export default function ProtectedRoute({ children, requireAdmin = false }) {
   const location = useLocation();
-  const [status, setStatus] = useState('loading');
+  const token = getToken();
+  const [status, setStatus] = useState(() => {
+    if (!token) return 'denied';
+    const cached = peekAuthSessionCache(token);
+    if (cached) {
+      if (requireAdmin && !isAdminRole(cached.role)) return 'forbidden';
+      return 'ok';
+    }
+    return 'loading';
+  });
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
+    const currentToken = getToken();
+    if (!currentToken) {
       setStatus('denied');
       return;
     }
 
+    const cached = peekAuthSessionCache(currentToken);
+    if (cached) {
+      setStatus(
+        requireAdmin && !isAdminRole(cached.role) ? 'forbidden' : 'ok'
+      );
+      return;
+    }
+
     let cancelled = false;
-    fetchMe().then((data) => {
+    setStatus('loading');
+    loadAuthSession().then((session) => {
       if (cancelled) return;
-      if (!data) {
+      if (!session) {
         setStatus('denied');
         return;
       }
-      if (requireAdmin && !isAdminRole(data.user?.role)) {
-        setStatus('forbidden');
-        return;
-      }
-      setStatus('ok');
+      setStatus(
+        requireAdmin && !isAdminRole(session.role) ? 'forbidden' : 'ok'
+      );
     });
 
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, requireAdmin]);
+  }, [requireAdmin, location.pathname]);
 
   if (status === 'loading') {
     return (
@@ -50,5 +71,5 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
     return <Navigate to="/dashboard" replace />;
   }
 
-  return children;
+  return children ?? <Outlet />;
 }

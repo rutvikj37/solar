@@ -1,6 +1,8 @@
 import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { migrateSchema } from './schema.js';
@@ -26,6 +28,8 @@ import proposalRoutes from './routes/proposals.js';
 import { startDialerWorker, stopDialerWorker } from './services/ai-calling/dialerWorker.js';
 import { startDripWorker, stopDripWorker } from './services/drip/dripWorker.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 if (
   !process.env.FIREBASE_PROJECT_ID ||
   !process.env.FIREBASE_CLIENT_EMAIL ||
@@ -38,15 +42,74 @@ if (
 
 const app = express();
 const PORT = process.env.PORT || 5002;
+const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
-app.use(cors());
+const allowedOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts: isProd
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
+    permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    crossOriginEmbedderPolicy: false,
+  })
+);
+app.use((_req, res, next) => {
+  res.setHeader('X-XSS-Protection', '0');
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+  );
+  next();
+});
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return cb(null, true);
+      }
+      return cb(new Error('Not allowed by CORS'));
+    },
+    credentials: false,
+  })
+);
+
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
+app.use('/api/', globalLimiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/firebase', authLimiter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Public config API
+// Public config — no secrets (Maps key comes from VITE_GOOGLE_MAPS_API_KEY on the client)
 app.get('/api/config', (req, res) => {
   res.json({
-    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || ''
+    googleMapsApiKey: '',
   });
 });
 
@@ -77,8 +140,10 @@ const server = createServer(app);
 
 const wss = new WebSocketServer({ server, path: '/media-stream' });
 
-wss.on('connection', (ws, req) => {
-  console.log('[WebSocket] New Twilio Media Stream connection from', req.socket.remoteAddress);
+wss.on('connection', (ws, _req) => {
+  if (!isProd) {
+    console.log('[WebSocket] New Twilio Media Stream connection');
+  }
   handleMediaStreamConnection(ws);
 });
 
@@ -97,7 +162,6 @@ function stopBackgroundWorkers() {
   stopDripWorker();
 }
 
-// Schema migrate + HTTP listen + workers all belong to this process (not the Vite client).
 async function startServer() {
   try {
     await migrateSchema();
@@ -110,9 +174,13 @@ async function startServer() {
     process.exit(1);
   });
 
-  server.listen(PORT, () => {
-    console.log(`[SolarX.live] API running on http://localhost:${PORT}`);
-    console.log(`[WebSocket] Media Stream endpoint ready at ws://localhost:${PORT}/media-stream`);
+  server.listen(PORT, BIND_HOST, () => {
+    if (isProd) {
+      console.log(`[SolarX.live] API listening on port ${PORT}`);
+    } else {
+      console.log(`[SolarX.live] API running on http://localhost:${PORT}`);
+      console.log(`[WebSocket] Media Stream endpoint ready at ws://localhost:${PORT}/media-stream`);
+    }
     startBackgroundWorkers();
   });
 }
@@ -128,4 +196,3 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 startServer();
-

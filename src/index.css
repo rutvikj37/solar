@@ -98,6 +98,11 @@
 }
 
 @layer base {
+  html {
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-deep text-on-background antialiased;
     font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
@@ -132,6 +137,11 @@
     0 40px 90px -40px oklch(0 0 0 / 85%),
     inset 0 1px 0 0 oklch(1 0 0 / 8%);
   transition: border-color 0.2s ease-in-out, background 0.2s ease-in-out;
+}
+
+/* In-app page content: no opacity-from-0 (that made type look swapped). */
+.app-page {
+  min-height: 0;
 }
 
 .glass-card:hover {

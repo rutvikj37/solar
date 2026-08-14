@@ -115,22 +115,13 @@ async function blobToDataUrl(blob) {
   });
 }
 
+import { getGoogleMapsApiKey } from '../lib/mapsKey.js';
+
 let cachedMapsKey = null;
 
 async function getMapsKey() {
   if (cachedMapsKey !== null) return cachedMapsKey;
-  try {
-    const res = await fetch(`${API_BASE}/api/config`);
-    if (res.ok) {
-      const data = await res.json();
-      const key = data.googleMapsApiKey || '';
-      cachedMapsKey = key && !key.toLowerCase().includes('your_') ? key : '';
-      return cachedMapsKey;
-    }
-  } catch {
-    // ignore — fall back to lead.imageUrl or placeholder
-  }
-  cachedMapsKey = '';
+  cachedMapsKey = getGoogleMapsApiKey();
   return cachedMapsKey;
 }
 

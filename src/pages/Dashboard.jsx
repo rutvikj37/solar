@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import AppLayout from "../components/AppLayout";
 import { API_BASE } from "../config.js";
 import { formatLeadGeneratedAt } from "../lib/formatDate.js";
 import { buildLeadMarkerIcon } from "../lib/mapMarkers.js";
@@ -61,17 +60,11 @@ export default function Dashboard() {
           setLeads(leadsData);
         }
 
-        // Fetch dynamic config
-        const configResponse = await fetch(`${API_BASE}/api/config`);
-        if (configResponse.ok) {
-          const configData = await configResponse.json();
-          if (
-            configData.googleMapsApiKey &&
-            !configData.googleMapsApiKey.startsWith("AizaSyCBA9")
-          ) {
-            setGoogleMapsKey(configData.googleMapsApiKey);
-            loadGoogleMapsScript(configData.googleMapsApiKey);
-          }
+        const { getGoogleMapsApiKey } = await import("../lib/mapsKey.js");
+        const mapsKey = getGoogleMapsApiKey();
+        if (mapsKey && !mapsKey.startsWith("AizaSyCBA9")) {
+          setGoogleMapsKey(mapsKey);
+          loadGoogleMapsScript(mapsKey);
         }
       } catch (error) {
         console.error(error);
@@ -163,7 +156,7 @@ export default function Dashboard() {
   const totalLeadsPurchased = leads.length;
 
   return (
-    <AppLayout>
+    <>
       {welcomeMsg && (
         <div className="mb-4 p-3 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">
           {welcomeMsg}
@@ -531,6 +524,6 @@ export default function Dashboard() {
           </table>
         </div>
       </section>
-    </AppLayout>
+    </>
   );
 }

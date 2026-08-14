@@ -21,12 +21,22 @@ export default function LoginPage() {
       return;
     }
     const next = searchParams.get("next");
-    navigate(next && next.startsWith("/") ? next : "/dashboard");
+    const safeNext =
+      next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+    navigate(safeNext || "/dashboard");
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    if (
+      typeof window !== "undefined" &&
+      window.location.protocol === "http:" &&
+      !["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ) {
+      setError("Sign-in requires HTTPS. Please use a secure connection.");
+      return;
+    }
     setLoading(true);
 
     try {

@@ -18,6 +18,45 @@ export function setToken(token) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  clearAuthSessionCache();
+}
+
+/** Short-lived auth profile cache so ProtectedRoute remounts don't flash a loader. */
+let authSessionCache = null; // { token, role } | null
+let authSessionInflight = null;
+
+export function clearAuthSessionCache() {
+  authSessionCache = null;
+  authSessionInflight = null;
+}
+
+export function peekAuthSessionCache(token = getToken()) {
+  if (!token || authSessionCache?.token !== token) return null;
+  return authSessionCache;
+}
+
+export async function loadAuthSession() {
+  const token = getToken();
+  if (!token) {
+    clearAuthSessionCache();
+    return null;
+  }
+  if (authSessionCache?.token === token) return authSessionCache;
+  if (!authSessionInflight) {
+    authSessionInflight = fetchMe()
+      .then((data) => {
+        if (!data) {
+          clearAuthSessionCache();
+          return null;
+        }
+        authSessionCache = { token, role: data.user?.role };
+        return authSessionCache;
+      })
+      .finally(() => {
+        authSessionInflight = null;
+      });
+  }
+  return authSessionInflight;
 }
 
 export function authHeaders(extra = {}) {

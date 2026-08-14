@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { logActivity } from './crm.js';
@@ -19,8 +20,48 @@ function digitsOnly(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function isTwilioAuthConfigured() {
+  const token = process.env.TWILIO_AUTH_TOKEN || '';
+  return token && !token.toLowerCase().includes('your_');
+}
+
+/** Validate X-Twilio-Signature (HMAC-SHA1) when auth token is configured. */
+function verifyTwilioSignature(req) {
+  if (!isTwilioAuthConfigured()) {
+    return process.env.NODE_ENV !== 'production';
+  }
+  const signature = req.headers['x-twilio-signature'];
+  if (!signature) return false;
+
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  const url = `${proto}://${host}${req.originalUrl}`;
+
+  const params = req.body && typeof req.body === 'object' ? req.body : {};
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) {
+    data += key + String(params[key] ?? '');
+  }
+
+  const expected = crypto
+    .createHmac('sha1', process.env.TWILIO_AUTH_TOKEN)
+    .update(Buffer.from(data, 'utf-8'))
+    .digest('base64');
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
 // Twilio inbound SMS → record on the server so drip stop-on-reply works without the UI open.
 router.post('/webhooks/sms', async (req, res) => {
+  if (!verifyTwilioSignature(req)) {
+    return res.status(403).type('text/plain').send('Forbidden');
+  }
+
   const from = req.body?.From || req.body?.from;
   const body = req.body?.Body || req.body?.body || '';
   const sid = req.body?.MessageSid || req.body?.SmsSid || null;
@@ -84,7 +125,7 @@ router.post('/sms', authenticateToken, async (req, res) => {
     res.status(201).json({ id: ins.insertId, status, simulated: !!result.simulated });
   } catch (error) {
     console.error('SMS outreach error:', error);
-    res.status(500).json({ error: error.message || 'Failed to send SMS' });
+    res.status(500).json({ error: 'Failed to send SMS' });
   }
 });
 
@@ -118,7 +159,7 @@ router.post('/email', authenticateToken, async (req, res) => {
     res.status(201).json({ id: ins.insertId, status, simulated: !!result.simulated });
   } catch (error) {
     console.error('Email outreach error:', error);
-    res.status(500).json({ error: error.message || 'Failed to send email' });
+    res.status(500).json({ error: 'Failed to send email' });
   }
 });
 
@@ -147,7 +188,7 @@ router.post('/bulk-sms', authenticateToken, async (req, res) => {
       await logActivity(leadId, req.user.id, 'sms', message, { bulk: true, status });
       results.push({ leadId, status });
     } catch (err) {
-      results.push({ leadId, status: 'error', error: err.message });
+      results.push({ leadId, status: 'error' });
     }
   }
 

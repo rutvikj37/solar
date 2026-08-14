@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { fetchMe } from '../lib/auth.js';
 
-export default function AppLayout({ children }) {
+/**
+ * Persistent authenticated shell. Used as a React Router layout route so
+ * TopBar/Sidebar stay mounted across in-app navigations.
+ */
+export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showBanner, setShowBanner] = useState(true);
   const [credits, setCredits] = useState(null);
@@ -15,10 +19,14 @@ export default function AppLayout({ children }) {
   const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
 
   useEffect(() => {
+    let cancelled = false;
     fetchMe().then((data) => {
-      if (data?.credits !== undefined) setCredits(data.credits);
+      if (!cancelled && data?.credits !== undefined) setCredits(data.credits);
     });
-  }, [location.pathname]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const creditsLow = credits !== null && credits <= 2;
   const creditsEmpty = credits === 0;
@@ -61,7 +69,7 @@ export default function AppLayout({ children }) {
 
         <div className="flex-1 flex w-full relative">
           <main
-            className={`flex-1 transition-all duration-300 ${bodyPadding} ${
+            className={`flex-1 min-h-0 ${bodyPadding} ${
               isMapPage
                 ? 'p-0 h-screen overflow-hidden relative'
                 : isWideTablePage
@@ -69,7 +77,9 @@ export default function AppLayout({ children }) {
                   : 'pb-12 px-6 lg:pr-[280px] max-w-7xl mx-auto w-full'
             }`}
           >
-            {children}
+            <div className="app-page h-full min-h-0">
+              <Outlet />
+            </div>
           </main>
         </div>
 

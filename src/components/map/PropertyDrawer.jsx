@@ -118,21 +118,35 @@ export default function PropertyDrawer({
   unlimitedCredits,
   leadCredits
 }) {
-  if (!selectedProperty) return null;
+  const [displayProperty, setDisplayProperty] = useState(selectedProperty);
+  const [open, setOpen] = useState(Boolean(selectedProperty));
 
-  const unlocked = selectedProperty.unlocked === true;
+  useEffect(() => {
+    if (selectedProperty) {
+      setDisplayProperty(selectedProperty);
+      const id = requestAnimationFrame(() => setOpen(true));
+      return () => cancelAnimationFrame(id);
+    }
+    setOpen(false);
+    const timer = setTimeout(() => setDisplayProperty(null), 280);
+    return () => clearTimeout(timer);
+  }, [selectedProperty]);
+
+  if (!displayProperty) return null;
+
+  const unlocked = displayProperty.unlocked === true;
 
   return (
     <div
-      className={`absolute top-0 right-0 lg:right-[276px] h-full w-full sm:w-[440px] z-[45] bg-surface-elevated/95 backdrop-blur-2xl border-l border-glass-stroke shadow-2xl flex flex-col transition-transform duration-300 ease-in-out transform ${
-        selectedProperty ? 'translate-x-0' : 'translate-x-full'
+      className={`absolute top-0 right-0 lg:right-[276px] h-full w-full sm:w-[440px] z-[45] bg-surface-elevated/98 border-l border-glass-stroke shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
+        open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
       }`}
     >
-      {selectedProperty._loading ? (
+      {displayProperty._loading ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 relative">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 bg-background/60 backdrop-blur-md hover:bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            className="absolute top-4 right-4 bg-background/60 hover:bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors"
           >
             <span className="material-symbols-outlined text-base">close</span>
           </button>
@@ -143,20 +157,20 @@ export default function PropertyDrawer({
         <>
           {/* Header Image & Close button */}
           <div className="h-36 relative bg-surface-container overflow-hidden">
-            <PropertySatelliteHeader property={selectedProperty} />
+            <PropertySatelliteHeader property={displayProperty} />
             <div className="absolute inset-0 bg-gradient-to-t from-[#1C2433] via-transparent to-transparent"></div>
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 bg-background/60 backdrop-blur-md hover:bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+              className="absolute top-4 right-4 bg-background/60 hover:bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center transition-colors"
             >
               <span className="material-symbols-outlined text-base">close</span>
             </button>
             <div className="absolute bottom-3 left-4 right-14">
               <h3 className="font-headline-md text-base font-bold text-white leading-tight">
-                {displayValue(selectedProperty.address?.split?.(',')?.[0], 'Unknown address')}
+                {displayValue(displayProperty.address?.split?.(',')?.[0], 'Unknown address')}
               </h3>
               <p className="text-[10px] text-on-surface-variant mt-0.5">
-                {displayValue(selectedProperty.address?.split?.(',')?.slice(1).join(','), '')}
+                {displayValue(displayProperty.address?.split?.(',')?.slice(1).join(','), '')}
               </p>
             </div>
           </div>
@@ -193,12 +207,12 @@ export default function PropertyDrawer({
                         <span
                           key={i}
                           className={`material-symbols-outlined text-xs ${
-                            i < starCountFromScore(selectedProperty.aiLeadScore?.overall || selectedProperty.solarScore)
+                            i < starCountFromScore(displayProperty.aiLeadScore?.overall || displayProperty.solarScore)
                               ? 'text-yellow-500'
                               : 'text-white/15'
                           }`}
                           style={
-                            i < starCountFromScore(selectedProperty.aiLeadScore?.overall || selectedProperty.solarScore)
+                            i < starCountFromScore(displayProperty.aiLeadScore?.overall || displayProperty.solarScore)
                               ? { fontVariationSettings: "'FILL' 1" }
                               : undefined
                           }
@@ -212,25 +226,25 @@ export default function PropertyDrawer({
                     <div>
                       <p className="text-[9px] text-on-surface-variant uppercase font-label-mono">Solar Score</p>
                       <p className="text-sm font-bold text-white">
-                        {displayValue(selectedProperty.solarScore, '0')}/100
+                        {displayValue(displayProperty.solarScore, '0')}/100
                       </p>
                     </div>
                     <div>
                       <p className="text-[9px] text-on-surface-variant uppercase font-label-mono">Estimated System</p>
                       <p className="text-sm font-bold text-white">
-                        {displayValue(selectedProperty.solar?.recommendedSize)}
+                        {displayValue(displayProperty.solar?.recommendedSize)}
                       </p>
                     </div>
                     <div>
                       <p className="text-[9px] text-on-surface-variant uppercase font-label-mono">Estimated Savings</p>
                       <p className="text-sm font-bold text-primary">
-                        {displayValue(selectedProperty.solar?.twentyFiveYearSavings)}
+                        {displayValue(displayProperty.solar?.twentyFiveYearSavings)}
                       </p>
                     </div>
                     <div>
                       <p className="text-[9px] text-on-surface-variant uppercase font-label-mono">Property Value</p>
                       <p className="text-sm font-bold text-white">
-                        <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.propertyValue} />
+                        <FieldValue unlocked={unlocked} value={displayProperty.propertyData?.propertyValue} />
                       </p>
                     </div>
                   </div>
@@ -261,22 +275,22 @@ export default function PropertyDrawer({
                           stroke="currentColor"
                           strokeDasharray="150.8"
                           strokeDashoffset={
-                            150.8 - ((selectedProperty.aiLeadScore?.overall || 0) / 100) * 150.8
+                            150.8 - ((displayProperty.aiLeadScore?.overall || 0) / 100) * 150.8
                           }
                           strokeWidth="3"
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center font-bold text-white font-mono text-sm">
-                        {displayValue(selectedProperty.aiLeadScore?.overall, '0')}
+                        {displayValue(displayProperty.aiLeadScore?.overall, '0')}
                       </div>
                     </div>
                     <div className="flex-1 space-y-1">
                       <p className="text-white font-bold">
-                        {displayValue(selectedProperty.aiLeadScore?.label, 'Score Pending')}
+                        {displayValue(displayProperty.aiLeadScore?.label, 'Score Pending')}
                       </p>
                       <p className="text-[10px] text-on-surface-variant">
                         {displayValue(
-                          selectedProperty.aiLeadScore?.summary,
+                          displayProperty.aiLeadScore?.summary,
                           'Lead score is calculated from live solar, property, and contact enrichment.'
                         )}
                       </p>
@@ -297,43 +311,43 @@ export default function PropertyDrawer({
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Roof Outline</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.roofOutline)}
+                        {displayValue(displayProperty.solar?.roofOutline)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Total Roof Area</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.totalRoofArea)}
+                        {displayValue(displayProperty.solar?.totalRoofArea)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Usable Roof Area</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.usableRoofArea)}
+                        {displayValue(displayProperty.solar?.usableRoofArea)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Roof Orientation</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.orientation)}
+                        {displayValue(displayProperty.solar?.orientation)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Roof Pitch</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.pitch)}
+                        {displayValue(displayProperty.solar?.pitch)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Annual Sunlight</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.annualSunlight)}
+                        {displayValue(displayProperty.solar?.annualSunlight)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Estimated Panels</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.solar?.estimatedPanels, '0')} Panels
+                        {displayValue(displayProperty.solar?.estimatedPanels, '0')} Panels
                       </span>
                     </div>
                   </div>
@@ -351,27 +365,27 @@ export default function PropertyDrawer({
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Owner Name</span>
                     <span className="text-white font-semibold">
-                      <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.ownerName} />
+                      <FieldValue unlocked={unlocked} value={displayProperty.propertyData?.ownerName} />
                     </span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Owner Occupied</span>
                     <span className="text-white font-semibold">
-                      <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.ownerOccupied} />
+                      <FieldValue unlocked={unlocked} value={displayProperty.propertyData?.ownerOccupied} />
                     </span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Property Type</span>
-                    <span className="text-white font-semibold">{displayValue(selectedProperty.propertyType)}</span>
+                    <span className="text-white font-semibold">{displayValue(displayProperty.propertyType)}</span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Year Built</span>
-                    <span className="text-white font-semibold">{displayValue(selectedProperty.yearBuilt)}</span>
+                    <span className="text-white font-semibold">{displayValue(displayProperty.yearBuilt)}</span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Property Value</span>
                     <span className="text-white font-semibold">
-                      <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.propertyValue} />
+                      <FieldValue unlocked={unlocked} value={displayProperty.propertyData?.propertyValue} />
                     </span>
                   </div>
                 </div>
@@ -397,13 +411,13 @@ export default function PropertyDrawer({
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Phone</span>
                       <span className="text-white font-semibold font-mono">
-                        {displayValue(selectedProperty.contact?.phone)}
+                        {displayValue(displayProperty.contact?.phone)}
                       </span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span className="text-on-surface-variant">Email</span>
                       <span className="text-white font-semibold">
-                        {displayValue(selectedProperty.contact?.email)}
+                        {displayValue(displayProperty.contact?.email)}
                       </span>
                     </div>
                   </div>

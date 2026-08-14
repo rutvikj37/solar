@@ -7,7 +7,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 const router = express.Router();
 
 function randomSlug() {
-  return `prop_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  return `prop_${Date.now()}_${crypto.randomBytes(16).toString('hex')}`;
 }
 
 // Utility: Calculate ROI parameters server-side

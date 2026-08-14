@@ -12,6 +12,11 @@ import { getFirebaseAdmin, isFirebaseAdminConfigured } from "../firebase.js";
 
 const router = express.Router();
 
+const MIN_PASSWORD_LENGTH = 8;
+/** Used for timing-safe login when email is unknown */
+const DUMMY_PASSWORD_HASH =
+  "$2a$12$VUg0SW3Zf6naJEmkY4kw7O0avF/KvAE2nAAUY9KwId7RV0H1Vn2eq";
+
 function signUserToken(user) {
   return jwt.sign(
     {
@@ -21,7 +26,7 @@ function signUserToken(user) {
       role: user.role || "solar_company",
     },
     JWT_SECRET,
-    { expiresIn: "24h" },
+    { algorithm: "HS256", expiresIn: "24h" },
   );
 }
 
@@ -49,15 +54,20 @@ router.post(
     if (!email || !password || !name) {
       return res.status(400).json({ error: "Missing credentials" });
     }
+    if (String(password).length < MIN_PASSWORD_LENGTH) {
+      return res
+        .status(400)
+        .json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
 
-    const [existing] = await db.query("SELECT * FROM users WHERE email = ?", [
+    const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [
       email,
     ]);
     if (existing.length > 0) {
-      return res.status(400).json({ error: "Email already registered" });
+      return res.status(400).json({ error: "Unable to register with this email" });
     }
 
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
     const [result] = await db.query(
@@ -76,7 +86,7 @@ router.post(
     const token = jwt.sign(
       { id: userId, email, name, role: "solar_company" },
       JWT_SECRET,
-      { expiresIn: "24h" },
+      { algorithm: "HS256", expiresIn: "24h" },
     );
     res.status(201).json({
       token,
@@ -98,15 +108,11 @@ router.post(
     const [users] = await db.query("SELECT * FROM users WHERE email = ?", [
       email,
     ]);
-    if (users.length === 0) {
-      return res.status(400).json({ error: "Invalid email or password" });
-    }
-
     const user = users[0];
-    if (!user.password_hash) {
-      return res.status(400).json({
-        error: "This account uses Google sign-in. Please continue with Google.",
-      });
+
+    if (!user || !user.password_hash) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      return res.status(400).json({ error: "Invalid email or password" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import WebhookModal from '../components/WebhookModal';
 import SolarProposalModal from '../components/SolarProposalModal';
 import { API_BASE } from '../config.js';
 import { apiService } from '../services/api.js';
 import { formatLeadGeneratedAt } from '../lib/formatDate.js';
 import { buildLeadMarkerIcon } from '../lib/mapMarkers.js';
+import { getGoogleMapsApiKey } from '../lib/mapsKey.js';
+import FullPageLoader from '../components/FullPageLoader.jsx';
 
 const API = API_BASE;
 const STATUS_OPTIONS = ['new', 'contacted', 'appointment', 'proposal', 'won', 'lost', 'qualified', 'in_progress'];
@@ -95,22 +96,18 @@ export default function LeadDetails() {
       return;
     }
     try {
-      const configRes = await fetch(`${API}/api/config`);
-      if (configRes.ok) {
-        const configData = await configRes.json();
-        const key = configData.googleMapsApiKey || '';
-        if (key && !key.toLowerCase().includes('your_')) {
-          setGoogleMapsKey(key);
-          try {
-            await loadGoogleMapsScript(key);
-            setMapsLoaded(true);
-          } catch (err) {
-            console.error(err);
-            setMapError('Google Maps failed to load');
-          }
-        } else {
-          setMapError('Google Maps API key is not configured');
+      const key = getGoogleMapsApiKey();
+      if (key && !key.toLowerCase().includes('your_')) {
+        setGoogleMapsKey(key);
+        try {
+          await loadGoogleMapsScript(key);
+          setMapsLoaded(true);
+        } catch (err) {
+          console.error(err);
+          setMapError('Google Maps failed to load');
         }
+      } else {
+        setMapError('Google Maps API key is not configured');
       }
 
       const response = await fetch(`${API}/api/leads/${id}`, {
@@ -296,24 +293,19 @@ export default function LeadDetails() {
   };
 
   if (loading) {
-    return (
-      <div className="bg-background min-h-screen flex flex-col items-center justify-center gap-3">
-        <span className="material-symbols-outlined text-3xl animate-spin text-primary">sync</span>
-        <p className="text-xs text-on-surface-variant">Loading lead & solar enrichment…</p>
-      </div>
-    );
+    return <FullPageLoader />;
   }
 
   if (!lead) {
     return (
-      <AppLayout>
+      <>
         <div className="glass-card rounded-xl p-8 text-center">
           <h3 className="text-white font-bold mb-2">Lead Record Not Found</h3>
           <Link to="/my-leads" className="text-primary text-xs">
             Back to My Leads
           </Link>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
@@ -360,7 +352,7 @@ export default function LeadDetails() {
   ];
 
   return (
-    <AppLayout>
+    <>
       <div className="w-full max-w-6xl mx-auto space-y-5 pb-8 text-xs">
         <div className="pt-2">
           <Link
@@ -621,6 +613,6 @@ export default function LeadDetails() {
         onClose={() => setShowProposalModal(false)}
         lead={lead}
       />
-    </AppLayout>
+    </>
   );
 }

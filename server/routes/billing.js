@@ -24,6 +24,7 @@ function getStripe() {
 }
 
 function allowDevCheckout() {
+  if (process.env.NODE_ENV === 'production') return false;
   return process.env.ALLOW_DEV_CHECKOUT === '1' || process.env.ALLOW_DEV_CHECKOUT === 'true';
 }
 
@@ -440,7 +441,7 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
     res.status(400).json({ error: 'Subscription cannot be canceled via API' });
   } catch (error) {
     console.error('Cancel subscription error:', error);
-    res.status(500).json({ error: error.message || 'Failed to cancel subscription' });
+    res.status(500).json({ error: 'Failed to cancel subscription' });
   }
 });
 
@@ -1026,9 +1027,21 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   let event;
   try {
-    if (webhookSecret && !webhookSecret.toLowerCase().includes('your_') && sig) {
+    const secretOk =
+      webhookSecret &&
+      !webhookSecret.toLowerCase().includes('your_') &&
+      webhookSecret.trim().length > 0;
+    if (process.env.NODE_ENV === 'production' && !secretOk) {
+      console.error('[Stripe Webhook] STRIPE_WEBHOOK_SECRET missing or placeholder');
+      return res.status(500).json({ error: 'Webhook not configured' });
+    }
+    if (secretOk) {
+      if (!sig) {
+        return res.status(400).json({ error: 'Missing Stripe signature' });
+      }
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } else {
+      // Local/dev only: accept unsigned body when secret unset
       event =
         typeof req.body === 'string' || Buffer.isBuffer(req.body)
           ? JSON.parse(req.body.toString())
@@ -1036,7 +1049,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     }
   } catch (err) {
     console.error('[Stripe Webhook] signature error:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).json({ error: 'Webhook signature verification failed' });
   }
 
   try {

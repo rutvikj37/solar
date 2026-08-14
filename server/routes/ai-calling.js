@@ -4,7 +4,7 @@
  */
 import express from 'express';
 import db from '../db.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.js';
+import { adminAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import * as campaignEngine from '../services/ai-calling/campaignEngine.js';
 import * as callFlowManager from '../services/ai-calling/callFlowManager.js';
@@ -26,7 +26,7 @@ const router = express.Router();
 // DASHBOARD & ANALYTICS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/dashboard', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/dashboard', ...adminAuth, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
 
@@ -72,7 +72,7 @@ router.get('/dashboard', authenticateToken, requireAdmin, asyncHandler(async (re
   });
 }));
 
-router.get('/analytics', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/analytics', ...adminAuth, asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { startDate, endDate } = req.query;
   const start = startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
@@ -110,7 +110,7 @@ router.get('/analytics', authenticateToken, requireAdmin, asyncHandler(async (re
 // PERSONAL LIVE TEST CALL
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/test-call', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/test-call', ...adminAuth, asyncHandler(async (req, res) => {
   const { phoneNumber, callerName, businessName } = req.body;
   if (!phoneNumber) return res.status(400).json({ error: 'Phone number is required for test call' });
 
@@ -149,7 +149,7 @@ router.post('/test-call', authenticateToken, requireAdmin, asyncHandler(async (r
 // CAMPAIGNS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/campaigns', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/campaigns', ...adminAuth, asyncHandler(async (req, res) => {
   const [campaigns] = await db.query(
     `SELECT c.*,
        (SELECT COUNT(*) FROM ai_calling_queue q WHERE q.campaign_id = c.id) as queue_total,
@@ -160,7 +160,7 @@ router.get('/campaigns', authenticateToken, requireAdmin, asyncHandler(async (re
   res.json(campaigns);
 }));
 
-router.post('/campaigns', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/campaigns', ...adminAuth, asyncHandler(async (req, res) => {
   const { name, callerName, businessName, twilioNumber, elevenlabsVoiceId, timezone,
     callingWindowStart, callingWindowEnd, callingDays, retryAttempts, retryDelayMinutes,
     maxCallDurationSeconds, appointmentDurationMinutes, systemPrompt, greetingScript,
@@ -190,7 +190,7 @@ router.post('/campaigns', authenticateToken, requireAdmin, asyncHandler(async (r
   res.status(201).json(campaign[0]);
 }));
 
-router.get('/campaigns/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/campaigns/:id', ...adminAuth, asyncHandler(async (req, res) => {
   const [campaigns] = await db.query(
     'SELECT * FROM ai_calling_campaigns WHERE id = ? AND user_id = ?',
     [req.params.id, req.user.id]
@@ -201,7 +201,7 @@ router.get('/campaigns/:id', authenticateToken, requireAdmin, asyncHandler(async
   res.json({ ...campaigns[0], progress });
 }));
 
-router.put('/campaigns/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/campaigns/:id', ...adminAuth, asyncHandler(async (req, res) => {
   const fields = ['name', 'caller_name', 'business_name', 'twilio_number', 'elevenlabs_voice_id',
     'timezone', 'calling_window_start', 'calling_window_end', 'retry_attempts',
     'retry_delay_minutes', 'max_call_duration_seconds', 'appointment_duration_minutes',
@@ -239,14 +239,14 @@ router.put('/campaigns/:id', authenticateToken, requireAdmin, asyncHandler(async
   res.json(updated[0]);
 }));
 
-router.delete('/campaigns/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/campaigns/:id', ...adminAuth, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM ai_calling_queue WHERE campaign_id = ? AND campaign_id IN (SELECT id FROM ai_calling_campaigns WHERE user_id = ?)', [req.params.id, req.user.id]);
   await db.query('DELETE FROM ai_calling_campaigns WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
   res.json({ ok: true });
 }));
 
 // Campaign Actions
-router.post('/campaigns/:id/start', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/campaigns/:id/start', ...adminAuth, asyncHandler(async (req, res) => {
   const result = await campaignEngine.startCampaign(Number(req.params.id), req.user.id);
 
   // Ensure ElevenLabs agent exists for this campaign
@@ -278,18 +278,18 @@ router.post('/campaigns/:id/start', authenticateToken, requireAdmin, asyncHandle
   res.json(result);
 }));
 
-router.post('/campaigns/:id/pause', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/campaigns/:id/pause', ...adminAuth, asyncHandler(async (req, res) => {
   await campaignEngine.pauseCampaign(Number(req.params.id), req.user.id);
   res.json({ ok: true });
 }));
 
-router.post('/campaigns/:id/resume', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/campaigns/:id/resume', ...adminAuth, asyncHandler(async (req, res) => {
   await campaignEngine.resumeCampaign(Number(req.params.id), req.user.id);
   runDialerOnce().catch(() => {});
   res.json({ ok: true });
 }));
 
-router.post('/campaigns/:id/stop', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/campaigns/:id/stop', ...adminAuth, asyncHandler(async (req, res) => {
   await campaignEngine.stopCampaign(Number(req.params.id), req.user.id);
   res.json({ ok: true });
 }));
@@ -298,14 +298,14 @@ router.post('/campaigns/:id/stop', authenticateToken, requireAdmin, asyncHandler
 // LEAD QUEUE
 // ═══════════════════════════════════════════════════════════════════
 
-router.post('/campaigns/:id/leads', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/campaigns/:id/leads', ...adminAuth, asyncHandler(async (req, res) => {
   const { leadIds } = req.body;
   if (!Array.isArray(leadIds) || !leadIds.length) return res.status(400).json({ error: 'leadIds array required' });
   const result = await campaignEngine.addLeadsToCampaign(Number(req.params.id), req.user.id, leadIds);
   res.json(result);
 }));
 
-router.get('/campaigns/:id/queue', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/campaigns/:id/queue', ...adminAuth, asyncHandler(async (req, res) => {
   const [items] = await db.query(
     `SELECT q.*, l.owner_name, l.phone, l.address, l.email, l.estimated_savings, l.property_json, l.mailing_address
      FROM ai_calling_queue q
@@ -317,7 +317,7 @@ router.get('/campaigns/:id/queue', authenticateToken, requireAdmin, asyncHandler
   res.json(items);
 }));
 
-router.delete('/campaigns/:id/leads/:leadId', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/campaigns/:id/leads/:leadId', ...adminAuth, asyncHandler(async (req, res) => {
   await db.query(
     'DELETE FROM ai_calling_queue WHERE campaign_id = ? AND lead_id = ? AND user_id = ? AND status = ?',
     [req.params.id, req.params.leadId, req.user.id, 'pending']
@@ -329,7 +329,7 @@ router.delete('/campaigns/:id/leads/:leadId', authenticateToken, requireAdmin, a
 // CALL RECORDS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/calls', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/calls', ...adminAuth, asyncHandler(async (req, res) => {
   const { campaignId, status, disposition, limit: limitRaw, offset: offsetRaw } = req.query;
   const limit = Math.min(100, parseInt(limitRaw, 10) || 50);
   const offset = parseInt(offsetRaw, 10) || 0;
@@ -355,7 +355,7 @@ router.get('/calls', authenticateToken, requireAdmin, asyncHandler(async (req, r
   res.json({ calls: rows, total, limit, offset });
 }));
 
-router.get('/calls/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/calls/:id', ...adminAuth, asyncHandler(async (req, res) => {
   const [rows] = await db.query(
     `SELECT r.*, l.owner_name, l.phone, l.address, l.email, l.estimated_savings,
             c.name as campaign_name
@@ -380,7 +380,7 @@ router.get('/calls/:id', authenticateToken, requireAdmin, asyncHandler(async (re
 // KNOWLEDGE BASE
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/knowledge-base', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/knowledge-base', ...adminAuth, asyncHandler(async (req, res) => {
   const [articles] = await db.query(
     'SELECT * FROM ai_knowledge_base WHERE user_id = ? ORDER BY category, sort_order, title',
     [req.user.id]
@@ -388,7 +388,7 @@ router.get('/knowledge-base', authenticateToken, requireAdmin, asyncHandler(asyn
   res.json(articles);
 }));
 
-router.post('/knowledge-base', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/knowledge-base', ...adminAuth, asyncHandler(async (req, res) => {
   const { category, title, content, sortOrder } = req.body;
   if (!category || !title || !content) return res.status(400).json({ error: 'category, title, content required' });
 
@@ -400,7 +400,7 @@ router.post('/knowledge-base', authenticateToken, requireAdmin, asyncHandler(asy
   res.status(201).json(article[0]);
 }));
 
-router.put('/knowledge-base/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/knowledge-base/:id', ...adminAuth, asyncHandler(async (req, res) => {
   const { category, title, content, sortOrder, isActive } = req.body;
   await db.query(
     `UPDATE ai_knowledge_base SET category = COALESCE(?, category), title = COALESCE(?, title),
@@ -412,7 +412,7 @@ router.put('/knowledge-base/:id', authenticateToken, requireAdmin, asyncHandler(
   res.json(article[0]);
 }));
 
-router.delete('/knowledge-base/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/knowledge-base/:id', ...adminAuth, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM ai_knowledge_base WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
   res.json({ ok: true });
 }));
@@ -421,7 +421,7 @@ router.delete('/knowledge-base/:id', authenticateToken, requireAdmin, asyncHandl
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/settings', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/settings', ...adminAuth, asyncHandler(async (req, res) => {
   const [rows] = await db.query('SELECT * FROM ai_calling_settings WHERE user_id = ?', [req.user.id]);
   if (!rows.length) {
     // Return defaults
@@ -446,7 +446,7 @@ router.get('/settings', authenticateToken, requireAdmin, asyncHandler(async (req
   res.json(settings);
 }));
 
-router.put('/settings', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/settings', ...adminAuth, asyncHandler(async (req, res) => {
   const { twilioPhoneNumber, elevenlabsVoiceId, elevenlabsAgentId, openaiModel,
     defaultBusinessName, defaultCallerName, defaultTimezone,
     businessHoursStart, businessHoursEnd, dailyCallLimit, concurrentCallLimit } = req.body;
@@ -482,7 +482,7 @@ router.put('/settings', authenticateToken, requireAdmin, asyncHandler(async (req
 // VOICES
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/voices', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/voices', ...adminAuth, asyncHandler(async (req, res) => {
   const voices = await elevenLabsService.listVoices();
   res.json(voices);
 }));
@@ -491,12 +491,12 @@ router.get('/voices', authenticateToken, requireAdmin, asyncHandler(async (req, 
 // AGENCIES
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/agencies', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/agencies', ...adminAuth, asyncHandler(async (req, res) => {
   const [rows] = await db.query('SELECT * FROM ai_solar_agencies WHERE user_id = ? ORDER BY name', [req.user.id]);
   res.json(rows);
 }));
 
-router.post('/agencies', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/agencies', ...adminAuth, asyncHandler(async (req, res) => {
   const { name, zipCodes, states, phone, email, calendarLink } = req.body;
   if (!name) return res.status(400).json({ error: 'Agency name required' });
 
@@ -508,7 +508,7 @@ router.post('/agencies', authenticateToken, requireAdmin, asyncHandler(async (re
   res.status(201).json(agency[0]);
 }));
 
-router.put('/agencies/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/agencies/:id', ...adminAuth, asyncHandler(async (req, res) => {
   const { name, zipCodes, states, phone, email, calendarLink, isActive } = req.body;
   await db.query(
     `UPDATE ai_solar_agencies SET name = COALESCE(?, name), zip_codes = COALESCE(?, zip_codes),
@@ -522,7 +522,7 @@ router.put('/agencies/:id', authenticateToken, requireAdmin, asyncHandler(async 
   res.json(agency[0]);
 }));
 
-router.delete('/agencies/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/agencies/:id', ...adminAuth, asyncHandler(async (req, res) => {
   await db.query('DELETE FROM ai_solar_agencies WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
   res.json({ ok: true });
 }));
@@ -531,7 +531,7 @@ router.delete('/agencies/:id', authenticateToken, requireAdmin, asyncHandler(asy
 // PROMPTS (per campaign)
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/prompts/:campaignId', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/prompts/:campaignId', ...adminAuth, asyncHandler(async (req, res) => {
   const [campaigns] = await db.query(
     'SELECT system_prompt, greeting_script, qualification_questions, objection_responses, booking_script, closing_script FROM ai_calling_campaigns WHERE id = ? AND user_id = ?',
     [req.params.campaignId, req.user.id]
@@ -548,7 +548,7 @@ router.get('/prompts/:campaignId', authenticateToken, requireAdmin, asyncHandler
   });
 }));
 
-router.put('/prompts/:campaignId', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/prompts/:campaignId', ...adminAuth, asyncHandler(async (req, res) => {
   const { systemPrompt, greetingScript, qualificationQuestions, objectionResponses, bookingScript, closingScript } = req.body;
   await db.query(
     `UPDATE ai_calling_campaigns SET
@@ -601,7 +601,7 @@ router.post('/webhooks/amd', asyncHandler(async (req, res) => {
 // LIVE MONITOR / COACH / TTS
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/live-sessions', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/live-sessions', ...adminAuth, asyncHandler(async (req, res) => {
   const sessions = getActiveSessions();
   // Scope to user's calls when possible
   const ids = sessions.map((s) => s.callRecordId).filter(Boolean);
@@ -625,7 +625,7 @@ router.get('/live-sessions', authenticateToken, requireAdmin, asyncHandler(async
   res.json(enriched);
 }));
 
-router.post('/live-sessions/:callRecordId/whisper', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/live-sessions/:callRecordId/whisper', ...adminAuth, asyncHandler(async (req, res) => {
   const { note } = req.body;
   if (!note) return res.status(400).json({ error: 'note required' });
 
@@ -639,7 +639,7 @@ router.post('/live-sessions/:callRecordId/whisper', authenticateToken, requireAd
   res.json(result);
 }));
 
-router.get('/tts-audio', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/tts-audio', ...adminAuth, asyncHandler(async (req, res) => {
   const text = req.query.text || '';
   const voiceId = req.query.voiceId || '21m00Tcm4TlvDq8ikWAM';
   if (!text) return res.status(400).json({ error: 'text required' });
@@ -657,7 +657,7 @@ router.get('/tts-audio/file/:fileName', asyncHandler(async (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 }));
 
-router.put('/settings/calendar-tokens', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/settings/calendar-tokens', ...adminAuth, asyncHandler(async (req, res) => {
   const { googleCalendarToken, outlookCalendarToken } = req.body;
   await db.query(
     `INSERT INTO ai_calling_settings (user_id, google_calendar_token, outlook_calendar_token)

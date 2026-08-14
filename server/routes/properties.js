@@ -44,7 +44,7 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
 }
 
 // 1. Geocoding Search Pincode & Clustered Coordinates Generator
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   const {
     zip,
     lat,

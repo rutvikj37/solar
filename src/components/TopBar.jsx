@@ -44,7 +44,7 @@ export default function TopBar({ onMenuToggle, showBanner }) {
   const isAdmin = isAdminRole(userRole);
 
   return (
-    <header className={`fixed ${topPosition} left-0 right-0 h-16 bg-deep/95 backdrop-blur-xl border-b border-glass-stroke flex justify-between items-center px-6 z-40 transition-all`}>
+    <header className={`fixed ${topPosition} left-0 right-0 h-16 bg-deep/98 border-b border-glass-stroke flex justify-between items-center px-6 z-40 transition-all`}>
       
       {/* Left side: Hamburger button + SolarX.live Logo */}
       <div className="flex items-center gap-4">
