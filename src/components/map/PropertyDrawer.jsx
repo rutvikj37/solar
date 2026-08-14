@@ -2,11 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { API_BASE } from '../../config.js';
 import { authHeaders } from '../../lib/auth.js';
 
+function LockedValue() {
+  return (
+    <span className="inline-flex items-center gap-1 text-slate-500 font-semibold">
+      <span className="material-symbols-outlined text-sm">lock</span>
+      Unlock to view
+    </span>
+  );
+}
+
 function displayValue(value, fallback = 'Not Available') {
   if (value === null || value === undefined || value === '') return fallback;
   const str = String(value).trim();
   if (!str || str === 'N/A' || str === 'undefined' || str === 'null') return fallback;
   return str;
+}
+
+function FieldValue({ unlocked, value, fallback = 'Not Available' }) {
+  if (!unlocked) return <LockedValue />;
+  return displayValue(value, fallback);
 }
 
 function starCountFromScore(score) {
@@ -105,6 +119,8 @@ export default function PropertyDrawer({
   leadCredits
 }) {
   if (!selectedProperty) return null;
+
+  const unlocked = selectedProperty.unlocked === true;
 
   return (
     <div
@@ -214,7 +230,7 @@ export default function PropertyDrawer({
                     <div>
                       <p className="text-[9px] text-on-surface-variant uppercase font-label-mono">Property Value</p>
                       <p className="text-sm font-bold text-white">
-                        {displayValue(selectedProperty.propertyData?.propertyValue)}
+                        <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.propertyValue} />
                       </p>
                     </div>
                   </div>
@@ -335,13 +351,13 @@ export default function PropertyDrawer({
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Owner Name</span>
                     <span className="text-white font-semibold">
-                      {displayValue(selectedProperty.propertyData?.ownerName)}
+                      <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.ownerName} />
                     </span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Owner Occupied</span>
                     <span className="text-white font-semibold">
-                      {displayValue(selectedProperty.propertyData?.ownerOccupied)}
+                      <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.ownerOccupied} />
                     </span>
                   </div>
                   <div className="flex justify-between py-2">
@@ -355,7 +371,7 @@ export default function PropertyDrawer({
                   <div className="flex justify-between py-2">
                     <span className="text-on-surface-variant">Property Value</span>
                     <span className="text-white font-semibold">
-                      {displayValue(selectedProperty.propertyData?.propertyValue)}
+                      <FieldValue unlocked={unlocked} value={selectedProperty.propertyData?.propertyValue} />
                     </span>
                   </div>
                 </div>
@@ -368,20 +384,30 @@ export default function PropertyDrawer({
                 <h4 className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest font-semibold mb-2">
                   Owner Contacts
                 </h4>
-                <div className="divide-y divide-glass-stroke/50 text-[11px]">
-                  <div className="flex justify-between py-2">
-                    <span className="text-on-surface-variant">Phone</span>
-                    <span className="text-white font-semibold font-mono">
-                      {displayValue(selectedProperty.contact?.phone)}
-                    </span>
+                {!unlocked ? (
+                  <div className="py-6 flex flex-col items-center text-center gap-2">
+                    <span className="material-symbols-outlined text-3xl text-slate-500">lock</span>
+                    <p className="text-sm font-bold text-white">Owner contact is locked</p>
+                    <p className="text-[11px] text-on-surface-variant max-w-[260px]">
+                      Unlock this lead to reveal phone, email, and owner records. Solar preview stays free.
+                    </p>
                   </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-on-surface-variant">Email</span>
-                    <span className="text-white font-semibold">
-                      {displayValue(selectedProperty.contact?.email)}
-                    </span>
+                ) : (
+                  <div className="divide-y divide-glass-stroke/50 text-[11px]">
+                    <div className="flex justify-between py-2">
+                      <span className="text-on-surface-variant">Phone</span>
+                      <span className="text-white font-semibold font-mono">
+                        {displayValue(selectedProperty.contact?.phone)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-on-surface-variant">Email</span>
+                      <span className="text-white font-semibold">
+                        {displayValue(selectedProperty.contact?.email)}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>

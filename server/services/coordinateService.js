@@ -1,4 +1,5 @@
 import { trackedFetch } from './apiUsage.js';
+import { cacheRentcastRecord } from './rentcastCache.js';
 
 const isKeyValid = (key) => key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 
@@ -61,14 +62,44 @@ function coordsFromGeocodeResult(result) {
   if (!isValidCoord(lat, lng)) return null;
   const locationType = result.geometry.location_type || 'APPROXIMATE';
   const typeRank = LOCATION_TYPE_RANK[locationType] ?? 4;
-  const baseRank = locationType === 'ROOFTOP' ? 2 : 3.5 + (typeRank - 1) * 0.1;
+  const types = result.types || [];
+  const isPreciseType = types.includes('street_address')
+    || types.includes('premise')
+    || types.includes('subpremise');
+  let baseRank = locationType === 'ROOFTOP' ? 2 : 3.5 + (typeRank - 1) * 0.1;
+  if (!isPreciseType) baseRank += 0.5;
   return {
     lat,
     lng,
     source: 'geocode',
     locationType,
+    formattedAddress: result.formatted_address || null,
     rank: baseRank
   };
+}
+
+/** True for "123 Main St, City, ST" — not ZIP-only or city-only queries. */
+export function looksLikeStreetAddress(query) {
+  const q = String(query || '').trim();
+  if (!q) return false;
+  if (/^\d{5}(-\d{4})?$/.test(q)) return false;
+  return /^\d+[A-Za-z]?\s+[A-Za-z]/.test(q);
+}
+
+function addressLookupVariants(address) {
+  const variants = [address];
+  const expanded = String(address || '')
+    .replace(/\bCir\b/gi, 'Circle')
+    .replace(/\bCt\b/gi, 'Court')
+    .replace(/\bSt\b/gi, 'Street')
+    .replace(/\bAve\b/gi, 'Avenue')
+    .replace(/\bBlvd\b/gi, 'Boulevard')
+    .replace(/\bDr\b/gi, 'Drive')
+    .replace(/\bLn\b/gi, 'Lane')
+    .replace(/\bRd\b/gi, 'Road')
+    .replace(/\bPkwy\b/gi, 'Parkway');
+  if (expanded && expanded !== address) variants.push(expanded);
+  return variants.filter(Boolean);
 }
 
 /**
@@ -81,7 +112,13 @@ export function pickBestPropertyCoordinates(candidates = []) {
 
   valid.sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   const best = valid[0];
-  return { lat: best.lat, lng: best.lng, source: best.source, locationType: best.locationType || null };
+  return {
+    lat: best.lat,
+    lng: best.lng,
+    source: best.source,
+    locationType: best.locationType || null,
+    formattedAddress: best.formattedAddress || null
+  };
 }
 
 /**
@@ -135,9 +172,9 @@ export async function fetchSolarBuildingCenter(lat, lng) {
 }
 
 /**
- * Fetch RentCast property record by formatted address for coordinate backfill.
+ * Fetch the full RentCast property record for a street address.
  */
-export async function fetchRentcastCoordsByAddress(address) {
+export async function fetchRentcastPropertyByAddress(address) {
   const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
   if (!address || !isKeyValid(rentcastApiKey)) return null;
 
@@ -149,11 +186,76 @@ export async function fetchRentcastCoordsByAddress(address) {
     if (!response.ok) return null;
     const properties = await response.json();
     if (!Array.isArray(properties) || !properties[0]) return null;
-    return coordsFromRentcast(properties[0]);
+    cacheRentcastRecord(properties[0]);
+    return properties[0];
   } catch (err) {
     console.error('[Coordinate Service] RentCast address lookup failed:', err.message || err);
     return null;
   }
+}
+
+/**
+ * Fetch RentCast property coordinates by formatted address.
+ */
+export async function fetchRentcastCoordsByAddress(address) {
+  const prop = await fetchRentcastPropertyByAddress(address);
+  return coordsFromRentcast(prop);
+}
+
+/**
+ * Resolve any searched street address to a rooftop-accurate home pin.
+ * Priority: Google Solar building center (seeded from the exact parcel) >
+ * ROOFTOP geocode > RentCast parcel > provided/search click.
+ */
+export async function resolveExactAddressSearch(query, { seedLat = null, seedLng = null } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return null;
+
+  const geocoded = await geocodeAddressCoordinates(q);
+  const formatted = geocoded?.formattedAddress || q;
+
+  const tried = new Set();
+  const tryAddress = async (addr) => {
+    const key = String(addr || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!key || tried.has(key)) return null;
+    tried.add(key);
+    return fetchRentcastPropertyByAddress(addr);
+  };
+
+  let rentcastProp = await tryAddress(formatted);
+  if (!rentcastProp) rentcastProp = await tryAddress(q);
+  if (!rentcastProp) {
+    for (const variant of addressLookupVariants(formatted)) {
+      rentcastProp = await tryAddress(variant);
+      if (rentcastProp) break;
+    }
+  }
+
+  const rentcastCoords = coordsFromRentcast(rentcastProp);
+  const provided = coordsFromProvided(seedLat, seedLng);
+  const seed = rentcastCoords || geocoded || provided;
+
+  let solarCenter = null;
+  if (seed) {
+    solarCenter = await fetchSolarBuildingCenter(seed.lat, seed.lng);
+  }
+
+  const best = pickBestPropertyCoordinates([
+    solarCenter,
+    geocoded,
+    rentcastCoords,
+    provided
+  ]);
+  if (!best) return null;
+
+  return {
+    lat: best.lat,
+    lng: best.lng,
+    source: best.source,
+    locationType: best.locationType || null,
+    formattedAddress: rentcastProp?.formattedAddress || geocoded?.formattedAddress || q,
+    rentcastProp
+  };
 }
 
 /**

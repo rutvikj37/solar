@@ -4,7 +4,7 @@ import { authenticateToken, isAdminRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkLeadCreditAccess } from './billing.js';
 import { trackedFetch } from '../services/apiUsage.js';
-import { cacheRentcastRecords } from '../services/rentcastCache.js';
+import { cacheRentcastRecords, getCachedRentcastRecord } from '../services/rentcastCache.js';
 import { getZipFromCoords } from '../services/leadService.js';
 import { normalizeDetailsCoordinates, ensureLeadCoordinates } from '../services/coordinateService.js';
 import {
@@ -31,7 +31,7 @@ const isKeyValid = (key) => {
 // Generate Lead & Deduct Credits
 router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   const { propertyId, detail } = req.body;
-  if (!propertyId || !detail) return res.status(400).json({ error: 'Missing property data' });
+  if (!propertyId) return res.status(400).json({ error: 'Missing property data' });
 
   const [roleRows] = await db.query('SELECT role FROM users WHERE id = ?', [req.user.id]);
   const userRole = roleRows[0]?.role || req.user.role;
@@ -50,9 +50,26 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
 
   const packageRecord = creditCheck.packageRecord || packages[0] || null;
 
-  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [req.user.id, detail.address]);
+  const cached = getCachedRentcastRecord(propertyId);
+  const full = await retrievePropertyDetails(
+    propertyId,
+    detail?.lat,
+    detail?.lng,
+    cached,
+    { skipContacts: false, bypassCache: true }
+  );
+  if (!full?.address) {
+    return res.status(400).json({ error: 'Could not resolve this property' });
+  }
+
+  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [req.user.id, full.address]);
   if (existing.length > 0) {
-    return res.status(200).json({ message: 'Lead already generated', leadId: existing[0].id });
+    return res.status(200).json({
+      message: 'Lead already generated',
+      leadId: existing[0].id,
+      detail: { ...full, unlocked: true, leadId: existing[0].id },
+      unlocked: true
+    });
   }
 
   const parseValueSafe = (val, regex) => {
@@ -62,49 +79,49 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  const propValueNum = parseValueSafe(detail.propertyData.propertyValue, /[$,]/g);
-  const livingAreaNum = parseValueSafe(detail.livingArea, /[^\d.]/g);
-  const roofAreaNum = parseValueSafe(detail.solar?.totalRoofArea || detail.solar?.usableRoofArea, /[^\d.]/g) || livingAreaNum;
-  const savingsNum = parseValueSafe(detail.solar.twentyFiveYearSavings, /[$,]/g);
+  const propValueNum = parseValueSafe(full.propertyData?.propertyValue, /[$,]/g);
+  const livingAreaNum = parseValueSafe(full.livingArea, /[^\d.]/g);
+  const roofAreaNum = parseValueSafe(full.solar?.totalRoofArea || full.solar?.usableRoofArea, /[^\d.]/g) || livingAreaNum;
+  const savingsNum = parseValueSafe(full.solar?.twentyFiveYearSavings, /[$,]/g);
 
-  await normalizeDetailsCoordinates(detail);
+  await normalizeDetailsCoordinates(full);
 
   const [leadResult] = await db.query(
     `INSERT INTO leads (user_id, address, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       req.user.id,
-      detail.address,
-      parseFloat(detail.lat) || null,
-      parseFloat(detail.lng) || null,
-      detail.propertyData.ownerName,
-      detail.contact.phone,
-      detail.contact.phoneType || 'Not Available',
-      detail.contact.email,
-      detail.contact.emailStatus || 'Not Available',
-      detail.contact.linkedIn || 'Not Available',
-      detail.propertyData.mailingAddress,
+      full.address,
+      parseFloat(full.lat) || null,
+      parseFloat(full.lng) || null,
+      full.propertyData?.ownerName,
+      full.contact?.phone,
+      full.contact?.phoneType || 'Not Available',
+      full.contact?.email,
+      full.contact?.emailStatus || 'Not Available',
+      full.contact?.linkedIn || 'Not Available',
+      full.propertyData?.mailingAddress,
       propValueNum,
-      detail.propertyData.ownerOccupied === 'Yes' ? 1 : 0,
-      detail.propertyData.parcelNumber,
+      full.propertyData?.ownerOccupied === 'Yes' ? 1 : 0,
+      full.propertyData?.parcelNumber,
       roofAreaNum,
-      detail.solar.potential,
+      full.solar?.potential,
       savingsNum,
-      detail.aiLeadScore.overall,
+      full.aiLeadScore?.overall,
       'new',
-      JSON.stringify(detail.solar || {}),
+      JSON.stringify(full.solar || {}),
       JSON.stringify({
-        ...(detail.propertyData || {}),
-        latitude: parseFloat(detail.lat) || null,
-        longitude: parseFloat(detail.lng) || null,
-        livingArea: detail.livingArea,
-        lotSize: detail.lotSize,
-        stories: detail.stories,
-        propertyType: detail.propertyType,
-        yearBuilt: detail.yearBuilt,
-        aiLeadScore: detail.aiLeadScore || null
+        ...(full.propertyData || {}),
+        latitude: parseFloat(full.lat) || null,
+        longitude: parseFloat(full.lng) || null,
+        livingArea: full.livingArea,
+        lotSize: full.lotSize,
+        stories: full.stories,
+        propertyType: full.propertyType,
+        yearBuilt: full.yearBuilt,
+        aiLeadScore: full.aiLeadScore || null
       }),
-      detail.imageUrl || null
+      full.imageUrl || null
     ]
   );
 
@@ -118,7 +135,13 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   // Auto-enroll lead into active drip campaigns
   await enrollLeadInActiveCampaigns(req.user.id, leadResult.insertId);
 
-  res.status(201).json({ message: 'Lead generated successfully', leadId: leadResult.insertId, adminBypass });
+  res.status(201).json({
+    message: 'Lead generated successfully',
+    leadId: leadResult.insertId,
+    adminBypass,
+    detail: { ...full, unlocked: true, leadId: leadResult.insertId },
+    unlocked: true
+  });
 }));
 
 // Pipeline summary counts

@@ -1,23 +1,47 @@
 import express from 'express';
 import { trackedFetch } from '../services/apiUsage.js';
-import { cacheRentcastRecords, getCachedRentcastRecord } from '../services/rentcastCache.js';
+import { cacheRentcastRecord, cacheRentcastRecords, getCachedRentcastRecord } from '../services/rentcastCache.js';
 import {
   getFallbackZipCoords,
   mapRentcastToListItem,
   filterPropertiesByQuery,
   retrievePropertyDetails,
+  enrichDetailsWithContacts,
+  toLockedPreview,
   mockAddresses,
   buildGoogleSatelliteStaticUrl,
   fetchGoogleSatelliteImage,
 } from '../services/propertyService.js';
+import {
+  looksLikeStreetAddress,
+  resolveExactAddressSearch
+} from '../services/coordinateService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { authenticateToken } from '../middleware/auth.js';
+import db from '../db.js';
 
 const router = express.Router();
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 };
+
+async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentcastRecord) {
+  const preview = await retrievePropertyDetails(id, lat, lng, rentcastRecord, { skipContacts: true });
+  let existing = null;
+  if (req.user?.id && preview?.address) {
+    const [rows] = await db.query(
+      'SELECT id FROM leads WHERE user_id = ? AND address = ? LIMIT 1',
+      [req.user.id, preview.address]
+    );
+    existing = rows[0] || null;
+  }
+  if (existing) {
+    const full = await enrichDetailsWithContacts({ ...preview });
+    return res.json({ ...full, unlocked: true, leadId: existing.id });
+  }
+  return res.json({ ...toLockedPreview(preview), unlocked: false });
+}
 
 // 1. Geocoding Search Pincode & Clustered Coordinates Generator
 router.get('/', asyncHandler(async (req, res) => {
@@ -49,8 +73,51 @@ router.get('/', asyncHandler(async (req, res) => {
   }
 
   let center = null;
+  let exactMatch = null;
+  const hasPolygon = Array.isArray(polygon) && polygon.length >= 3;
+  const isAddressSearch = looksLikeStreetAddress(zip) && !hasPolygon;
 
-  if (lat && lng) {
+  if (isAddressSearch) {
+    try {
+      const resolved = await resolveExactAddressSearch(zip, { seedLat: lat, seedLng: lng });
+      if (resolved) {
+        center = {
+          lat: resolved.lat,
+          lng: resolved.lng,
+          name: resolved.formattedAddress
+        };
+        if (resolved.rentcastProp) {
+          exactMatch = mapRentcastToListItem(resolved.rentcastProp);
+        } else {
+          exactMatch = {
+            id: `coordinate-${resolved.lat.toFixed(5)}-${resolved.lng.toFixed(5)}`,
+            lat: resolved.lat,
+            lng: resolved.lng,
+            address: resolved.formattedAddress,
+            propertyType: 'Unknown',
+            yearBuilt: null,
+            squareFootage: null,
+            solarScore: 0,
+            estSavings: 0,
+            systemSize: '0 kW',
+            panelsCount: 0,
+            existingSolar: 'Unlikely',
+            existingSolarLikely: false,
+            ownerOccupied: false
+          };
+        }
+        exactMatch.lat = resolved.lat;
+        exactMatch.lng = resolved.lng;
+        exactMatch.address = resolved.formattedAddress || exactMatch.address;
+        exactMatch.isSearchMatch = true;
+        console.log(`[Address Search] Rooftop pin ${resolved.source} @ ${resolved.lat}, ${resolved.lng} (${resolved.formattedAddress})`);
+      }
+    } catch (err) {
+      console.error('[Address Search] Exact home resolve failed:', err.message || err);
+    }
+  }
+
+  if (lat && lng && !center) {
     center = {
       lat: parseFloat(lat),
       lng: parseFloat(lng),
@@ -58,7 +125,7 @@ router.get('/', asyncHandler(async (req, res) => {
     };
   }
 
-  if (zip && !(lat && lng) && isKeyValid(process.env.GOOGLE_MAPS_API_KEY)) {
+  if (zip && !center && isKeyValid(process.env.GOOGLE_MAPS_API_KEY)) {
     try {
       console.log(`[Geocoding API] Querying coords for ZIP: ${zip}`);
       const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(zip)}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
@@ -97,8 +164,8 @@ router.get('/', asyncHandler(async (req, res) => {
         console.log(`[RentCast Search API] Querying ZIP: ${zip} limit=${limit}`);
         rentcastUrl = `https://api.rentcast.io/v1/properties?zipCode=${encodeURIComponent(zip)}&limit=${limit}`;
       } else {
-        const queryLat = lat || center.lat;
-        const queryLng = lng || center.lng;
+        const queryLat = exactMatch ? center.lat : (lat || center.lat);
+        const queryLng = exactMatch ? center.lng : (lng || center.lng);
         const radiusMiles = radius ? Math.max(0.1, parseFloat(radius) / 1609.34) : 3.5;
         console.log(`[RentCast Search API] Querying near ${queryLat},${queryLng} radius=${radiusMiles.toFixed(2)}mi limit=${limit}`);
         rentcastUrl = `https://api.rentcast.io/v1/properties?latitude=${encodeURIComponent(queryLat)}&longitude=${encodeURIComponent(queryLng)}&radius=${encodeURIComponent(radiusMiles.toFixed(2))}&limit=${limit}`;
@@ -116,29 +183,58 @@ router.get('/', asyncHandler(async (req, res) => {
           cacheRentcastRecords(properties);
 
           let list = properties.map(mapRentcastToListItem).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-          list = filterPropertiesByQuery(list, { lat, lng, radius, polygon, singleFamily, minSavings, skipPaneled });
+          list = filterPropertiesByQuery(list, {
+            lat: exactMatch ? center.lat : lat,
+            lng: exactMatch ? center.lng : lng,
+            radius,
+            polygon,
+            singleFamily,
+            minSavings,
+            skipPaneled
+          });
 
-          let avgCenter = center;
-          if (list.length > 0) {
+          if (exactMatch) {
+            list = list.filter((p) => p.id !== exactMatch.id);
+            list.unshift(exactMatch);
+          }
+
+          let responseCenter = center;
+          if (!exactMatch && list.length > 0) {
             let sumLat = 0;
             let sumLng = 0;
             list.forEach((p) => {
               sumLat += p.lat;
               sumLng += p.lng;
             });
-            avgCenter = {
+            responseCenter = {
               lat: sumLat / list.length,
               lng: sumLng / list.length,
               name: zip ? `ZIP Code ${zip}` : center.name
             };
           }
           console.log(`[RentCast Search API] Loaded ${list.length} property records.`);
-          return res.json({ center: avgCenter, properties: list, total: list.length });
+          return res.json({
+            center: responseCenter,
+            properties: list,
+            total: list.length,
+            matchedPropertyId: exactMatch?.id || null,
+            searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area')
+          });
         }
       }
     } catch (err) {
       console.error('[RentCast Search API] Failed, falling back to mock cluster:', err);
     }
+  }
+
+  if (exactMatch) {
+    return res.json({
+      center,
+      properties: [exactMatch],
+      total: 1,
+      matchedPropertyId: exactMatch.id,
+      searchType: 'address'
+    });
   }
 
   // Fallback mock properties around center
@@ -174,11 +270,21 @@ router.get('/', asyncHandler(async (req, res) => {
   }
 
   list = filterPropertiesByQuery(list, { lat, lng, radius, singleFamily, minSavings, skipPaneled });
-  res.json({ center, properties: list, total: list.length });
+  if (exactMatch) {
+    list = list.filter((p) => p.id !== exactMatch.id);
+    list.unshift(exactMatch);
+  }
+  res.json({
+    center,
+    properties: list,
+    total: list.length,
+    matchedPropertyId: exactMatch?.id || null,
+    searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area')
+  });
 }));
 
 // Coordinates property lookup (when user clicks anywhere on map/rooftop)
-router.get('/lookup', asyncHandler(async (req, res) => {
+router.get('/lookup', authenticateToken, asyncHandler(async (req, res) => {
   const { lat, lng } = req.query;
   if (!lat || !lng) return res.status(400).json({ error: 'Coordinates required' });
 
@@ -224,8 +330,7 @@ router.get('/lookup', asyncHandler(async (req, res) => {
   const lookupLat = preFetchedRecord ? parseFloat(preFetchedRecord.latitude) : latitude;
   const lookupLng = preFetchedRecord ? parseFloat(preFetchedRecord.longitude) : longitude;
 
-  const details = await retrievePropertyDetails(targetId, lookupLat, lookupLng, preFetchedRecord);
-  res.json(details);
+  await respondWithLockedOrUnlockedDetails(req, res, targetId, lookupLat, lookupLng, preFetchedRecord);
 }));
 
 // Satellite image proxy for map property drawer (avoids client-side Static Maps key/referrer failures)
@@ -257,11 +362,17 @@ router.get('/satellite-image', authenticateToken, asyncHandler(async (req, res) 
 }));
 
 // Single property details by ID
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const cached = getCachedRentcastRecord(id);
-  const details = await retrievePropertyDetails(id, undefined, undefined, cached);
-  res.json(details);
+  let providedLat;
+  let providedLng;
+  const coordMatch = String(id).match(/^coordinate-(-?\d+\.\d+)-(-?\d+\.\d+)$/);
+  if (coordMatch) {
+    providedLat = coordMatch[1];
+    providedLng = coordMatch[2];
+  }
+  await respondWithLockedOrUnlockedDetails(req, res, id, providedLat, providedLng, cached);
 }));
 
 export default router;

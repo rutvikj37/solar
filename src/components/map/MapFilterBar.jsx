@@ -31,6 +31,7 @@ export default function MapFilterBar({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const autocompleteServiceRef = React.useRef(null);
+  const placesServiceRef = React.useRef(null);
   const geocoderRef = React.useRef(null);
 
   const fetchPresets = async () => {
@@ -71,7 +72,7 @@ export default function MapFilterBar({
           autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
         }
         autocompleteServiceRef.current.getPlacePredictions(
-          { input: query, componentRestrictions: { country: ['us', 'ca'] } },
+          { input: query, types: ['geocode'], componentRestrictions: { country: ['us', 'ca'] } },
           async (predictions, status) => {
             if (isCancelled) return;
             if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions?.length) {
@@ -128,26 +129,69 @@ export default function MapFilterBar({
   };
 
   const handleSelectSuggestion = async (item) => {
-    setZip(item.mainText || item.description);
+    const fullAddress = item.description || item.mainText || '';
+    setZip(fullAddress);
     setShowSuggestions(false);
     setSuggestions([]);
     setHighlightedIndex(-1);
 
+    const searchWithLocation = (address, loc) => {
+      onSearch(address || fullAddress, loc);
+    };
+
     if (item.lat != null && item.lng != null) {
-      onSearch(item.description, { lat: item.lat, lng: item.lng });
-    } else if (item.placeId && window.google?.maps) {
+      searchWithLocation(fullAddress, { lat: item.lat, lng: item.lng });
+      return;
+    }
+
+    if (item.placeId && window.google?.maps?.places?.PlacesService) {
+      if (!placesServiceRef.current) {
+        placesServiceRef.current = new window.google.maps.places.PlacesService(document.createElement('div'));
+      }
+      placesServiceRef.current.getDetails(
+        { placeId: item.placeId, fields: ['geometry', 'formatted_address'] },
+        (place, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
+            const address = place.formatted_address || fullAddress;
+            setZip(address);
+            searchWithLocation(address, {
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng()
+            });
+            return;
+          }
+          if (!geocoderRef.current) geocoderRef.current = new window.google.maps.Geocoder();
+          geocoderRef.current.geocode({ placeId: item.placeId }, (results, geoStatus) => {
+            if (geoStatus === 'OK' && results[0]?.geometry?.location) {
+              const loc = results[0].geometry.location;
+              const address = results[0].formatted_address || fullAddress;
+              setZip(address);
+              searchWithLocation(address, { lat: loc.lat(), lng: loc.lng() });
+            } else {
+              onSearch(fullAddress);
+            }
+          });
+        }
+      );
+      return;
+    }
+
+    if (item.placeId && window.google?.maps) {
       if (!geocoderRef.current) geocoderRef.current = new window.google.maps.Geocoder();
       geocoderRef.current.geocode({ placeId: item.placeId }, (results, status) => {
         if (status === 'OK' && results[0]?.geometry?.location) {
           const loc = results[0].geometry.location;
-          onSearch(item.description, { lat: loc.lat(), lng: loc.lng() });
+          const address = results[0].formatted_address || fullAddress;
+          setZip(address);
+          searchWithLocation(address, { lat: loc.lat(), lng: loc.lng() });
         } else {
-          onSearch(item.description);
+          onSearch(fullAddress);
         }
       });
-    } else {
-      onSearch(item.description);
+      return;
     }
+
+    onSearch(fullAddress);
   };
 
   const handleSelectPreset = (presetId) => {
@@ -204,7 +248,7 @@ export default function MapFilterBar({
         <span className="material-symbols-outlined text-on-surface-variant text-base">travel_explore</span>
         <input
           type="text"
-          placeholder="Enter city, address, or ZIP code..."
+          placeholder="Search any home address, city, or ZIP..."
           value={zip}
           onChange={(e) => setZip(e.target.value)}
           onFocus={() => zip && suggestions.length > 0 && setShowSuggestions(true)}

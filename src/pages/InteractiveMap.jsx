@@ -72,6 +72,28 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+function looksLikeStreetAddress(query) {
+  const q = String(query || '').trim();
+  if (!q) return false;
+  if (/^\d{5}(-\d{4})?$/.test(q)) return false;
+  return /^\d+[A-Za-z]?\s+[A-Za-z]/.test(q);
+}
+
+function pickBestGeocodeResult(results) {
+  if (!Array.isArray(results) || !results.length) return null;
+  const locRank = { ROOFTOP: 0, RANGE_INTERPOLATED: 1, GEOMETRIC_CENTER: 2, APPROXIMATE: 3 };
+  const typeScore = (types = []) => {
+    if (types.includes('street_address') || types.includes('premise') || types.includes('subpremise')) return 0;
+    if (types.includes('route')) return 2;
+    return 1;
+  };
+  return [...results].sort((a, b) => {
+    const aRank = (locRank[a.geometry?.location_type] ?? 9) + typeScore(a.types) * 0.1;
+    const bRank = (locRank[b.geometry?.location_type] ?? 9) + typeScore(b.types) * 0.1;
+    return aRank - bRank;
+  })[0];
+}
+
 export default function InteractiveMap() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -534,7 +556,7 @@ export default function InteractiveMap() {
     markerByIdRef.current.clear();
   };
 
-  const plotPropertyMarkers = (list) => {
+  const plotPropertyMarkers = (list, selectedId = null) => {
     if (!mapInstanceRef.current || !window.google?.maps) return;
     clearMapMarkers();
     if (!list.length) return;
@@ -542,14 +564,16 @@ export default function InteractiveMap() {
     const google = window.google;
     const markers = list.map((prop) => {
       const likelyPaneled = !!prop.existingSolarLikely;
+      const isSelected = selectedId ? prop.id === selectedId : !!prop.isSearchMatch;
       const marker = new google.maps.Marker({
         position: { lat: prop.lat, lng: prop.lng },
         title: `${prop.address} · Score ${prop.solarScore}`,
         optimized: true,
+        zIndex: isSelected ? google.maps.Marker.MAX_ZINDEX + 1 : undefined,
         icon: buildScoreMarkerIcon(google, {
           score: prop.solarScore || 0,
           existingSolarLikely: likelyPaneled,
-          selected: false
+          selected: isSelected
         })
       });
       marker.addListener('click', () => {
@@ -560,6 +584,7 @@ export default function InteractiveMap() {
     });
 
     markersRef.current = markers;
+    selectedMarkerIdRef.current = selectedId || list.find((p) => p.isSearchMatch)?.id || null;
     clustererRef.current = new MarkerClusterer({
       map: mapInstanceRef.current,
       markers
@@ -623,7 +648,7 @@ export default function InteractiveMap() {
         const geocoder = new window.google.maps.Geocoder();
         const results = await new Promise((resolve) => {
           geocoder.geocode({ address: query }, (res, status) => {
-            if (status === 'OK' && res && res[0]) resolve(res[0]);
+            if (status === 'OK' && res?.length) resolve(pickBestGeocodeResult(res));
             else resolve(null);
           });
         });
@@ -633,12 +658,17 @@ export default function InteractiveMap() {
           useGeo = true;
           if (mapInstanceRef.current && (!activePolygon || activePolygon.length < 3)) {
             mapInstanceRef.current.setCenter({ lat: searchLat, lng: searchLng });
-            mapInstanceRef.current.setZoom(15);
+            mapInstanceRef.current.setZoom(looksLikeStreetAddress(query) ? 20 : 15);
           }
         }
       } catch (err) {
         console.error('Client geocode failed:', err);
       }
+    }
+
+    if (useGeo && looksLikeStreetAddress(query) && mapInstanceRef.current && (!activePolygon || activePolygon.length < 3)) {
+      mapInstanceRef.current.setCenter({ lat: searchLat, lng: searchLng });
+      mapInstanceRef.current.setZoom(20);
     }
 
     if (!query && !useGeo && (!activePolygon || activePolygon.length < 3)) return;
@@ -675,8 +705,17 @@ export default function InteractiveMap() {
       setProperties(data.properties || []);
 
       if (mapInstanceRef.current && data.center) {
+        const isAddress = data.searchType === 'address' || looksLikeStreetAddress(query);
         mapInstanceRef.current.setCenter({ lat: data.center.lat, lng: data.center.lng });
-        plotPropertyMarkers(data.properties || []);
+        if (isAddress && (!activePolygon || activePolygon.length < 3)) {
+          mapInstanceRef.current.setZoom(20);
+        }
+        plotPropertyMarkers(data.properties || [], data.matchedPropertyId || null);
+        const matched = (data.properties || []).find((p) => p.id === data.matchedPropertyId)
+          || (data.properties || []).find((p) => p.isSearchMatch);
+        if (isAddress && matched) {
+          handleMarkerClick(matched.id, matched);
+        }
       }
     } catch (err) {
       if (err.name !== 'AbortError') console.error('Search error:', err);
@@ -711,6 +750,13 @@ export default function InteractiveMap() {
       if (!response.ok) throw new Error('Failed to fetch details');
       const data = await response.json();
       setSelectedProperty(data);
+      setGeneratedLeadStatus(data.unlocked ? 'generated' : 'idle');
+      const pinLat = Number(data.lat);
+      const pinLng = Number(data.lng);
+      if (Number.isFinite(pinLat) && Number.isFinite(pinLng)) {
+        const marker = markerByIdRef.current.get(propId) || markerByIdRef.current.get(data.id);
+        if (marker) marker.setPosition({ lat: pinLat, lng: pinLng });
+      }
     } catch (err) {
       if (err.name !== 'AbortError') {
         setSelectedProperty(null);
@@ -743,6 +789,7 @@ export default function InteractiveMap() {
       if (!response.ok) throw new Error('Failed to fetch details');
       const data = await response.json();
       setSelectedProperty(data);
+      setGeneratedLeadStatus(data.unlocked ? 'generated' : 'idle');
     } catch (err) {
       if (err.name !== 'AbortError') {
         setSelectedProperty(null);
@@ -753,6 +800,37 @@ export default function InteractiveMap() {
   useEffect(() => {
     handleCoordinateClickRef.current = handleCoordinateClick;
   });
+
+  useEffect(() => {
+    if (!window.google?.maps) return;
+    const prevId = selectedMarkerIdRef.current;
+    const nextId = selectedProperty?.id || null;
+    if (prevId && prevId !== nextId) {
+      const prevMarker = markerByIdRef.current.get(prevId);
+      const prevProp = properties.find((p) => p.id === prevId);
+      if (prevMarker && prevProp) {
+        prevMarker.setIcon(buildScoreMarkerIcon(window.google, {
+          score: prevProp.solarScore || 0,
+          existingSolarLikely: !!prevProp.existingSolarLikely,
+          selected: false
+        }));
+        prevMarker.setZIndex(undefined);
+      }
+    }
+    if (nextId) {
+      const marker = markerByIdRef.current.get(nextId);
+      const prop = properties.find((p) => p.id === nextId) || selectedProperty;
+      if (marker && prop) {
+        marker.setIcon(buildScoreMarkerIcon(window.google, {
+          score: prop.solarScore || 0,
+          existingSolarLikely: !!prop.existingSolarLikely,
+          selected: true
+        }));
+        marker.setZIndex(window.google.maps.Marker.MAX_ZINDEX + 1);
+      }
+    }
+    selectedMarkerIdRef.current = nextId;
+  }, [selectedProperty?.id, properties]);
 
   const handleExecuteScan = async () => {
     setShowScanModal(false);
@@ -817,9 +895,17 @@ export default function InteractiveMap() {
           detail: selectedProperty
         })
       });
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         setGeneratedLeadStatus('generated');
+        if (data.detail) {
+          setSelectedProperty({ ...data.detail, unlocked: true, leadId: data.leadId });
+        }
         refreshUserData();
+      } else if (response.status === 402) {
+        setUpgradeMessage(data.error || 'Not enough credits to unlock this lead.');
+        setShowUpgradeModal(true);
+        setGeneratedLeadStatus('idle');
       } else {
         setGeneratedLeadStatus('idle');
       }

@@ -357,6 +357,56 @@ export async function enrichDetailsWithContacts(details) {
   return details;
 }
 
+/** Strip owner, contact, and paid property records until the lead is unlocked. */
+export function toLockedPreview(details) {
+  if (!details) return details;
+  const { enrichmentMeta, aiLeadScore } = details;
+  return {
+    ...details,
+    unlocked: false,
+    propertyData: {
+      ownerName: null,
+      ownerOccupied: null,
+      mailingAddress: null,
+      propertyValue: null,
+      taxAssessedValue: null,
+      parcelNumber: null,
+      lastSaleDate: null,
+      lastSalePrice: null
+    },
+    contact: {
+      phone: null,
+      email: null,
+      linkedIn: null,
+      emailStatus: null,
+      phoneType: null
+    },
+    enrichmentMeta: {
+      skipContacts: true,
+      contactComplete: false,
+      dataSources: {
+        solar: enrichmentMeta?.dataSources?.solar || 'unavailable',
+        production: enrichmentMeta?.dataSources?.production || 'unavailable',
+        property: 'locked',
+        contact: 'locked'
+      }
+    },
+    aiLeadScore: {
+      overall: aiLeadScore?.overall ?? 0,
+      label: aiLeadScore?.label,
+      summary: 'Unlock this lead to reveal owner, contact, and property records.',
+      breakdown: {
+        solarSuitability: aiLeadScore?.breakdown?.solarSuitability ?? 0,
+        roofSize: aiLeadScore?.breakdown?.roofSize ?? 0,
+        sunlightExposure: aiLeadScore?.breakdown?.sunlightExposure ?? 0,
+        propertyValue: 0,
+        ownerOccupied: 0,
+        contactAvailability: 0
+      }
+    }
+  };
+}
+
 export async function retrievePropertyDetails(id, providedLat, providedLng, rentcastRecord = null, options = {}) {
   const skipContacts = !!options.skipContacts;
   const bypassCache = !!options.bypassCache;
