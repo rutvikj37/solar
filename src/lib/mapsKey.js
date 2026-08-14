@@ -1,4 +1,4 @@
-import { API_BASE } from './config.js';
+import { API_BASE } from '../config.js';
 
 /**
  * Google Maps browser key — build-time only (never served from /api/config).
@@ -12,7 +12,6 @@ export function getGoogleMapsApiKey() {
 export async function fetchGoogleMapsApiKey() {
   const fromEnv = getGoogleMapsApiKey();
   if (fromEnv) return fromEnv;
-  // Dev fallback only: empty key from hardened /api/config
   try {
     const res = await fetch(`${API_BASE}/api/config`);
     if (!res.ok) return '';

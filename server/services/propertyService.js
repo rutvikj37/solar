@@ -17,7 +17,7 @@ import {
   emptyContactDetails,
   enrichOwnerContacts
 } from './contactEnrichmentService.js';
-import { resolvePropertyCoordinates } from './coordinateService.js';
+import { resolvePropertyCoordinates, isSameStreetProperty, looksLikeStreetAddress } from './coordinateService.js';
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -486,6 +486,20 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
         }
       } else {
         console.log(`[RentCast Detail API] Using cached/pre-fetched record for: ${addressQuery}`);
+      }
+
+      if (prop) {
+        // If the property id embeds a street address, never swap in a different parcel.
+        if (
+          addressQuery &&
+          looksLikeStreetAddress(addressQuery) &&
+          !isSameStreetProperty(addressQuery, prop.formattedAddress || '')
+        ) {
+          console.warn(
+            `[RentCast Detail API] Rejecting mismatched parcel for id address "${addressQuery}" → "${prop.formattedAddress}"`
+          );
+          prop = null;
+        }
       }
 
       if (prop) {

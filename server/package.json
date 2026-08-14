@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "node --test tests/**/*.test.js",
+    "test:address": "node --test tests/addressAccuracy.test.js"
   },
   "dependencies": {
     "abort-controller": "^3.0.0",

@@ -8,6 +8,7 @@ import { formatLeadGeneratedAt } from '../lib/formatDate.js';
 import { buildLeadMarkerIcon } from '../lib/mapMarkers.js';
 import { getGoogleMapsApiKey } from '../lib/mapsKey.js';
 import FullPageLoader from '../components/FullPageLoader.jsx';
+import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../utils/leadSharePdf.js';
 
 const API = API_BASE;
 const STATUS_OPTIONS = ['new', 'contacted', 'appointment', 'proposal', 'won', 'lost', 'qualified', 'in_progress'];
@@ -36,7 +37,7 @@ function loadGoogleMapsScript(apiKey) {
     if (!script) {
       script = document.createElement('script');
       script.id = GMAPS_SCRIPT_ID;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly&loading=async`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -66,6 +67,9 @@ export default function LeadDetails() {
   const [crmStatus, setCrmStatus] = useState('idle');
   const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const shareMenuRef = useRef(null);
   const [lead, setLead] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -148,6 +152,45 @@ export default function LeadDetails() {
     markerRef.current = null;
     load();
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!showShareMenu) return undefined;
+    const onPointerDown = (e) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target)) {
+        setShowShareMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [showShareMenu]);
+
+  const handleDownloadSharePdf = async () => {
+    if (!lead?.id) return;
+    setShareError('');
+    setBusy('share-pdf');
+    try {
+      await downloadLeadSharePdf(lead);
+      setShowShareMenu(false);
+    } catch (err) {
+      setShareError(err.message || 'Could not download PDF');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleShareWhatsApp = async () => {
+    if (!lead?.id) return;
+    setShareError('');
+    setBusy('share-wa');
+    try {
+      const result = await shareLeadToWhatsApp(lead);
+      if (result?.method !== 'cancelled') setShowShareMenu(false);
+    } catch (err) {
+      setShareError(err.message || 'Could not share to WhatsApp');
+    } finally {
+      setBusy('');
+    }
+  };
 
   // Mount Google satellite map once script + lead + DOM container are ready
   useEffect(() => {
@@ -377,6 +420,59 @@ export default function LeadDetails() {
             )}
           </div>
           <div className="flex flex-wrap gap-2 items-center shrink-0">
+            <div className="relative" ref={shareMenuRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShareError('');
+                  setShowShareMenu((v) => !v);
+                }}
+                disabled={busy === 'share-pdf' || busy === 'share-wa'}
+                className="bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
+                title="Share lead details"
+                aria-expanded={showShareMenu}
+                aria-haspopup="menu"
+              >
+                <span className={`material-symbols-outlined text-base${busy === 'share-pdf' || busy === 'share-wa' ? ' animate-spin' : ''}`}>
+                  {busy === 'share-pdf' || busy === 'share-wa' ? 'progress_activity' : 'share'}
+                </span>
+                Share
+              </button>
+              {showShareMenu && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-[#0F172A] shadow-xl overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleDownloadSharePdf}
+                    disabled={!!busy}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-base text-primary">picture_as_pdf</span>
+                    <span>
+                      <span className="font-bold block">Download PDF</span>
+                      <span className="text-[10px] text-on-surface-variant">SolarX.live branded sheet</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleShareWhatsApp}
+                    disabled={!!busy}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 border-t border-glass-stroke disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-base text-secondary">chat</span>
+                    <span>
+                      <span className="font-bold block">Share to WhatsApp</span>
+                      <span className="text-[10px] text-on-surface-variant">PDF + lead summary</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setShowProposalModal(true)}
               className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110"
@@ -405,6 +501,10 @@ export default function LeadDetails() {
             </select>
           </div>
         </div>
+
+        {shareError && (
+          <p className="text-[11px] text-red-400 -mt-2">{shareError}</p>
+        )}
 
         {dripEnrollments.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">

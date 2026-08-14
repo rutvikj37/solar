@@ -4,7 +4,7 @@ export function errorHandler(err, req, res, _next) {
   const statusCode = err.statusCode || err.status || 500;
   const isDev = process.env.NODE_ENV === 'development';
 
-  // CORS rejection from cors() package
+  // CORS denial is handled by cors() with cb(null, false) — no Error throw
   if (err.message === 'Not allowed by CORS') {
     return res.status(403).json({ error: 'Origin not allowed' });
   }

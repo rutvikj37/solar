@@ -6,7 +6,7 @@ import { checkLeadCreditAccess } from './billing.js';
 import { trackedFetch } from '../services/apiUsage.js';
 import { cacheRentcastRecords, getCachedRentcastRecord } from '../services/rentcastCache.js';
 import { getZipFromCoords } from '../services/leadService.js';
-import { normalizeDetailsCoordinates, ensureLeadCoordinates } from '../services/coordinateService.js';
+import { normalizeDetailsCoordinates, ensureLeadCoordinates, assertAddressMatchesSearch, looksLikeStreetAddress } from '../services/coordinateService.js';
 import {
   getFallbackZipCoords,
   isSingleFamilyType,
@@ -21,6 +21,11 @@ import {
 } from '../services/propertyService.js';
 import { isMissingField, isPlaceholderOwnerName } from '../services/contactEnrichmentService.js';
 import { enrollLeadInActiveCampaigns } from '../services/drip/dripEngine.js';
+import {
+  renderLeadSharePdf,
+  leadSharePdfFilename,
+  buildLeadShareWhatsAppText,
+} from '../utils/leadSharePdf.js';
 
 const router = express.Router();
 
@@ -60,6 +65,23 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   );
   if (!full?.address) {
     return res.status(400).json({ error: 'Could not resolve this property' });
+  }
+
+  // Accuracy gate: if the user searched a street address, never unlock a different parcel.
+  const expectedAddress = detail?.expectedAddress || detail?.searchQuery || null;
+  if (expectedAddress && looksLikeStreetAddress(expectedAddress)) {
+    const gate = assertAddressMatchesSearch(expectedAddress, full.address);
+    if (!gate.ok) {
+      console.error(
+        `[Lead Generate] Address mismatch blocked: searched "${gate.searched}" resolved "${gate.resolved}"`
+      );
+      return res.status(409).json({
+        error: 'Resolved property does not match the searched address. Please search again.',
+        searched: gate.searched,
+        resolved: gate.resolved,
+        reason: gate.reason,
+      });
+    }
   }
 
   const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [req.user.id, full.address]);
@@ -654,6 +676,45 @@ router.post('/:id/refresh-coordinates', authenticateToken, asyncHandler(async (r
     locationType: coordFix.locationType || null,
     updated: coordFix.updated !== false
   });
+}));
+
+// Branded SolarX.live lead sheet PDF (share / download)
+router.get('/:id/share-pdf', authenticateToken, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  let [leads] = await db.query(
+    `SELECT l.* FROM leads l
+     LEFT JOIN users u ON u.id = l.user_id
+     LEFT JOIN team_members tm ON LOWER(tm.member_email) = LOWER(u.email)
+     WHERE l.id = ? AND (
+       l.user_id = ?
+       OR tm.owner_user_id = ?
+       OR l.user_id IN (SELECT id FROM users WHERE email IN (SELECT member_email FROM team_members WHERE owner_user_id = ?))
+     )`,
+    [id, req.user.id, req.user.id, req.user.id]
+  );
+
+  if (leads.length === 0 && isAdminRole(req.user.role)) {
+    const [anyLead] = await db.query('SELECT * FROM leads WHERE id = ?', [id]);
+    leads = anyLead;
+  }
+
+  if (leads.length === 0) {
+    return res.status(404).json({ error: 'Lead not found' });
+  }
+
+  const lead = leads[0];
+  const download = req.query.download === '1' || String(req.query.download).toLowerCase() === 'true';
+  const buffer = await renderLeadSharePdf(lead);
+  const filename = leadSharePdfFilename(lead);
+  const waText = buildLeadShareWhatsAppText(lead);
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-WhatsApp-Text', encodeURIComponent(waText));
+  res.setHeader('X-PDF-Filename', filename);
+  res.setHeader('Access-Control-Expose-Headers', 'X-WhatsApp-Text, X-PDF-Filename, Content-Disposition');
+  res.send(buffer);
 }));
 
 // Get Single Lead details

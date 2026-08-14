@@ -14,7 +14,9 @@ import {
 } from '../services/propertyService.js';
 import {
   looksLikeStreetAddress,
-  resolveExactAddressSearch
+  resolveExactAddressSearch,
+  assertAddressMatchesSearch,
+  isSameStreetProperty,
 } from '../services/coordinateService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -81,36 +83,55 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
     try {
       const resolved = await resolveExactAddressSearch(zip, { seedLat: lat, seedLng: lng });
       if (resolved) {
-        center = {
-          lat: resolved.lat,
-          lng: resolved.lng,
-          name: resolved.formattedAddress
-        };
-        if (resolved.rentcastProp) {
-          exactMatch = mapRentcastToListItem(resolved.rentcastProp);
+        const resolvedAddress = resolved.formattedAddress || zip;
+        const matchGate = assertAddressMatchesSearch(zip, resolvedAddress);
+        if (!matchGate.ok) {
+          console.error(
+            `[Address Search] Refusing mismatched resolve for "${zip}" → "${resolvedAddress}" (${matchGate.reason})`
+          );
         } else {
-          exactMatch = {
-            id: `coordinate-${resolved.lat.toFixed(5)}-${resolved.lng.toFixed(5)}`,
+          center = {
             lat: resolved.lat,
             lng: resolved.lng,
-            address: resolved.formattedAddress,
-            propertyType: 'Unknown',
-            yearBuilt: null,
-            squareFootage: null,
-            solarScore: 0,
-            estSavings: 0,
-            systemSize: '0 kW',
-            panelsCount: 0,
-            existingSolar: 'Unlikely',
-            existingSolarLikely: false,
-            ownerOccupied: false
+            name: resolvedAddress
           };
+          if (resolved.rentcastProp) {
+            const rcAddr = resolved.rentcastProp.formattedAddress || resolved.rentcastProp.addressLine1;
+            if (isSameStreetProperty(zip, rcAddr)) {
+              exactMatch = mapRentcastToListItem(resolved.rentcastProp);
+            } else {
+              console.warn(
+                `[Address Search] Skipping RentCast list item mismatch: "${zip}" vs "${rcAddr}"`
+              );
+            }
+          }
+          if (!exactMatch) {
+            exactMatch = {
+              id: `coordinate-${resolved.lat.toFixed(5)}-${resolved.lng.toFixed(5)}`,
+              lat: resolved.lat,
+              lng: resolved.lng,
+              address: resolvedAddress,
+              propertyType: 'Unknown',
+              yearBuilt: null,
+              squareFootage: null,
+              solarScore: 0,
+              estSavings: 0,
+              systemSize: '0 kW',
+              panelsCount: 0,
+              existingSolar: 'Unlikely',
+              existingSolarLikely: false,
+              ownerOccupied: false
+            };
+          }
+          exactMatch.lat = resolved.lat;
+          exactMatch.lng = resolved.lng;
+          // Always label the pin with the verified searched property address.
+          exactMatch.address = resolved.rentcastProp?.formattedAddress || resolvedAddress;
+          exactMatch.isSearchMatch = true;
+          exactMatch.searchQuery = zip;
+          exactMatch.addressMatchVerified = true;
+          console.log(`[Address Search] Rooftop pin ${resolved.source} @ ${resolved.lat}, ${resolved.lng} (${exactMatch.address})`);
         }
-        exactMatch.lat = resolved.lat;
-        exactMatch.lng = resolved.lng;
-        exactMatch.address = resolved.formattedAddress || exactMatch.address;
-        exactMatch.isSearchMatch = true;
-        console.log(`[Address Search] Rooftop pin ${resolved.source} @ ${resolved.lat}, ${resolved.lng} (${resolved.formattedAddress})`);
       }
     } catch (err) {
       console.error('[Address Search] Exact home resolve failed:', err.message || err);
@@ -194,7 +215,10 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
           });
 
           if (exactMatch) {
-            list = list.filter((p) => p.id !== exactMatch.id);
+            // Keep neighbors for map context, but never let one replace the searched home.
+            list = list.filter(
+              (p) => p.id !== exactMatch.id && !isSameStreetProperty(exactMatch.address, p.address)
+            );
             list.unshift(exactMatch);
           }
 
@@ -218,7 +242,9 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
             properties: list,
             total: list.length,
             matchedPropertyId: exactMatch?.id || null,
-            searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area')
+            searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area'),
+            searchQuery: isAddressSearch ? zip : null,
+            addressMatchVerified: exactMatch?.addressMatchVerified === true,
           });
         }
       }
@@ -233,7 +259,9 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
       properties: [exactMatch],
       total: 1,
       matchedPropertyId: exactMatch.id,
-      searchType: 'address'
+      searchType: 'address',
+      searchQuery: isAddressSearch ? zip : null,
+      addressMatchVerified: exactMatch?.addressMatchVerified === true,
     });
   }
 
@@ -271,7 +299,9 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
 
   list = filterPropertiesByQuery(list, { lat, lng, radius, singleFamily, minSavings, skipPaneled });
   if (exactMatch) {
-    list = list.filter((p) => p.id !== exactMatch.id);
+    list = list.filter(
+      (p) => p.id !== exactMatch.id && !isSameStreetProperty(exactMatch.address, p.address)
+    );
     list.unshift(exactMatch);
   }
   res.json({
@@ -279,7 +309,9 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
     properties: list,
     total: list.length,
     matchedPropertyId: exactMatch?.id || null,
-    searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area')
+    searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area'),
+    searchQuery: isAddressSearch ? zip : null,
+    addressMatchVerified: exactMatch?.addressMatchVerified === true,
   });
 }));
 
@@ -301,7 +333,7 @@ router.get('/lookup', authenticateToken, asyncHandler(async (req, res) => {
   if (isKeyValid(rentcastApiKey)) {
     try {
       console.log(`[RentCast Coordinates Search] Finding property around: ${latitude}, ${longitude}`);
-      const rentcastUrl = `https://api.rentcast.io/v1/properties?latitude=${latitude}&longitude=${longitude}&radius=0.2&limit=1`;
+      const rentcastUrl = `https://api.rentcast.io/v1/properties?latitude=${latitude}&longitude=${longitude}&radius=0.05&limit=5`;
       const response = await trackedFetch('rentcast', rentcastUrl, {
         headers: {
           'X-Api-Key': rentcastApiKey,
@@ -310,12 +342,34 @@ router.get('/lookup', authenticateToken, asyncHandler(async (req, res) => {
       });
       if (response.ok) {
         const properties = await response.json();
-        if (Array.isArray(properties) && properties[0]) {
-          preFetchedRecord = properties[0];
-          rentcastId = preFetchedRecord.id;
-          resolvedAddress = preFetchedRecord.formattedAddress;
-          cacheRentcastRecord(preFetchedRecord);
-          console.log(`[RentCast Coordinates Search] Resolved ID: ${rentcastId}`);
+        if (Array.isArray(properties) && properties.length > 0) {
+          // Prefer the closest parcel to the clicked rooftop (avoid dense-area neighbor swap).
+          let best = null;
+          let bestDist = Infinity;
+          for (const prop of properties) {
+            const pLat = parseFloat(prop.latitude);
+            const pLng = parseFloat(prop.longitude);
+            if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+            const dLat = (pLat - latitude) * 111320;
+            const dLng = (pLng - longitude) * 111320 * Math.cos((latitude * Math.PI) / 180);
+            const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+            if (dist < bestDist) {
+              bestDist = dist;
+              best = prop;
+            }
+          }
+          // ~45m: if nothing is that close, keep coordinate pin without forcing a wrong parcel.
+          if (best && bestDist <= 45) {
+            preFetchedRecord = best;
+            rentcastId = preFetchedRecord.id;
+            resolvedAddress = preFetchedRecord.formattedAddress;
+            cacheRentcastRecord(preFetchedRecord);
+            console.log(`[RentCast Coordinates Search] Resolved ID: ${rentcastId} (${Math.round(bestDist)}m)`);
+          } else {
+            console.warn(
+              `[RentCast Coordinates Search] Nearest parcel ${best ? Math.round(bestDist) : 'n/a'}m away — not binding address`
+            );
+          }
         }
       }
     } catch (err) {

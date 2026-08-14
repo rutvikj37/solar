@@ -49,6 +49,27 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.length === 0) return !isProd;
+  if (allowedOrigins.includes(origin)) return true;
+  // Local Vite ports change often (5173, 5176, 5200, …)
+  if (!isProd) {
+    try {
+      const url = new URL(origin);
+      if (
+        (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+        (url.protocol === 'http:' || url.protocol === 'https:')
+      ) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -73,11 +94,9 @@ app.use((_req, res, next) => {
 app.use(
   cors({
     origin(origin, cb) {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-        return cb(null, true);
-      }
-      return cb(new Error('Not allowed by CORS'));
+      if (isAllowedOrigin(origin)) return cb(null, true);
+      // false (not Error) so preflight still gets CORS headers / clean deny
+      return cb(null, false);
     },
     credentials: false,
   })

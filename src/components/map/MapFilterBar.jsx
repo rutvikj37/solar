@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../config.js';
 
+/** Skip Places (New) after project-level denial (falls back to Nominatim). */
+let placesAutocompleteDenied = false;
+
+async function ensurePlacesLibrary() {
+  if (window.google?.maps?.places?.AutocompleteSuggestion) {
+    return window.google.maps.places;
+  }
+  if (typeof window.google?.maps?.importLibrary === 'function') {
+    return window.google.maps.importLibrary('places');
+  }
+  return null;
+}
+
 export default function MapFilterBar({
   zip,
   setZip,
@@ -30,8 +43,7 @@ export default function MapFilterBar({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const autocompleteServiceRef = React.useRef(null);
-  const placesServiceRef = React.useRef(null);
+  const sessionTokenRef = React.useRef(null);
   const geocoderRef = React.useRef(null);
 
   const fetchPresets = async () => {
@@ -54,7 +66,7 @@ export default function MapFilterBar({
     fetchPresets();
   }, []);
 
-  // Location Suggestions Predictions Debounce Effect
+  // Location Suggestions — Places API (New) with Nominatim fallback
   useEffect(() => {
     const query = zip ? zip.trim() : '';
     if (!query || query.length < 2) {
@@ -67,32 +79,75 @@ export default function MapFilterBar({
     setLoadingSuggestions(true);
 
     const timer = setTimeout(async () => {
-      if (window.google?.maps?.places?.AutocompleteService) {
-        if (!autocompleteServiceRef.current) {
-          autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
+      if (placesAutocompleteDenied) {
+        await fetchNominatimFallback(query, isCancelled);
+        return;
+      }
+
+      try {
+        const places = await ensurePlacesLibrary();
+        const AutocompleteSuggestion = places?.AutocompleteSuggestion;
+        const AutocompleteSessionToken = places?.AutocompleteSessionToken;
+        if (!AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+          throw new Error('Places Autocomplete (New) unavailable');
         }
-        autocompleteServiceRef.current.getPlacePredictions(
-          { input: query, types: ['geocode'], componentRestrictions: { country: ['us', 'ca'] } },
-          async (predictions, status) => {
-            if (isCancelled) return;
-            if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions?.length) {
-              const formatted = predictions.slice(0, 5).map((p) => ({
-                id: p.place_id,
-                description: p.description,
-                mainText: p.structured_formatting?.main_text || p.description,
-                secondaryText: p.structured_formatting?.secondary_text || '',
-                placeId: p.place_id
-              }));
-              setSuggestions(formatted);
-              setShowSuggestions(true);
-              setLoadingSuggestions(false);
-            } else {
-              fetchNominatimFallback(query, isCancelled);
-            }
-          }
-        );
-      } else {
-        fetchNominatimFallback(query, isCancelled);
+
+        if (!sessionTokenRef.current && AutocompleteSessionToken) {
+          sessionTokenRef.current = new AutocompleteSessionToken();
+        }
+
+        const { suggestions: results } =
+          await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+            input: query,
+            includedRegionCodes: ['us', 'ca'],
+            sessionToken: sessionTokenRef.current || undefined,
+          });
+
+        if (isCancelled) return;
+
+        const formatted = (results || [])
+          .map((s) => s.placePrediction)
+          .filter(Boolean)
+          .slice(0, 5)
+          .map((prediction) => {
+            const fullText =
+              prediction.text?.text ||
+              prediction.text?.toString?.() ||
+              '';
+            const main =
+              prediction.mainText?.text ||
+              prediction.structuredFormat?.mainText?.text ||
+              fullText.split(',')[0] ||
+              fullText;
+            const secondary =
+              prediction.secondaryText?.text ||
+              prediction.structuredFormat?.secondaryText?.text ||
+              fullText.split(',').slice(1).join(',').trim();
+            return {
+              id: prediction.placeId || fullText,
+              description: fullText,
+              mainText: main,
+              secondaryText: secondary,
+              placeId: prediction.placeId || null,
+              placePrediction: prediction,
+            };
+          });
+
+        if (formatted.length) {
+          setSuggestions(formatted);
+          setShowSuggestions(true);
+          setLoadingSuggestions(false);
+          return;
+        }
+      } catch (err) {
+        const msg = String(err?.message || err || '');
+        if (/denied|not.?enabled|PERMISSION|ApiNotActivated|legacy/i.test(msg)) {
+          placesAutocompleteDenied = true;
+        }
+      }
+
+      if (!isCancelled) {
+        await fetchNominatimFallback(query, isCancelled);
       }
     }, 200);
 
@@ -144,51 +199,45 @@ export default function MapFilterBar({
       return;
     }
 
-    if (item.placeId && window.google?.maps?.places?.PlacesService) {
-      if (!placesServiceRef.current) {
-        placesServiceRef.current = new window.google.maps.places.PlacesService(document.createElement('div'));
-      }
-      placesServiceRef.current.getDetails(
-        { placeId: item.placeId, fields: ['geometry', 'formatted_address'] },
-        (place, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
-            const address = place.formatted_address || fullAddress;
-            setZip(address);
-            searchWithLocation(address, {
-              lat: place.geometry.location.lat(),
-              lng: place.geometry.location.lng()
-            });
-            return;
-          }
-          if (!geocoderRef.current) geocoderRef.current = new window.google.maps.Geocoder();
-          geocoderRef.current.geocode({ placeId: item.placeId }, (results, geoStatus) => {
-            if (geoStatus === 'OK' && results[0]?.geometry?.location) {
-              const loc = results[0].geometry.location;
-              const address = results[0].formatted_address || fullAddress;
-              setZip(address);
-              searchWithLocation(address, { lat: loc.lat(), lng: loc.lng() });
-            } else {
-              onSearch(fullAddress);
-            }
+    // Places API (New): resolve prediction → Place fields
+    if (item.placePrediction?.toPlace) {
+      try {
+        const place = item.placePrediction.toPlace();
+        await place.fetchFields({
+          fields: ['location', 'formattedAddress', 'displayName'],
+        });
+        sessionTokenRef.current = null; // end billing session after selection
+        const address = place.formattedAddress || place.displayName || fullAddress;
+        setZip(address);
+        if (place.location) {
+          searchWithLocation(address, {
+            lat: place.location.lat(),
+            lng: place.location.lng(),
           });
+          return;
         }
-      );
-      return;
+      } catch (err) {
+        console.warn('[MapFilterBar] Place.fetchFields failed:', err?.message || err);
+      }
     }
 
-    if (item.placeId && window.google?.maps) {
-      if (!geocoderRef.current) geocoderRef.current = new window.google.maps.Geocoder();
-      geocoderRef.current.geocode({ placeId: item.placeId }, (results, status) => {
-        if (status === 'OK' && results[0]?.geometry?.location) {
-          const loc = results[0].geometry.location;
-          const address = results[0].formatted_address || fullAddress;
-          setZip(address);
-          searchWithLocation(address, { lat: loc.lat(), lng: loc.lng() });
-        } else {
-          onSearch(fullAddress);
-        }
-      });
-      return;
+    if (item.placeId) {
+      if (!geocoderRef.current && window.google?.maps?.Geocoder) {
+        geocoderRef.current = new window.google.maps.Geocoder();
+      }
+      if (geocoderRef.current) {
+        geocoderRef.current.geocode({ placeId: item.placeId }, (results, geoStatus) => {
+          if (geoStatus === 'OK' && results[0]?.geometry?.location) {
+            const loc = results[0].geometry.location;
+            const address = results[0].formatted_address || fullAddress;
+            setZip(address);
+            searchWithLocation(address, { lat: loc.lat(), lng: loc.lng() });
+          } else {
+            onSearch(fullAddress);
+          }
+        });
+        return;
+      }
     }
 
     onSearch(fullAddress);

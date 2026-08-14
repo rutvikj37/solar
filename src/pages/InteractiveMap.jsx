@@ -234,7 +234,7 @@ export default function InteractiveMap() {
   }, []);
 
   const loadGoogleMapsScript = (apiKey) => {
-    if (window.google && window.google.maps) {
+    if (typeof window.google?.maps?.Map === 'function') {
       setMapsLoaded(true);
       return;
     }
@@ -254,7 +254,7 @@ export default function InteractiveMap() {
         setMapError('Failed to load Google Maps SDK.');
       };
     } else {
-      if (window.google && window.google.maps) {
+      if (typeof window.google?.maps?.Map === 'function') {
         setMapsLoaded(true);
       } else {
         script.addEventListener('load', () => setMapsLoaded(true));
@@ -270,7 +270,7 @@ export default function InteractiveMap() {
 
     const initMap = () => {
       if (isCancelled || mapInstanceRef.current) return;
-      if (!window.google || !window.google.maps) {
+      if (!window.google?.maps || typeof window.google.maps.Map !== 'function') {
         timerId = setTimeout(initMap, 100);
         return;
       }
@@ -883,7 +883,11 @@ export default function InteractiveMap() {
         },
         body: JSON.stringify({
           propertyId: selectedProperty.id,
-          detail: selectedProperty
+          detail: {
+            ...selectedProperty,
+            expectedAddress: looksLikeStreetAddress(zip) ? zip.trim() : undefined,
+            searchQuery: zip || undefined,
+          }
         })
       });
       const data = await response.json().catch(() => ({}));
@@ -895,6 +899,13 @@ export default function InteractiveMap() {
         refreshUserData();
       } else if (response.status === 402) {
         setUpgradeMessage(data.error || 'Not enough credits to unlock this lead.');
+        setShowUpgradeModal(true);
+        setGeneratedLeadStatus('idle');
+      } else if (response.status === 409) {
+        setUpgradeMessage(
+          data.error ||
+            `Address mismatch: searched "${data.searched || ''}" but got "${data.resolved || ''}". Search again.`
+        );
         setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
       } else {

@@ -86,20 +86,117 @@ export function looksLikeStreetAddress(query) {
   return /^\d+[A-Za-z]?\s+[A-Za-z]/.test(q);
 }
 
-function addressLookupVariants(address) {
-  const variants = [address];
-  const expanded = String(address || '')
-    .replace(/\bCir\b/gi, 'Circle')
-    .replace(/\bCt\b/gi, 'Court')
-    .replace(/\bSt\b/gi, 'Street')
-    .replace(/\bAve\b/gi, 'Avenue')
-    .replace(/\bBlvd\b/gi, 'Boulevard')
-    .replace(/\bDr\b/gi, 'Drive')
-    .replace(/\bLn\b/gi, 'Lane')
-    .replace(/\bRd\b/gi, 'Road')
-    .replace(/\bPkwy\b/gi, 'Parkway');
-  if (expanded && expanded !== address) variants.push(expanded);
-  return variants.filter(Boolean);
+const STREET_SUFFIX_ALIASES = {
+  court: 'ct',
+  ct: 'ct',
+  street: 'st',
+  st: 'st',
+  avenue: 'ave',
+  ave: 'ave',
+  boulevard: 'blvd',
+  blvd: 'blvd',
+  drive: 'dr',
+  dr: 'dr',
+  road: 'rd',
+  rd: 'rd',
+  lane: 'ln',
+  ln: 'ln',
+  place: 'pl',
+  pl: 'pl',
+  terrace: 'ter',
+  ter: 'ter',
+  circle: 'cir',
+  cir: 'cir',
+  highway: 'hwy',
+  hwy: 'hwy',
+  parkway: 'pkwy',
+  pkwy: 'pkwy',
+};
+
+/**
+ * Normalize "4 Chamberlin Court" → { number: "4", street: "chamberlin ct" }
+ * so condo/dense neighborhoods don't accept a nearby different parcel.
+ */
+export function streetAddressKey(address) {
+  const raw = String(address || '')
+    .toLowerCase()
+    .replace(/[#.,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!raw) return null;
+
+  const m = raw.match(/^(\d+[a-z]?)\s+(.+)$/);
+  if (!m) return null;
+
+  const number = m[1];
+  const tokens = m[2]
+    .split(' ')
+    .filter(Boolean)
+    .filter((t) => !['nj', 'ny', 'pa', 'usa', 'us'].includes(t) && !/^\d{5}(-\d{4})?$/.test(t));
+
+  // Drop trailing city/state noise after known street suffix when possible.
+  let streetTokens = tokens.slice();
+  let suffixIdx = -1;
+  for (let i = 0; i < streetTokens.length; i += 1) {
+    if (STREET_SUFFIX_ALIASES[streetTokens[i]]) suffixIdx = i;
+  }
+  if (suffixIdx >= 0) {
+    streetTokens = streetTokens.slice(0, suffixIdx + 1);
+  } else {
+    // Keep first 1–3 tokens (street name) before city words.
+    streetTokens = streetTokens.slice(0, Math.min(3, streetTokens.length));
+  }
+
+  streetTokens = streetTokens.map((t) => STREET_SUFFIX_ALIASES[t] || t);
+  const street = streetTokens.join(' ').trim();
+  if (!street) return null;
+  return { number, street };
+}
+
+/** True when candidate parcel is the searched house (not a 0.1–0.2mi neighbor). */
+export function isSameStreetProperty(queryAddress, candidateAddress) {
+  const a = streetAddressKey(queryAddress);
+  const b = streetAddressKey(candidateAddress);
+  if (!a || !b) return false;
+  if (a.number !== b.number) return false;
+  if (a.street === b.street) return true;
+  // Allow one-side containment for abbreviated vs full names already normalized.
+  return a.street.includes(b.street) || b.street.includes(a.street);
+}
+
+/** Max drift from a ROOFTOP/parcel seed before we treat a candidate as the wrong building. */
+export const MAX_PARCEL_DRIFT_METERS = 75;
+export const MAX_SOLAR_DRIFT_METERS = 55;
+
+export function isWithinMeters(a, b, maxMeters) {
+  if (!a || !b || !isValidCoord(a.lat, a.lng) || !isValidCoord(b.lat, b.lng)) return false;
+  return calculateDistanceMeters(a.lat, a.lng, b.lat, b.lng) <= maxMeters;
+}
+
+/**
+ * Guardrail for street searches: parcel/result address must match the query.
+ * Returns { ok: true } or { ok: false, reason, searched, resolved }.
+ */
+export function assertAddressMatchesSearch(searchedAddress, resolvedAddress) {
+  const searched = String(searchedAddress || '').trim();
+  const resolved = String(resolvedAddress || '').trim();
+  if (!searched || !looksLikeStreetAddress(searched)) {
+    return { ok: true };
+  }
+  if (!resolved || resolved === 'Not Available') {
+    return { ok: false, reason: 'missing_resolved_address', searched, resolved: resolved || null };
+  }
+  if (!isSameStreetProperty(searched, resolved)) {
+    return {
+      ok: false,
+      reason: 'street_mismatch',
+      searched,
+      resolved,
+      searchedKey: streetAddressKey(searched),
+      resolvedKey: streetAddressKey(resolved),
+    };
+  }
+  return { ok: true, searched, resolved };
 }
 
 /**
@@ -186,10 +283,41 @@ export async function fetchRentcastPropertyByAddress(address) {
     if (!response.ok) return null;
     const properties = await response.json();
     if (!Array.isArray(properties) || !properties[0]) return null;
+    const prop = properties[0];
+    // Never accept a different street number/name than the one we asked for.
+    if (!isSameStreetProperty(address, prop.formattedAddress || prop.addressLine1)) {
+      console.warn(
+        `[Coordinate Service] RentCast address miss-match rejected: asked "${address}" got "${prop.formattedAddress}"`
+      );
+      return null;
+    }
+    cacheRentcastRecord(prop);
+    return prop;
+  } catch (err) {
+    console.error('[Coordinate Service] RentCast address lookup failed:', err.message || err);
+    return null;
+  }
+}
+
+/**
+ * Fetch nearest RentCast property for coordinates (same pattern as /properties/lookup).
+ */
+export async function fetchRentcastPropertyNearCoords(lat, lng, { radiusMiles = 0.2, limit = 1 } = {}) {
+  const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
+  if (!isValidCoord(lat, lng) || !isKeyValid(rentcastApiKey)) return null;
+
+  try {
+    const url = `https://api.rentcast.io/v1/properties?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&radius=${encodeURIComponent(radiusMiles)}&limit=${encodeURIComponent(limit)}`;
+    const response = await trackedFetch('rentcast', url, {
+      headers: { 'X-Api-Key': rentcastApiKey, accept: 'application/json' }
+    });
+    if (!response.ok) return null;
+    const properties = await response.json();
+    if (!Array.isArray(properties) || !properties[0]) return null;
     cacheRentcastRecord(properties[0]);
     return properties[0];
   } catch (err) {
-    console.error('[Coordinate Service] RentCast address lookup failed:', err.message || err);
+    console.error('[Coordinate Service] RentCast near-coords lookup failed:', err.message || err);
     return null;
   }
 }
@@ -206,6 +334,10 @@ export async function fetchRentcastCoordsByAddress(address) {
  * Resolve any searched street address to a rooftop-accurate home pin.
  * Priority: Google Solar building center (seeded from the exact parcel) >
  * ROOFTOP geocode > RentCast parcel > provided/search click.
+ *
+ * RentCast usage for street search:
+ * 1) exact address lookup first (avoids wrong neighbor in dense areas)
+ * 2) near-coords only as fallback, and only if the parcel street/number matches
  */
 export async function resolveExactAddressSearch(query, { seedLat = null, seedLng = null } = {}) {
   const q = String(query || '').trim();
@@ -213,31 +345,66 @@ export async function resolveExactAddressSearch(query, { seedLat = null, seedLng
 
   const geocoded = await geocodeAddressCoordinates(q);
   const formatted = geocoded?.formattedAddress || q;
+  const provided = coordsFromProvided(seedLat, seedLng);
+  const lookupSeed = geocoded || provided;
 
-  const tried = new Set();
-  const tryAddress = async (addr) => {
-    const key = String(addr || '').toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!key || tried.has(key)) return null;
-    tried.add(key);
-    return fetchRentcastPropertyByAddress(addr);
-  };
+  // Exact address first — near-coords can return a different house within ~0.2mi.
+  let rentcastProp = await fetchRentcastPropertyByAddress(q);
+  if (!rentcastProp && formatted && formatted !== q) {
+    rentcastProp = await fetchRentcastPropertyByAddress(formatted);
+  }
 
-  let rentcastProp = await tryAddress(formatted);
-  if (!rentcastProp) rentcastProp = await tryAddress(q);
-  if (!rentcastProp) {
-    for (const variant of addressLookupVariants(formatted)) {
-      rentcastProp = await tryAddress(variant);
-      if (rentcastProp) break;
+  if (!rentcastProp && lookupSeed) {
+    const near = await fetchRentcastPropertyNearCoords(lookupSeed.lat, lookupSeed.lng);
+    if (near && isSameStreetProperty(q, near.formattedAddress || near.addressLine1)) {
+      rentcastProp = near;
+    } else if (near) {
+      console.warn(
+        `[Address Search] Ignoring near-coords mismatch: searched "${q}" but nearest was "${near.formattedAddress}"`
+      );
     }
   }
 
-  const rentcastCoords = coordsFromRentcast(rentcastProp);
-  const provided = coordsFromProvided(seedLat, seedLng);
+  // Never keep a parcel that doesn't match the searched street number/name.
+  if (rentcastProp && !isSameStreetProperty(q, rentcastProp.formattedAddress || rentcastProp.addressLine1)) {
+    console.warn(
+      `[Address Search] Dropping RentCast mismatch: searched "${q}" vs "${rentcastProp.formattedAddress}"`
+    );
+    rentcastProp = null;
+  }
+
+  // If parcel centroid drifted far from a precise geocode, keep geocode identity.
+  let rentcastCoords = coordsFromRentcast(rentcastProp);
+  if (
+    rentcastProp &&
+    rentcastCoords &&
+    geocoded &&
+    (geocoded.locationType === 'ROOFTOP' || geocoded.locationType === 'RANGE_INTERPOLATED') &&
+    !isWithinMeters(geocoded, rentcastCoords, MAX_PARCEL_DRIFT_METERS)
+  ) {
+    console.warn(
+      `[Address Search] RentCast parcel too far from geocode (${Math.round(
+        calculateDistanceMeters(geocoded.lat, geocoded.lng, rentcastCoords.lat, rentcastCoords.lng)
+      )}m) for "${q}" — keeping searched address identity without neighbor snap`
+    );
+    // Keep ownership/record if street matched; still prefer geocode/solar for pin.
+    rentcastCoords = null;
+  }
+
+  // Seed Solar from the exact parcel/geocode — not a rejected neighbor.
   const seed = rentcastCoords || geocoded || provided;
 
   let solarCenter = null;
   if (seed) {
     solarCenter = await fetchSolarBuildingCenter(seed.lat, seed.lng);
+    if (solarCenter && !isWithinMeters(seed, solarCenter, MAX_SOLAR_DRIFT_METERS)) {
+      console.warn(
+        `[Address Search] Solar building center drifted ${Math.round(
+          calculateDistanceMeters(seed.lat, seed.lng, solarCenter.lat, solarCenter.lng)
+        )}m from seed for "${q}" — using seed coords`
+      );
+      solarCenter = null;
+    }
   }
 
   const best = pickBestPropertyCoordinates([
@@ -248,13 +415,30 @@ export async function resolveExactAddressSearch(query, { seedLat = null, seedLng
   ]);
   if (!best) return null;
 
+  const formattedAddress =
+    rentcastProp?.formattedAddress || geocoded?.formattedAddress || q;
+
+  // Final hard gate: never return a different street than the user searched.
+  const gate = assertAddressMatchesSearch(q, formattedAddress);
+  if (!gate.ok && rentcastProp) {
+    console.warn(
+      `[Address Search] Final gate dropped RentCast identity: ${gate.reason} (${gate.searched} → ${gate.resolved})`
+    );
+    rentcastProp = null;
+  }
+
   return {
     lat: best.lat,
     lng: best.lng,
     source: best.source,
     locationType: best.locationType || null,
     formattedAddress: rentcastProp?.formattedAddress || geocoded?.formattedAddress || q,
-    rentcastProp
+    rentcastProp,
+    searchQuery: q,
+    addressMatchVerified: assertAddressMatchesSearch(
+      q,
+      rentcastProp?.formattedAddress || geocoded?.formattedAddress || q
+    ).ok,
   };
 }
 
