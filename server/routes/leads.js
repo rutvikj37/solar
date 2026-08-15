@@ -19,7 +19,8 @@ import {
   buildGoogleSatelliteStaticUrl,
   fetchGoogleSatelliteImage
 } from '../services/propertyService.js';
-import { isMissingField, isPlaceholderOwnerName } from '../services/contactEnrichmentService.js';
+import { isMissingField, isPlaceholderOwnerName, hasUsableEnrichedContacts } from '../services/contactEnrichmentService.js';
+import { getCachedEnrichment } from '../services/enrichmentCache.js';
 import { enrollLeadInActiveCampaigns } from '../services/drip/dripEngine.js';
 import {
   renderLeadSharePdf,
@@ -56,13 +57,21 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   const packageRecord = creditCheck.packageRecord || packages[0] || null;
 
   const cached = getCachedRentcastRecord(propertyId);
-  const full = await retrievePropertyDetails(
-    propertyId,
-    detail?.lat,
-    detail?.lng,
-    cached,
-    { skipContacts: false, bypassCache: true }
-  );
+  const cachedEnrichment = getCachedEnrichment(propertyId, detail?.lat, detail?.lng);
+  let full;
+  if (cachedEnrichment && hasUsableEnrichedContacts(cachedEnrichment)) {
+    console.log(`[Lead Generate] Reusing enrichment cache (skip Tracerfy) for ${propertyId}`);
+    full = cachedEnrichment;
+  } else {
+    // Prefer enrichment cache when present; only force contacts path once per property.
+    full = await retrievePropertyDetails(
+      propertyId,
+      detail?.lat,
+      detail?.lng,
+      cached,
+      { skipContacts: false, bypassCache: false }
+    );
+  }
   if (!full?.address) {
     return res.status(400).json({ error: 'Could not resolve this property' });
   }

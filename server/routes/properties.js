@@ -6,7 +6,6 @@ import {
   mapRentcastToListItem,
   filterPropertiesByQuery,
   retrievePropertyDetails,
-  enrichDetailsWithContacts,
   toLockedPreview,
   mockAddresses,
   buildGoogleSatelliteStaticUrl,
@@ -33,14 +32,48 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
   let existing = null;
   if (req.user?.id && preview?.address) {
     const [rows] = await db.query(
-      'SELECT id FROM leads WHERE user_id = ? AND address = ? LIMIT 1',
+      `SELECT id, owner_name, phone, phone_type, email, email_status, linkedin,
+              mailing_address, property_value, owner_occupied, parcel_id
+       FROM leads WHERE user_id = ? AND address = ? LIMIT 1`,
       [req.user.id, preview.address]
     );
     existing = rows[0] || null;
   }
   if (existing) {
-    const full = await enrichDetailsWithContacts({ ...preview });
-    return res.json({ ...full, unlocked: true, leadId: existing.id });
+    // Reuse DB contacts — do not spend another Tracerfy credit on re-open.
+    return res.json({
+      ...preview,
+      unlocked: true,
+      leadId: existing.id,
+      propertyData: {
+        ...(preview.propertyData || {}),
+        ownerName: existing.owner_name || preview.propertyData?.ownerName || null,
+        ownerOccupied:
+          existing.owner_occupied === 1
+            ? 'Yes'
+            : existing.owner_occupied === 0
+              ? 'No'
+              : preview.propertyData?.ownerOccupied || null,
+        mailingAddress: existing.mailing_address || preview.propertyData?.mailingAddress || null,
+        propertyValue: existing.property_value
+          ? `$${Number(existing.property_value).toLocaleString('en-US')}`
+          : preview.propertyData?.propertyValue || null,
+        parcelNumber: existing.parcel_id || preview.propertyData?.parcelNumber || null,
+      },
+      contact: {
+        phone: existing.phone || null,
+        email: existing.email || null,
+        linkedIn: existing.linkedin || null,
+        phoneType: existing.phone_type || null,
+        emailStatus: existing.email_status || null,
+        confidenceScore: existing.phone || existing.email ? 'Saved lead' : null,
+      },
+      enrichmentMeta: {
+        ...(preview.enrichmentMeta || {}),
+        contactSource: 'lead-db',
+        skipContacts: false,
+      },
+    });
   }
   return res.json({ ...toLockedPreview(preview), unlocked: false });
 }

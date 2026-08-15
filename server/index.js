@@ -44,6 +44,32 @@ const app = express();
 const PORT = process.env.PORT || 5002;
 const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
+// Trust a fixed number of proxy hops so req.ip / express-rate-limit honor X-Forwarded-For
+// behind nginx. Prefer hop count (e.g. 1) over `true` to avoid client IP spoofing.
+// TRUST_PROXY: unset → 1 in production, false in dev; or 0/false/off, true→1, or integer hops.
+function resolveTrustProxy() {
+  const raw = process.env.TRUST_PROXY;
+  if (raw === undefined || String(raw).trim() === '') {
+    return isProd ? 1 : false;
+  }
+  const normalized = String(raw).trim().toLowerCase();
+  if (normalized === 'false' || normalized === '0' || normalized === 'off') {
+    return false;
+  }
+  if (normalized === 'true') {
+    return 1;
+  }
+  const hops = Number(raw);
+  if (Number.isInteger(hops) && hops >= 0) {
+    return hops;
+  }
+  return isProd ? 1 : false;
+}
+const trustProxy = resolveTrustProxy();
+if (trustProxy !== false) {
+  app.set('trust proxy', trustProxy);
+}
+
 const allowedOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
   .map((s) => s.trim())

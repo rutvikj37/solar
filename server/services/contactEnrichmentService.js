@@ -1,9 +1,58 @@
 import { VerifaliaRestClient } from '../vendor/verifalia-js-sdk-master/node/cjs/index.js';
 import { trackedFetch, trackApiCall } from './apiUsage.js';
+import { streetAddressKey } from './coordinateService.js';
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 };
+
+/** In-memory Tracerfy lookup cache — one paid hit per address within TTL. */
+const TRACERFY_HIT_TTL_MS = Number(process.env.TRACERFY_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;
+const TRACERFY_MISS_TTL_MS = Number(process.env.TRACERFY_MISS_TTL_MS) || 6 * 60 * 60 * 1000;
+const TRACERFY_CACHE_MAX = Number(process.env.TRACERFY_CACHE_MAX) || 2000;
+const tracerfyCache = new Map(); // key -> { person|null, expiresAt }
+
+export function tracerfyCacheKey(address, city, state, zip) {
+  const street = streetAddressKey(address);
+  const streetPart = street ? `${street.number}|${street.street}` : String(address || '').toLowerCase().trim();
+  return [
+    streetPart,
+    String(city || '').toLowerCase().trim(),
+    String(state || '').toLowerCase().trim(),
+    String(zip || '').replace(/\D/g, '').slice(0, 5),
+  ].join('::');
+}
+
+function getCachedTracerfy(key) {
+  if (!key) return undefined;
+  const hit = tracerfyCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() > hit.expiresAt) {
+    tracerfyCache.delete(key);
+    return undefined;
+  }
+  return hit.person;
+}
+
+function setCachedTracerfy(key, person) {
+  if (!key) return;
+  if (tracerfyCache.size >= TRACERFY_CACHE_MAX) {
+    let i = 0;
+    const drop = Math.ceil(TRACERFY_CACHE_MAX * 0.1);
+    for (const k of tracerfyCache.keys()) {
+      tracerfyCache.delete(k);
+      if (++i >= drop) break;
+    }
+  }
+  tracerfyCache.set(key, {
+    person: person || null,
+    expiresAt: Date.now() + (person ? TRACERFY_HIT_TTL_MS : TRACERFY_MISS_TTL_MS),
+  });
+}
+
+export function clearTracerfyCache() {
+  tracerfyCache.clear();
+}
 
 export async function standardizeAddress(addressStr) {
   if (!addressStr || addressStr === 'Not Available') {
@@ -157,6 +206,19 @@ export function isMissingField(val) {
   return s === '' || s === 'Not Available' || s.toLowerCase() === 'n/a';
 }
 
+/** True when enrichment already has usable skip-trace contacts (skip another Tracerfy call). */
+export function hasUsableEnrichedContacts(details) {
+  if (!details?.contact) return false;
+  const phone = details.contact.phone;
+  const email = details.contact.email;
+  const source = details.enrichmentMeta?.contactSource || '';
+  const hasPhone = !isMissingField(phone);
+  const hasEmail = !isMissingField(email);
+  if (hasPhone || hasEmail) return true;
+  // Explicit prior miss/complete enrichment — do not burn another credit immediately
+  return typeof source === 'string' && source.includes('tracerfy');
+}
+
 export function isPlaceholderOwnerName(name) {
   if (isMissingField(name)) return true;
   const n = String(name).trim().toLowerCase();
@@ -211,6 +273,15 @@ export async function lookupContactsWithTracerfy(address, city, state, zip, atte
   if (!isKeyValid(apiKey)) return null;
   if (!address) return null;
 
+  const cacheKey = tracerfyCacheKey(address, city, state, zip);
+  const cached = getCachedTracerfy(cacheKey);
+  if (cached !== undefined) {
+    console.log(
+      `[Tracerfy API] Cache ${cached ? 'HIT' : 'MISS'} (${attemptLabel}): ${address}`
+    );
+    return cached;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number(process.env.TRACERFY_TIMEOUT_MS) || 5000);
 
@@ -238,12 +309,15 @@ export async function lookupContactsWithTracerfy(address, city, state, zip, atte
       if (data.hit && Array.isArray(data.persons) && data.persons[0]) {
         const person = data.persons[0];
         console.log(`[Tracerfy API] Skip-trace hit (${attemptLabel}) for owner: ${person.full_name}`);
+        setCachedTracerfy(cacheKey, person);
         return person;
       }
       console.log(`[Tracerfy API] Skip-trace miss (${attemptLabel}).`);
+      setCachedTracerfy(cacheKey, null);
     } else {
       const errText = await response.text();
       console.error(`[Tracerfy API] Request failed (${attemptLabel}) status ${response.status}: ${errText}`);
+      // Do not cache hard failures (auth/rate-limit) so a later unlock can retry.
     }
   } catch (err) {
     const reason = err.name === 'AbortError' ? 'timeout' : (err.message || err);
@@ -320,8 +394,9 @@ export async function enrichOwnerContacts({ address, locationInfo, propertyDetai
   const hasLocationFields = !!(locationInfo.city && locationInfo.state && locationInfo.zip);
 
   if (isKeyValid(process.env.TRACERFY_API_KEY)) {
+    const primaryStreet = streetFromStandardized || streetFromRaw;
     let tracerfyPerson = await lookupContactsWithTracerfy(
-      streetFromStandardized || streetFromRaw,
+      primaryStreet,
       locationInfo.city,
       locationInfo.state,
       locationInfo.zip,
@@ -332,38 +407,33 @@ export async function enrichOwnerContacts({ address, locationInfo, propertyDetai
       !tracerfyPerson ||
       (!(tracerfyPerson.phones && tracerfyPerson.phones[0]) && !(tracerfyPerson.emails && tracerfyPerson.emails[0]));
 
-    if (primaryIncomplete) {
-      let retryCity = locationInfo.city;
-      let retryState = locationInfo.state;
-      let retryZip = locationInfo.zip;
+    // Second paid call only when primary lacked city/state/zip and geocode fills them in.
+    // Do not retry on cosmetic street-string differences (those burned 2 credits per lead).
+    if (primaryIncomplete && !hasLocationFields && (address || locationInfo.standardized)) {
+      const geo = await standardizeAddress(address || locationInfo.standardized);
+      const retryCity = geo.city || locationInfo.city;
+      const retryState = geo.state || locationInfo.state;
+      const retryZip = geo.zip || locationInfo.zip;
+      const gainedLocation = !!(retryCity || retryState || retryZip);
+      const retryKey = tracerfyCacheKey(primaryStreet, retryCity, retryState, retryZip);
+      const primaryKey = tracerfyCacheKey(
+        primaryStreet,
+        locationInfo.city,
+        locationInfo.state,
+        locationInfo.zip
+      );
 
-      if (!hasLocationFields && (address || locationInfo.standardized)) {
-        const geo = await standardizeAddress(address || locationInfo.standardized);
-        if (!retryCity && geo.city) retryCity = geo.city;
-        if (!retryState && geo.state) retryState = geo.state;
-        if (!retryZip && geo.zip) retryZip = geo.zip;
-      }
-
-      const retryStreet =
-        streetFromRaw && streetFromRaw.toLowerCase() !== (streetFromStandardized || '').toLowerCase()
-          ? streetFromRaw
-          : streetFromStandardized;
-
-      const canRetry =
-        retryStreet &&
-        (retryCity || retryState || retryZip) &&
-        (!hasLocationFields ||
-          (streetFromRaw && streetFromRaw.toLowerCase() !== (streetFromStandardized || '').toLowerCase()));
-
-      if (canRetry) {
+      if (gainedLocation && retryKey !== primaryKey) {
         const retryPerson = await lookupContactsWithTracerfy(
-          retryStreet,
+          primaryStreet,
           retryCity,
           retryState,
           retryZip,
           'retry-geocode'
         );
         if (retryPerson) tracerfyPerson = retryPerson;
+      } else {
+        console.log('[Tracerfy API] Skipping retry — no new location context beyond primary.');
       }
     }
 
@@ -373,6 +443,9 @@ export async function enrichOwnerContacts({ address, locationInfo, propertyDetai
       contactDetails = applied.contactDetails;
       if (applied.phoneType !== 'Not Available') phoneType = applied.phoneType;
       contactSource = 'tracerfy';
+    } else {
+      // Mark miss so callers can avoid immediate re-enrich of the same property.
+      contactSource = 'tracerfy-miss';
     }
   } else {
     console.log('[Contact Enrichment] Tracerfy key missing — skipping primary skip-trace.');
