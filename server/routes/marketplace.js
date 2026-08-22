@@ -59,9 +59,17 @@ const inquiryLimiter = rateLimit({
   message: { error: 'Too many inquiries submitted. Please try again later.' },
 });
 
+const reportImageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 150,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many report image requests. Please try again later.' },
+});
+
 const reportPdfLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 40,
+  max: 25,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many report downloads. Please try again later.' },
@@ -164,7 +172,7 @@ router.get('/report/:leadCode', reportPdfLimiter, async (req, res) => {
 });
 
 /** Public satellite rooftop image for homeowner report */
-router.get('/report-image/:leadCode', reportPdfLimiter, async (req, res) => {
+router.get('/report-image/:leadCode', reportImageLimiter, async (req, res) => {
   try {
     const leadCode = String(req.params.leadCode || '').trim();
     if (!leadCode) {
@@ -211,7 +219,7 @@ router.get('/report-image/:leadCode', reportPdfLimiter, async (req, res) => {
     }
 
     res.setHeader('Content-Type', image.contentType);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
     return res.send(image.buffer);
   } catch (err) {
     console.error('[Marketplace] report image failed:', err);

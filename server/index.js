@@ -67,7 +67,10 @@ const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 function resolveTrustProxy() {
   const raw = process.env.TRUST_PROXY;
   if (raw === undefined || String(raw).trim() === '') {
-    return isProd ? 1 : false;
+    if (isProd) return 1;
+    const publicUrl = String(process.env.PUBLIC_URL || '').trim();
+    if (publicUrl.startsWith('https://')) return 1;
+    return false;
   }
   const normalized = String(raw).trim().toLowerCase();
   if (normalized === 'false' || normalized === '0' || normalized === 'off') {
