@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 
 export default function Downloads() {
@@ -66,10 +65,10 @@ export default function Downloads() {
   const estimatedSize = `${Math.max(1, Math.round(leadsCount * 0.45))} KB`;
 
   return (
-    <AppLayout>
+    <>
       <div className="mb-stack-lg">
         <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Downloads</h2>
-        <p className="text-on-surface-variant text-sm mt-1">Access your generated CSV spreadsheets, solar heatmaps, and audit reports.</p>
+        <p className="text-on-surface-variant text-sm mt-1">Export your leads as CSV for CRM import.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-stack-md mb-stack-lg text-xs">
@@ -86,15 +85,15 @@ export default function Downloads() {
             <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-wider mb-1">TOTAL LEADS EXPORTED</p>
             <h3 className="text-2xl font-bold text-primary mt-2 font-mono tabular-nums">{leadsCount} Enriched Rows</h3>
           </div>
-          <p className="text-on-surface-variant text-[10px]">98% verified phone/email contact rate</p>
+          <p className="text-on-surface-variant text-[10px]">Lead credits used for map scans</p>
         </div>
 
         <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
           <div>
             <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-wider mb-1">EXPORT FORMATS</p>
-            <h3 className="text-2xl font-bold text-secondary mt-2">CSV, XLS</h3>
+            <h3 className="text-2xl font-bold text-secondary mt-2">CSV</h3>
           </div>
-          <p className="text-on-surface-variant text-[10px]">Fully compatible with Salesforce & HubSpot</p>
+          <p className="text-on-surface-variant text-[10px]">Compatible with Salesforce & HubSpot import</p>
         </div>
       </div>
 
@@ -161,6 +160,6 @@ export default function Downloads() {
           </table>
         </div>
       </section>
-    </AppLayout>
+    </>
   );
 }

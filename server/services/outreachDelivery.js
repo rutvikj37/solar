@@ -2,6 +2,8 @@
  * Shared SMS / email delivery for outreach and drip automation.
  */
 import { trackedFetch } from './apiUsage.js';
+import { sendUserEmail } from './email/sendUserEmail.js';
+import { getUserEmailConnection } from './email/userEmailConnections.js';
 
 function isKeyValid(key) {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -34,9 +36,10 @@ export async function sendTwilioSms(to, body) {
   return { ok: true, sid: data.sid, simulated: false };
 }
 
-export async function sendEmail(to, subject, body) {
+/** Platform transactional mail (auth verify, password reset). */
+export async function sendPlatformEmail(to, subject, body) {
   const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
-  const from = process.env.OUTREACH_FROM_EMAIL || 'leads@solarvelocity.app';
+  const from = process.env.OUTREACH_FROM_EMAIL || 'noreply@solarx.live';
 
   if (!isKeyValid(apiKey)) {
     return { ok: false, simulated: true, id: `sim_email_${Date.now()}` };
@@ -75,3 +78,24 @@ export async function sendEmail(to, subject, body) {
   }
   return { ok: true, id: response.headers.get('x-message-id') || `sg_${Date.now()}`, simulated: false };
 }
+
+/**
+ * Outreach email — prefers user's connected mailbox, then platform fallback.
+ */
+export async function sendEmail({ userId, to, subject, body }) {
+  const conn = userId ? await getUserEmailConnection(userId) : null;
+  if (conn) {
+    return sendUserEmail(userId, { to, subject, body });
+  }
+
+  const platformResult = await sendPlatformEmail(to, subject, body);
+  if (platformResult.simulated) {
+    const err = new Error('Connect your email in Integrations before sending to leads');
+    err.code = 'EMAIL_NOT_CONNECTED';
+    throw err;
+  }
+  return platformResult;
+}
+
+/** @deprecated Use sendPlatformEmail for auth mail. Kept for ai-calling duplicate. */
+export { sendPlatformEmail as sendEmailLegacy };

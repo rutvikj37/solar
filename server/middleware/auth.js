@@ -36,7 +36,20 @@ export function authenticateToken(req, res, next) {
   jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
     if (err) return res.status(403).json({ error: 'Invalid or expired token' });
     req.user = user;
-    next();
+    attachUserSession(req, res, next);
+  });
+}
+
+/** Attach user when Bearer token is present; continue anonymously otherwise. */
+export function optionalAuthenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return next();
+
+  jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
+    if (err) return next();
+    req.user = user;
+    attachUserSession(req, res, next);
   });
 }
 
@@ -47,7 +60,7 @@ export function authenticateToken(req, res, next) {
 export async function attachUserSession(req, res, next) {
   try {
     const [users] = await db.query(
-      'SELECT id, email, name, role, account_status FROM users WHERE id = ?',
+      'SELECT id, email, name, role, account_status, email_verified, firebase_uid FROM users WHERE id = ?',
       [req.user.id]
     );
     if (users.length === 0) {
@@ -57,6 +70,21 @@ export async function attachUserSession(req, res, next) {
     const status = String(row.account_status || 'active').toLowerCase();
     if (status && status !== 'active') {
       return res.status(403).json({ error: 'Account is not active' });
+    }
+    const path = String(req.originalUrl || '').split('?')[0];
+    const allowedUnverified = [
+      '/api/auth/me',
+      '/api/auth/resend-verification',
+    ];
+    if (
+      Number(row.email_verified) === 0 &&
+      !row.firebase_uid &&
+      !allowedUnverified.some((p) => path.startsWith(p))
+    ) {
+      return res.status(403).json({
+        error: 'Please verify your email before using the app.',
+        code: 'email_unverified',
+      });
     }
     req.user.role = row.role;
     req.user.account_status = row.account_status;
@@ -79,7 +107,7 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
-/** authenticateToken → live DB role/status → requireAdmin */
-export const adminAuth = [authenticateToken, attachUserSession, requireAdmin];
+/** authenticateToken (includes live DB session) → requireAdmin */
+export const adminAuth = [authenticateToken, requireAdmin];
 
 export { JWT_SECRET };

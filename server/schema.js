@@ -41,6 +41,12 @@ export async function migrateSchema() {
   await ensureColumn("users", "auth_provider", "VARCHAR(50) NULL");
   await ensureColumn("users", "job_title", "VARCHAR(255) NULL");
   await ensureColumn("users", "lead_volume", "VARCHAR(100) NULL");
+  await ensureColumn("users", "email_verified", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("users", "email_verification_token", "VARCHAR(128) NULL");
+  await ensureColumn("users", "email_verification_expires", "DATETIME NULL");
+  await ensureColumn("users", "password_reset_token", "VARCHAR(128) NULL");
+  await ensureColumn("users", "password_reset_expires", "DATETIME NULL");
+  await ensureColumn("users", "developer_api_key", "VARCHAR(64) NULL");
 
   // OAuth users may not have a local password
   try {
@@ -686,6 +692,7 @@ export async function migrateSchema() {
   );
   await ensureColumn("ai_call_records", "qa_score", "INT NULL");
   await ensureColumn("ai_call_records", "qa_notes", "JSON NULL");
+  await ensureColumn("ai_call_records", "stream_token", "VARCHAR(64) NULL");
   await ensureColumn(
     "ai_calling_appointments",
     "reminder_24h_sent",
@@ -849,8 +856,284 @@ export async function migrateSchema() {
     "uniq_campaign_lead",
     "campaign_id, lead_id",
   );
+  await ensureUniqueIndex(
+    "invoices",
+    "uniq_razorpay_payment_id",
+    "razorpay_payment_id",
+  );
+
+  // ── SolarXAI Marketplace ──────────────────────────────────────────
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_settings (
+      id INT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
+      default_bid_window_hours INT UNSIGNED NOT NULL DEFAULT 48,
+      default_min_bid DECIMAL(12,2) NOT NULL DEFAULT 25.00,
+      max_expansion_stages INT UNSIGNED NOT NULL DEFAULT 3,
+      expansion_radius_miles_json JSON NULL,
+      min_bid_reduction_pct DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+      low_price_min_bid DECIMAL(12,2) NOT NULL DEFAULT 10.00,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await db.query(`
+    INSERT IGNORE INTO marketplace_settings
+      (id, default_bid_window_hours, default_min_bid, max_expansion_stages,
+       expansion_radius_miles_json, min_bid_reduction_pct, low_price_min_bid)
+    VALUES (1, 48, 25.00, 3, '[25,50,100]', 20.00, 10.00)
+  `);
+  await db.query(`
+    UPDATE marketplace_settings
+    SET default_bid_window_hours = 48
+    WHERE id = 1 AND default_bid_window_hours = 24
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_leads (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      lead_code VARCHAR(32) NOT NULL,
+      status VARCHAR(40) NOT NULL DEFAULT 'new',
+      homeowner_name VARCHAR(255) NOT NULL,
+      phone VARCHAR(64) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      address VARCHAR(512) NOT NULL,
+      zip VARCHAR(20) NULL,
+      city VARCHAR(128) NULL,
+      state VARCHAR(64) NULL,
+      monthly_bill DECIMAL(12,2) NULL,
+      bill_range VARCHAR(64) NULL,
+      homeowner_status VARCHAR(64) NULL,
+      installation_timeline VARCHAR(128) NULL,
+      project_details TEXT NULL,
+      property_type VARCHAR(64) NULL DEFAULT 'residential',
+      opportunity_score INT UNSIGNED NOT NULL DEFAULT 0,
+      score_breakdown JSON NULL,
+      enrichment_json LONGTEXT NULL,
+      estimated_roof_sqft DECIMAL(12,2) NULL,
+      estimated_solar_kw DECIMAL(12,2) NULL,
+      solar_potential_label VARCHAR(64) NULL,
+      existing_solar_likely TINYINT(1) NOT NULL DEFAULT 0,
+      bidding_opens_at DATETIME NULL,
+      bidding_closes_at DATETIME NULL,
+      min_bid DECIMAL(12,2) NOT NULL DEFAULT 25.00,
+      expansion_stage INT UNSIGNED NOT NULL DEFAULT 0,
+      expansion_radius_miles INT UNSIGNED NOT NULL DEFAULT 25,
+      winning_bid_id INT UNSIGNED NULL,
+      winner_user_id INT UNSIGNED NULL,
+      winning_amount DECIMAL(12,2) NULL,
+      unlocked_at DATETIME NULL,
+      crm_lead_id INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_mkt_lead_code (lead_code),
+      INDEX idx_mkt_leads_status (status),
+      INDEX idx_mkt_leads_zip (zip),
+      INDEX idx_mkt_leads_bidding (status, bidding_closes_at),
+      INDEX idx_mkt_leads_winner (winner_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_bids (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      lead_id INT UNSIGNED NOT NULL,
+      installer_user_id INT UNSIGNED NOT NULL,
+      amount DECIMAL(12,2) NOT NULL,
+      status ENUM('active','outbid','won','lost','withdrawn') NOT NULL DEFAULT 'active',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_mkt_bids_lead (lead_id),
+      INDEX idx_mkt_bids_installer (installer_user_id),
+      INDEX idx_mkt_bids_lead_status (lead_id, status),
+      UNIQUE KEY uniq_mkt_bid_active (lead_id, installer_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS installer_profiles (
+      user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+      company_name VARCHAR(255) NULL,
+      verification_status ENUM('pending','verified','rejected','suspended') NOT NULL DEFAULT 'pending',
+      notes TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_installer_verify (verification_status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS installer_service_areas (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      zip VARCHAR(20) NULL,
+      state VARCHAR(64) NULL,
+      radius_miles INT UNSIGNED NULL,
+      center_lat DECIMAL(10,7) NULL,
+      center_lng DECIMAL(10,7) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_isa_user (user_id),
+      INDEX idx_isa_zip (zip),
+      INDEX idx_isa_state (state)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_wallets (
+      user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+      balance DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_wallet_ledger (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      entry_type ENUM('top_up','win_debit','refund','admin_adjust') NOT NULL,
+      amount DECIMAL(14,2) NOT NULL,
+      balance_after DECIMAL(14,2) NOT NULL,
+      lead_id INT UNSIGNED NULL,
+      dispute_id INT UNSIGNED NULL,
+      admin_id INT UNSIGNED NULL,
+      note VARCHAR(512) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_mkt_ledger_user (user_id),
+      INDEX idx_mkt_ledger_lead (lead_id),
+      INDEX idx_mkt_ledger_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS marketplace_disputes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      lead_id INT UNSIGNED NOT NULL,
+      installer_user_id INT UNSIGNED NOT NULL,
+      claim_type ENUM('wrong_number','duplicate','already_has_solar','invalid_property','wrong_property_type') NOT NULL,
+      details TEXT NULL,
+      status ENUM('pending','approved','denied') NOT NULL DEFAULT 'pending',
+      refund_amount DECIMAL(12,2) NULL,
+      reviewed_by INT UNSIGNED NULL,
+      review_note TEXT NULL,
+      reviewed_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_mkt_disputes_lead (lead_id),
+      INDEX idx_mkt_disputes_status (status),
+      INDEX idx_mkt_disputes_installer (installer_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ── CRM OAuth integrations (HubSpot / Salesforce) ─────
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_crm_connections (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      provider VARCHAR(32) NOT NULL,
+      access_token TEXT NULL,
+      refresh_token TEXT NULL,
+      token_expires_at DATETIME NULL,
+      instance_url VARCHAR(512) NULL,
+      portal_id VARCHAR(64) NULL,
+      webhook_url VARCHAR(1024) NULL,
+      metadata JSON NULL,
+      connected_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_user_crm_provider (user_id, provider),
+      INDEX idx_user_crm_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_crm_oauth_states (
+      state VARCHAR(64) NOT NULL PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      provider VARCHAR(32) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      return_to VARCHAR(512) NULL,
+      INDEX idx_crm_oauth_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await ensureColumn('user_crm_oauth_states', 'return_to', 'VARCHAR(512) NULL');
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS platform_crm_settings (
+      id INT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
+      hubspot_client_id VARCHAR(255) NULL,
+      hubspot_client_secret VARCHAR(512) NULL,
+      salesforce_client_id VARCHAR(255) NULL,
+      salesforce_client_secret VARCHAR(512) NULL,
+      oauth_public_url VARCHAR(512) NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await db.query(`INSERT IGNORE INTO platform_crm_settings (id) VALUES (1)`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS lead_crm_pushes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      lead_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      provider VARCHAR(32) NOT NULL,
+      external_id VARCHAR(128) NULL,
+      external_url VARCHAR(512) NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'success',
+      error_message TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_lead_crm_pushes_lead (lead_id),
+      INDEX idx_lead_crm_pushes_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ── User email integrations (Gmail / Outlook / SMTP) ───────────────
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS platform_email_settings (
+      id INT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
+      google_client_id VARCHAR(255) NULL,
+      google_client_secret VARCHAR(512) NULL,
+      microsoft_client_id VARCHAR(255) NULL,
+      microsoft_client_secret VARCHAR(512) NULL,
+      oauth_public_url VARCHAR(512) NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await db.query(`INSERT IGNORE INTO platform_email_settings (id) VALUES (1)`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_email_connections (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      provider VARCHAR(32) NOT NULL,
+      access_token TEXT NULL,
+      refresh_token TEXT NULL,
+      token_expires_at DATETIME NULL,
+      from_email VARCHAR(255) NULL,
+      from_name VARCHAR(255) NULL,
+      smtp_host VARCHAR(255) NULL,
+      smtp_port INT UNSIGNED NULL,
+      smtp_secure TINYINT(1) NOT NULL DEFAULT 1,
+      smtp_username VARCHAR(255) NULL,
+      smtp_password_encrypted TEXT NULL,
+      connected_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_user_email (user_id),
+      INDEX idx_user_email_provider (provider)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_email_oauth_states (
+      state VARCHAR(64) NOT NULL PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      provider VARCHAR(32) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      return_to VARCHAR(512) NULL,
+      INDEX idx_email_oauth_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 
   console.log(
-    "[Schema] Migration complete (including AI Calling, Proposals & Drip Automation)",
+    "[Schema] Migration complete (including AI Calling, Proposals, Drip & Marketplace)",
   );
+
+  await ensureColumn("marketplace_leads", "latitude", "DECIMAL(10,7) NULL");
+  await ensureColumn("marketplace_leads", "longitude", "DECIMAL(10,7) NULL");
 }

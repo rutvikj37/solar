@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import WebhookModal from '../components/WebhookModal';
+import CrmPushPanel from '../components/CrmPushPanel';
 import SolarProposalModal from '../components/SolarProposalModal';
 import { API_BASE } from '../config.js';
 import { apiService } from '../services/api.js';
 import { formatLeadGeneratedAt } from '../lib/formatDate.js';
 import { buildLeadMarkerIcon } from '../lib/mapMarkers.js';
-import { getGoogleMapsApiKey } from '../lib/mapsKey.js';
+import { resolveGoogleMapsApiKey } from '../lib/mapsKey.js';
 import FullPageLoader from '../components/FullPageLoader.jsx';
-import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../utils/leadSharePdf.js';
+import { fetchEmailIntegration } from '../lib/emailIntegrations.js';
+import { fetchMe, isAdminRole, peekAuthSessionCache, getToken } from '../lib/auth.js';
 
 const API = API_BASE;
 const STATUS_OPTIONS = ['new', 'contacted', 'appointment', 'proposal', 'won', 'lost', 'qualified', 'in_progress'];
@@ -37,7 +38,7 @@ function loadGoogleMapsScript(apiKey) {
     if (!script) {
       script = document.createElement('script');
       script.id = GMAPS_SCRIPT_ID;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly&loading=async`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -65,7 +66,6 @@ export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [crmStatus, setCrmStatus] = useState('idle');
-  const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [shareError, setShareError] = useState('');
@@ -82,7 +82,10 @@ export default function LeadDetails() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState('');
   const [dripEnrollments, setDripEnrollments] = useState([]);
+  const [emailIntegration, setEmailIntegration] = useState(null);
+  const [emailMsg, setEmailMsg] = useState('');
   const [mapEl, setMapEl] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(() => isAdminRole(peekAuthSessionCache(getToken())?.role));
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
 
@@ -100,7 +103,7 @@ export default function LeadDetails() {
       return;
     }
     try {
-      const key = getGoogleMapsApiKey();
+      const key = await resolveGoogleMapsApiKey();
       if (key && !key.toLowerCase().includes('your_')) {
         setGoogleMapsKey(key);
         try {
@@ -137,6 +140,12 @@ export default function LeadDetails() {
       } catch {
         setDripEnrollments([]);
       }
+
+      try {
+        setEmailIntegration(await fetchEmailIntegration());
+      } catch {
+        setEmailIntegration(null);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -152,6 +161,21 @@ export default function LeadDetails() {
     markerRef.current = null;
     load();
   }, [id, navigate]);
+
+  useEffect(() => {
+    const cached = peekAuthSessionCache(getToken());
+    if (cached) {
+      setIsAdmin(isAdminRole(cached.role));
+      return;
+    }
+    let cancelled = false;
+    fetchMe().then((data) => {
+      if (!cancelled) setIsAdmin(isAdminRole(data?.user?.role));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!showShareMenu) return undefined;
@@ -289,7 +313,7 @@ export default function LeadDetails() {
 
   const handleExport = async () => {
     setCrmStatus('exporting');
-    const res = await fetch(`${API}/api/leads/${id}/export-crm`, {
+    const res = await fetch(`${API}/api/crm/${id}/export-crm`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ target: 'generic' })
@@ -299,17 +323,27 @@ export default function LeadDetails() {
   };
 
   const handleEmail = async () => {
+    if (!emailIntegration?.connected) {
+      setEmailMsg('Connect your email in Integrations first.');
+      return;
+    }
     setBusy('email');
-    const res = await fetch(`${API}/api/outreach/email`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ leadId: Number(id), message: emailBody })
-    });
-    const data = await res.json();
-    if (!res.ok) alert(data.error || 'Email failed');
-    else alert(data.simulated ? 'Email simulated (provider not configured)' : 'Email sent');
-    await load();
-    setBusy('');
+    setEmailMsg('');
+    try {
+      const res = await fetch(`${API}/api/outreach/email`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ leadId: Number(id), message: emailBody }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Email failed');
+      setEmailMsg(data.simulated ? 'Email simulated (check server config)' : 'Email sent from your connected address.');
+      await load();
+    } catch (err) {
+      setEmailMsg(err.message || 'Email failed');
+    } finally {
+      setBusy('');
+    }
   };
 
   const handleBookAppt = async () => {
@@ -481,13 +515,7 @@ export default function LeadDetails() {
               Download Solar Proposal
             </button>
 
-            <button
-              onClick={() => setShowWebhookModal(true)}
-              className="bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-base">hub</span>
-              Push to Webhook
-            </button>
+            <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
 
             <select
               value={lead.status || 'new'}
@@ -661,16 +689,33 @@ export default function LeadDetails() {
             </div>
 
             <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-              <h4 className="font-bold text-white">Send Email</h4>
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="font-bold text-white">Send Email</h4>
+                {emailIntegration?.connected ? (
+                  <span className="text-[10px] text-green-400 font-semibold">
+                    From: {emailIntegration.fromEmail}
+                  </span>
+                ) : (
+                  <Link to="/integrations" className="text-[10px] text-primary font-bold hover:underline">
+                    Connect email →
+                  </Link>
+                )}
+              </div>
               <textarea
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
                 value={emailBody}
                 onChange={(e) => setEmailBody(e.target.value)}
+                disabled={!emailIntegration?.connected}
               />
+              {emailMsg && (
+                <p className={`text-[11px] ${emailMsg.includes('sent') || emailMsg.includes('Sent') ? 'text-green-400' : 'text-red-400'}`}>
+                  {emailMsg}
+                </p>
+              )}
               <button
                 onClick={handleEmail}
-                disabled={busy === 'email'}
-                className="w-full bg-white/10 text-white py-2 rounded-lg font-bold"
+                disabled={busy === 'email' || !emailIntegration?.connected}
+                className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
               >
                 {busy === 'email' ? 'Sending...' : 'Send Email'}
               </button>
@@ -693,20 +738,15 @@ export default function LeadDetails() {
               >
                 Book Appointment
               </button>
-              <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
-                AI Voice Calling →
-              </Link>
+              {isAdmin && (
+                <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
+                  AI Voice Calling →
+                </Link>
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      <WebhookModal
-        show={showWebhookModal}
-        onClose={() => setShowWebhookModal(false)}
-        leadId={lead.id}
-        leadName={lead.owner_name}
-      />
 
       <SolarProposalModal
         show={showProposalModal}

@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import db from "../db.js";
 import {
   authenticateToken,
@@ -9,13 +10,31 @@ import {
 } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { getFirebaseAdmin, isFirebaseAdminConfigured } from "../firebase.js";
+import {
+  getFirebaseWebConfig,
+  loadFirebaseWebConfig,
+} from "../services/firebaseWebConfig.js";
+import {
+  issueEmailVerification,
+  verifyEmailToken,
+  issuePasswordReset,
+  consumePasswordResetToken,
+} from "../services/authEmailService.js";
 
 const router = express.Router();
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const MIN_PASSWORD_LENGTH = 8;
 /** Used for timing-safe login when email is unknown */
 const DUMMY_PASSWORD_HASH =
   "$2a$12$VUg0SW3Zf6naJEmkY4kw7O0avF/KvAE2nAAUY9KwId7RV0H1Vn2eq";
+
+function setAuthNoStore(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+}
 
 function signUserToken(user) {
   return jwt.sign(
@@ -30,6 +49,17 @@ function signUserToken(user) {
   );
 }
 
+function maskApiKey(key) {
+  if (!key) return null;
+  const s = String(key);
+  if (s.length <= 12) return "••••••••";
+  return `${s.slice(0, 8)}••••${s.slice(-4)}`;
+}
+
+function generateDeveloperApiKey() {
+  return `sv_live_${crypto.randomBytes(24).toString("hex")}`;
+}
+
 function publicUser(user) {
   return {
     id: user.id,
@@ -39,6 +69,9 @@ function publicUser(user) {
     role: user.role || "solar_company",
     jobTitle: user.job_title || null,
     leadVolume: user.lead_volume || null,
+    phone: user.phone || null,
+    apiKeyMasked: maskApiKey(user.developer_api_key),
+    hasApiKey: Boolean(user.developer_api_key),
   };
 }
 
@@ -53,6 +86,9 @@ router.post(
     const { name, company, email, password } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: "Missing credentials" });
+    }
+    if (!EMAIL_RE.test(String(email).trim())) {
+      return res.status(400).json({ error: "Invalid email address" });
     }
     if (String(password).length < MIN_PASSWORD_LENGTH) {
       return res
@@ -71,7 +107,7 @@ router.post(
     const passwordHash = await bcrypt.hash(password, salt);
 
     const [result] = await db.query(
-      "INSERT INTO users (name, email, password_hash, company_name) VALUES (?, ?, ?, ?)",
+      "INSERT INTO users (name, email, password_hash, company_name, email_verified) VALUES (?, ?, ?, ?, 0)",
       [name, email, passwordHash, company || null],
     );
     const userId = result.insertId;
@@ -83,13 +119,12 @@ router.post(
       [userId, "Free", initialCredits, initialCredits, "active"],
     );
 
-    const token = jwt.sign(
-      { id: userId, email, name, role: "solar_company" },
-      JWT_SECRET,
-      { algorithm: "HS256", expiresIn: "24h" },
-    );
+    await issueEmailVerification(userId, email, name);
+
+    setAuthNoStore(res);
     res.status(201).json({
-      token,
+      message: "Account created. Check your email to verify before signing in.",
+      emailVerificationRequired: true,
       credits: initialCredits,
       user: { id: userId, name, email, company, role: "solar_company" },
     });
@@ -126,9 +161,103 @@ router.post(
         .json({ error: "Account suspended. Contact support." });
     }
 
+    if (Number(user.email_verified) === 0 && !user.firebase_uid) {
+      return res.status(403).json({
+        error: "Please verify your email before signing in. Check your inbox or request a new link.",
+        code: "email_unverified",
+      });
+    }
+
+    setAuthNoStore(res);
     res.json({
       token: signUserToken(user),
       user: publicUser(user),
+    });
+  }),
+);
+
+// Verify email (public link from email)
+router.post(
+  "/verify-email",
+  asyncHandler(async (req, res) => {
+    const token = req.body?.token || req.query?.token;
+    const result = await verifyEmailToken(token);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    setAuthNoStore(res);
+    res.json({ message: "Email verified. You can sign in now.", email: result.email });
+  }),
+);
+
+router.post(
+  "/resend-verification",
+  asyncHandler(async (req, res) => {
+    const email = String(req.body?.email || "").trim();
+    if (!email || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "Valid email required" });
+    }
+    const [users] = await db.query("SELECT id, name, email_verified FROM users WHERE email = ?", [email]);
+    if (!users.length || Number(users[0].email_verified) === 1) {
+      return res.json({ message: "If an unverified account exists, a new link was sent." });
+    }
+    await issueEmailVerification(users[0].id, email, users[0].name);
+    res.json({ message: "If an unverified account exists, a new link was sent." });
+  }),
+);
+
+router.post(
+  "/forgot-password",
+  asyncHandler(async (req, res) => {
+    const email = String(req.body?.email || "").trim();
+    if (!email || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "Valid email required" });
+    }
+    await issuePasswordReset(email);
+    res.json({ message: "If an account exists for that email, a reset link was sent." });
+  }),
+);
+
+router.post(
+  "/reset-password",
+  asyncHandler(async (req, res) => {
+    const { token, password } = req.body || {};
+    if (!token || !password) {
+      return res.status(400).json({ error: "Token and new password required" });
+    }
+    if (String(password).length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({
+        error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+    const consumed = await consumePasswordResetToken(token);
+    if (!consumed.ok) return res.status(400).json({ error: consumed.error });
+    const salt = await bcrypt.genSalt(12);
+    const passwordHash = await bcrypt.hash(password, salt);
+    await db.query(
+      `UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL, email_verified = 1 WHERE id = ?`,
+      [passwordHash, consumed.userId],
+    );
+    setAuthNoStore(res);
+    res.json({ message: "Password updated. You can sign in now." });
+  }),
+);
+
+// Public Firebase web SDK config (browser-safe; used when VITE_FIREBASE_* is unset)
+router.get(
+  "/firebase-config",
+  asyncHandler(async (req, res) => {
+    setAuthNoStore(res);
+    const cfg = getFirebaseWebConfig() || (await loadFirebaseWebConfig());
+    if (!cfg) {
+      return res.json({ configured: false });
+    }
+    return res.json({
+      configured: true,
+      apiKey: cfg.apiKey,
+      authDomain: cfg.authDomain,
+      projectId: cfg.projectId,
+      storageBucket: cfg.storageBucket,
+      messagingSenderId: cfg.messagingSenderId,
+      appId: cfg.appId,
     });
   }),
 );
@@ -158,11 +287,17 @@ router.post(
 
     let decoded;
     try {
-      decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+      decoded = await firebaseAdmin.auth().verifyIdToken(idToken, true);
     } catch {
       return res
         .status(401)
         .json({ error: "Invalid or expired Firebase token" });
+    }
+
+    if (!decoded.email_verified) {
+      return res.status(403).json({
+        error: "Please verify your email with your social provider before signing in.",
+      });
     }
 
     const firebaseUid = decoded.uid;
@@ -188,16 +323,28 @@ router.post(
       user = users[0];
 
       if (user) {
+        if (user.password_hash && user.firebase_uid && user.firebase_uid !== firebaseUid) {
+          return res.status(409).json({
+            error:
+              "An account with this email already exists. Sign in with your password first.",
+          });
+        }
+        if (user.password_hash && !user.firebase_uid) {
+          return res.status(409).json({
+            error:
+              "An account with this email already exists. Sign in with your password first.",
+          });
+        }
         await db.query(
-          "UPDATE users SET firebase_uid = ?, auth_provider = COALESCE(auth_provider, ?) WHERE id = ?",
+          "UPDATE users SET firebase_uid = ?, auth_provider = COALESCE(auth_provider, ?), email_verified = 1 WHERE id = ?",
           [firebaseUid, authProvider, user.id],
         );
         user.firebase_uid = firebaseUid;
         user.auth_provider = user.auth_provider || authProvider;
       } else {
         const [result] = await db.query(
-          `INSERT INTO users (name, email, password_hash, company_name, firebase_uid, auth_provider)
-         VALUES (?, ?, NULL, NULL, ?, ?)`,
+          `INSERT INTO users (name, email, password_hash, company_name, firebase_uid, auth_provider, email_verified)
+         VALUES (?, ?, NULL, NULL, ?, ?, 1)`,
           [name, email, firebaseUid, authProvider],
         );
         const userId = result.insertId;
@@ -226,6 +373,7 @@ router.post(
         .json({ error: "Account suspended. Contact support." });
     }
 
+    setAuthNoStore(res);
     res.status(isNewUser ? 201 : 200).json({
       token: signUserToken(user),
       user: publicUser(user),
@@ -271,6 +419,7 @@ router.patch(
       return res.status(404).json({ error: "User not found" });
     }
 
+    setAuthNoStore(res);
     res.json({
       user: publicUser(user),
       needsOnboarding: false,
@@ -285,7 +434,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const [users] = await db.query(
       `SELECT id, name, email, company_name as company, phone, role, account_status,
-            job_title, lead_volume
+            job_title, lead_volume, developer_api_key
      FROM users WHERE id = ?`,
       [req.user.id],
     );
@@ -300,10 +449,11 @@ router.get(
     };
 
     const [packages] = await db.query(
-      'SELECT package_id, remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"',
+      'SELECT package_id, remaining_leads, purchased_leads FROM user_packages WHERE user_id = ? AND status = "active"',
       [user.id],
     );
     const credits = packages.length > 0 ? packages[0].remaining_leads : 0;
+    const purchasedLeads = packages.length > 0 ? packages[0].purchased_leads : 0;
     const activePackage = packages.length > 0 ? packages[0].package_id : "Free";
     const unlimitedCredits = isAdminRole(user.role);
 
@@ -324,12 +474,18 @@ router.get(
     );
     const sub = subs[0] || null;
 
+    setAuthNoStore(res);
     res.json({
       user,
       needsOnboarding: !user.company,
       credits: unlimitedCredits ? Math.max(credits, 9999) : credits,
       creditsUsedToday,
       creditCostPerUnlock: 1,
+      scanQuota: {
+        usedToday: creditsUsedToday,
+        remaining: unlimitedCredits ? 9999 : credits,
+        total: unlimitedCredits ? 9999 : Math.max(purchasedLeads, credits + creditsUsedToday),
+      },
       activePackage: unlimitedCredits ? "Admin" : activePackage,
       unlimitedCredits,
       subscription: sub
@@ -343,6 +499,60 @@ router.get(
           }
         : null,
     });
+  }),
+);
+
+// Update profile fields
+router.patch(
+  "/profile",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const { name, phone, jobTitle } = req.body || {};
+    const updates = [];
+    const params = [];
+
+    if (name != null && String(name).trim()) {
+      updates.push("name = ?");
+      params.push(String(name).trim());
+    }
+    if (phone != null) {
+      updates.push("phone = ?");
+      params.push(String(phone).trim() || null);
+    }
+    if (jobTitle != null) {
+      updates.push("job_title = ?");
+      params.push(String(jobTitle).trim() || null);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ error: "No profile fields to update" });
+    }
+
+    params.push(req.user.id);
+    await db.query(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, params);
+
+    const [users] = await db.query(
+      `SELECT id, name, email, company_name as company, phone, role, job_title, lead_volume, developer_api_key
+       FROM users WHERE id = ?`,
+      [req.user.id],
+    );
+    setAuthNoStore(res);
+    res.json({ user: publicUser(users[0]) });
+  }),
+);
+
+// Regenerate developer API key
+router.post(
+  "/regenerate-api-key",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const apiKey = generateDeveloperApiKey();
+    await db.query(`UPDATE users SET developer_api_key = ? WHERE id = ?`, [
+      apiKey,
+      req.user.id,
+    ]);
+    setAuthNoStore(res);
+    res.json({ apiKey, apiKeyMasked: maskApiKey(apiKey) });
   }),
 );
 

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import db from '../db.js';
 import { authenticateToken, adminAuth, JWT_SECRET } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
+import { logger } from '../utils/logger.js';
 import { getUsageSummary } from '../services/apiUsage.js';
 import { createRazorpayPlan, isRazorpayConfigured } from '../services/razorpayBilling.js';
 import {
@@ -12,6 +13,19 @@ import {
   setSubscriptionCredits,
   upsertUserSubscription
 } from './billing.js';
+
+import {
+  getAdminCrmOAuthSettings,
+  saveAdminCrmOAuthSettings,
+  ensurePlatformCrmSettingsLoaded,
+} from '../services/crm/platformCrmSettings.js';
+import { getCrmSetupStatus } from '../services/crm/crmConnections.js';
+import {
+  getAdminEmailOAuthSettings,
+  saveAdminEmailOAuthSettings,
+  ensurePlatformEmailSettingsLoaded,
+} from '../services/email/platformEmailSettings.js';
+import { getEmailSetupStatus } from '../services/email/userEmailConnections.js';
 
 const router = express.Router();
 
@@ -741,15 +755,21 @@ router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
     await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
 
-    console.log(`[admin] password reset for user ${userId} (${users[0].email}) by admin ${req.user.id}`);
+    logger.info(`Admin password reset for user ${userId}`, { adminId: req.user.id, generated: generate });
 
-    res.json({
+    const payload = {
       success: true,
       userId: Number(userId),
       email: users[0].email,
       generated: generate,
-      ...(generate ? { temporaryPassword: password } : {})
-    });
+      message: generate
+        ? 'Temporary password generated. Share it through a secure channel (not returned in API response).'
+        : 'Password updated.',
+    };
+    if (generate && process.env.NODE_ENV !== 'production') {
+      payload.temporaryPasswordDevOnly = password;
+    }
+    res.json(payload);
   } catch (error) {
     console.error('Admin password reset error:', error);
     res.status(500).json({ error: 'Failed to reset password' });
@@ -900,10 +920,61 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
     );
     const [rows] = await db.query('SELECT * FROM packages WHERE id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Plan not found' });
-    res.json(rows[0]);
+    let pkg = rows[0];
+
+    if (
+      Number(pkg.is_subscription) === 1 &&
+      !pkg.razorpay_plan_id &&
+      isRazorpayConfigured() &&
+      Number(pkg.price) > 0 &&
+      pkg.is_active
+    ) {
+      try {
+        const planId = await createRazorpayPlan({
+          name: pkg.name,
+          amountUsd: Number(pkg.price),
+          description: pkg.description || `${pkg.lead_limit} leads/month`,
+        });
+        await db.query('UPDATE packages SET razorpay_plan_id = ? WHERE id = ?', [planId, pkg.id]);
+        pkg.razorpay_plan_id = planId;
+      } catch (rzErr) {
+        console.warn('[Admin] Razorpay plan auto-create on update failed:', rzErr.message);
+      }
+    }
+
+    res.json(pkg);
   } catch (error) {
     console.error('Update plan error:', error);
     res.status(500).json({ error: 'Failed to update plan' });
+  }
+});
+
+router.post('/plans/sync-razorpay', ...adminChain, async (_req, res) => {
+  try {
+    if (!isRazorpayConfigured()) {
+      return res.status(400).json({ error: 'Razorpay is not configured' });
+    }
+    const [packages] = await db.query(
+      `SELECT * FROM packages WHERE is_active = 1 AND is_subscription = 1 AND (razorpay_plan_id IS NULL OR razorpay_plan_id = '')`,
+    );
+    const synced = [];
+    for (const pkg of packages) {
+      if (!Number(pkg.price)) continue;
+      try {
+        const planId = await createRazorpayPlan({
+          name: pkg.name,
+          amountUsd: Number(pkg.price),
+          description: pkg.description || `${pkg.lead_limit} leads/month`,
+        });
+        await db.query('UPDATE packages SET razorpay_plan_id = ? WHERE id = ?', [planId, pkg.id]);
+        synced.push({ id: pkg.id, razorpay_plan_id: planId });
+      } catch (err) {
+        synced.push({ id: pkg.id, error: err.message });
+      }
+    }
+    res.json({ ok: true, synced, count: synced.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to sync Razorpay plans' });
   }
 });
 
@@ -948,9 +1019,63 @@ router.get('/inquiries', ...adminChain, async (req, res) => {
   }
 });
 
+router.get('/crm-oauth-settings', ...adminChain, async (_req, res) => {
+  try {
+    await ensurePlatformCrmSettingsLoaded();
+    const settings = await getAdminCrmOAuthSettings();
+    const setup = getCrmSetupStatus(true);
+    res.json({ ...settings, ...setup });
+  } catch (error) {
+    console.error('Admin CRM OAuth settings GET error:', error);
+    res.status(500).json({ error: 'Failed to load CRM OAuth settings' });
+  }
+});
+
+router.put('/crm-oauth-settings', ...adminChain, async (req, res) => {
+  try {
+    const settings = await saveAdminCrmOAuthSettings(req.body || {});
+    const setup = getCrmSetupStatus(true);
+    res.json({ ...settings, ...setup });
+  } catch (error) {
+    console.error('Admin CRM OAuth settings PUT error:', error);
+    res.status(500).json({ error: 'Failed to save CRM OAuth settings' });
+  }
+});
+
+router.get('/email-oauth-settings', ...adminChain, async (_req, res) => {
+  try {
+    await ensurePlatformEmailSettingsLoaded();
+    const settings = await getAdminEmailOAuthSettings();
+    const setup = getEmailSetupStatus(true);
+    res.json({ ...settings, ...setup });
+  } catch (error) {
+    console.error('Admin email OAuth settings GET error:', error);
+    res.status(500).json({ error: 'Failed to load email OAuth settings' });
+  }
+});
+
+router.put('/email-oauth-settings', ...adminChain, async (req, res) => {
+  try {
+    const settings = await saveAdminEmailOAuthSettings(req.body || {});
+    const setup = getEmailSetupStatus(true);
+    res.json({ ...settings, ...setup });
+  } catch (error) {
+    console.error('Admin email OAuth settings PUT error:', error);
+    res.status(500).json({ error: 'Failed to save email OAuth settings' });
+  }
+});
+
 router.post('/bootstrap', authenticateToken, async (req, res) => {
   if (process.env.ALLOW_ADMIN_BOOTSTRAP !== '1') {
     return res.status(403).json({ error: 'Admin bootstrap is disabled' });
+  }
+  const expectedSecret = String(process.env.ADMIN_BOOTSTRAP_SECRET || '').trim();
+  const providedSecret = String(req.body?.bootstrapSecret || req.headers['x-bootstrap-secret'] || '').trim();
+  if (!expectedSecret || expectedSecret.length < 16) {
+    return res.status(403).json({ error: 'ADMIN_BOOTSTRAP_SECRET must be set (≥16 chars) to use bootstrap' });
+  }
+  if (providedSecret !== expectedSecret) {
+    return res.status(403).json({ error: 'Invalid bootstrap secret' });
   }
   try {
     const [admins] = await db.query(

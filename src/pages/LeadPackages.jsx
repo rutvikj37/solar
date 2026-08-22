@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
+import { openRazorpayOrderCheckout } from '../lib/razorpayCheckout.js';
 
 export default function LeadPackages() {
   const [packages, setPackages] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('');
   const [purchasing, setPurchasing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [checkoutError, setCheckoutError] = useState('');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -47,34 +48,69 @@ export default function LeadPackages() {
     }
     setPurchasing(true);
     setSelectedPlan(pkgId);
+    setCheckoutError('');
     try {
       const res = await fetch(`${API_BASE}/api/billing/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ packageId: pkgId })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Checkout failed');
-      if (data.mode === 'razorpay' && data.url) {
-        sessionStorage.setItem('pending_razorpay_sub', data.subscriptionId || '');
-        window.location.href = data.url;
+      if (data.mode === 'razorpay' && data.orderId && data.keyId) {
+        try {
+          const result = await openRazorpayOrderCheckout({
+            keyId: data.keyId,
+            orderId: data.orderId,
+            amount: data.amount,
+            currency: data.currency || 'USD',
+            name: 'SolarX.live',
+            description: data.description || `${data.packName || 'Monthly plan'} (USD)`,
+            prefill: data.prefill || {},
+            onSuccess: async (response) => {
+              const confirmRes = await fetch(`${API_BASE}/api/billing/confirm-razorpay-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const confirmData = await confirmRes.json().catch(() => ({}));
+              if (!confirmRes.ok) throw new Error(confirmData.error || 'Could not confirm plan payment');
+              navigate('/billing?success=1');
+            },
+            onFailure: ({ message }) => setCheckoutError(message),
+          });
+          if (result?.dismissed) {
+            setCheckoutError('Checkout canceled — no changes were made.');
+          }
+        } catch (err) {
+          setCheckoutError(err.message || 'Payment failed');
+        } finally {
+          setPurchasing(false);
+        }
         return;
       }
       if (data.mode === 'stripe' && data.url) {
         window.location.href = data.url;
         return;
       }
-      alert(data.message || 'Subscription activated');
+      if (data.mode === 'dev') {
+        navigate('/billing?success=1');
+        return;
+      }
       navigate('/billing?success=1');
     } catch (err) {
-      alert(err.message);
+      setCheckoutError(err.message);
     } finally {
       setPurchasing(false);
     }
   };
 
   return (
-    <AppLayout>
+    <>
       <div className="relative w-full text-center py-10 md:py-16">
         <h2 className="font-headline-xl text-3xl md:text-headline-xl font-bold premium-gradient-text">
           Monthly Plans
@@ -83,6 +119,12 @@ export default function LeadPackages() {
           1 lead unlock = 1 credit. Plans renew every month — pay via Razorpay (USD cards). Credits refresh each billing cycle.
         </p>
       </div>
+
+      {checkoutError && (
+        <div className="max-w-2xl mx-auto mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          {checkoutError}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center text-on-surface-variant py-12">Loading plans…</div>
@@ -149,6 +191,6 @@ export default function LeadPackages() {
           )}
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

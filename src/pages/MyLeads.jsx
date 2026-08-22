@@ -5,8 +5,15 @@ import LeadStatusBadge from '../components/leads/LeadStatusBadge';
 import LeadScoreBadge from '../components/leads/LeadScoreBadge';
 import LeadAvatar from '../components/leads/LeadAvatar';
 import LeadEmptyState from '../components/leads/LeadEmptyState';
+import {
+  CRM_PROVIDER_META,
+  fetchCrmIntegrations,
+  getConnectedProviders,
+  pushBulkLeadsToCrm,
+} from '../lib/crmIntegrations.js';
 import { API_BASE } from '../config.js';
 import { formatLeadGeneratedAt } from '../lib/formatDate.js';
+import ApiErrorBanner from '../components/ApiErrorBanner.jsx';
 import {
   STATUS_OPTIONS,
   FILTER_TABS,
@@ -38,6 +45,7 @@ export default function MyLeads() {
   const [leads, setLeads] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTab, setFilterTab] = useState('All');
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [summary, setSummary] = useState({});
@@ -45,6 +53,9 @@ export default function MyLeads() {
   const [pageSize, setPageSize] = useState(25);
   const [sortKey, setSortKey] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
+  const [crmIntegrations, setCrmIntegrations] = useState(null);
+  const [bulkPushBusy, setBulkPushBusy] = useState('');
+  const [bulkPushMessage, setBulkPushMessage] = useState('');
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,6 +68,7 @@ export default function MyLeads() {
       return;
     }
     try {
+      setLoadError('');
       const [leadsRes, sumRes] = await Promise.all([
         fetch(`${API}/api/leads`, { headers: { Authorization: `Bearer ${t}` } }),
         fetch(`${API}/api/leads/pipeline/summary`, { headers: { Authorization: `Bearer ${t}` } }),
@@ -65,7 +77,7 @@ export default function MyLeads() {
       setLeads(await leadsRes.json());
       if (sumRes.ok) setSummary(await sumRes.json());
     } catch (error) {
-      console.error(error);
+      setLoadError(error.message || 'Failed to load leads');
     } finally {
       setLoading(false);
     }
@@ -74,6 +86,12 @@ export default function MyLeads() {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads, location.key]);
+
+  useEffect(() => {
+    fetchCrmIntegrations()
+      .then(setCrmIntegrations)
+      .catch(() => setCrmIntegrations(null));
+  }, [location.key]);
 
   useEffect(() => {
     const onFocus = () => fetchLeads();
@@ -162,6 +180,24 @@ export default function MyLeads() {
     }
   };
 
+  const connectedCrms = useMemo(() => getConnectedProviders(crmIntegrations), [crmIntegrations]);
+
+  const handleBulkPush = async (provider) => {
+    if (selectedIds.length === 0) return;
+    setBulkPushBusy(provider);
+    setBulkPushMessage('');
+    try {
+      const result = await pushBulkLeadsToCrm(selectedIds.slice(0, 50), provider);
+      setBulkPushMessage(
+        `${result.success} pushed to ${CRM_PROVIDER_META[provider].label}${result.failed ? `, ${result.failed} failed` : ''}`,
+      );
+    } catch (err) {
+      setBulkPushMessage(err.message);
+    } finally {
+      setBulkPushBusy('');
+    }
+  };
+
   const handleExport = async () => {
     try {
       const { downloadLeadsCsv } = await import('../lib/downloadLeadsCsv.js');
@@ -178,6 +214,7 @@ export default function MyLeads() {
 
   return (
     <>
+      <ApiErrorBanner error={loadError} onRetry={fetchLeads} />
       {/* Page header */}
       <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-4">
         <div className="space-y-0.5">
@@ -279,11 +316,11 @@ export default function MyLeads() {
 
           {/* Bulk actions */}
           {selectedIds.length > 0 && (
-            <div className="sticky top-[72px] z-20 mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/25 backdrop-blur-xl">
-              <span className="text-xs font-bold text-red-300">
+            <div className="sticky top-[72px] z-20 mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-primary/10 border border-primary/25 backdrop-blur-xl">
+              <span className="text-xs font-bold text-primary">
                 {selectedIds.length} lead{selectedIds.length === 1 ? '' : 's'} selected
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 <button
                   type="button"
                   onClick={() => setSelectedIds([])}
@@ -291,6 +328,33 @@ export default function MyLeads() {
                 >
                   Clear
                 </button>
+                {connectedCrms.length === 0 ? (
+                  <Link
+                    to="/integrations"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-secondary/20 text-secondary border border-secondary/30 text-xs font-bold hover:bg-secondary/30 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-sm">link</span>
+                    Connect CRM
+                  </Link>
+                ) : (
+                  connectedCrms.map((provider) => {
+                    const meta = CRM_PROVIDER_META[provider];
+                    return (
+                      <button
+                        key={provider}
+                        type="button"
+                        onClick={() => handleBulkPush(provider)}
+                        disabled={!!bulkPushBusy}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-xs font-bold disabled:opacity-50 ${meta.btnClass}`}
+                      >
+                        <span className="material-symbols-outlined text-sm">sync_alt</span>
+                        {bulkPushBusy === provider
+                          ? 'Pushing…'
+                          : `Push to ${meta.shortLabel}`}
+                      </button>
+                    );
+                  })
+                )}
                 <button
                   type="button"
                   onClick={handleBulkDelete}
@@ -300,6 +364,9 @@ export default function MyLeads() {
                   Delete selected
                 </button>
               </div>
+              {bulkPushMessage && (
+                <p className="text-[10px] text-green-400 w-full text-right">{bulkPushMessage}</p>
+              )}
             </div>
           )}
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 
 const API = API_BASE;
@@ -96,7 +95,7 @@ export default function Appointments() {
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="mb-stack-lg">
         <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Appointments</h2>
         <p className="text-on-surface-variant text-sm mt-1">Book site surveys and track visits from unlocked leads.</p>
@@ -214,6 +213,6 @@ export default function Appointments() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

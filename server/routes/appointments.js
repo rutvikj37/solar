@@ -2,13 +2,13 @@ import express from 'express';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { logActivity } from './crm.js';
+import { fetchLeadForUser } from '../utils/leadAccess.js';
 
 const router = express.Router();
 
-async function assertLeadOwnership(leadId, userId) {
+async function assertLeadOwnership(leadId, userId, role) {
   if (!leadId) return null;
-  const [rows] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [leadId, userId]);
-  return rows[0] || null;
+  return fetchLeadForUser(leadId, userId, role);
 }
 
 // List appointments
@@ -38,7 +38,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
   try {
     if (leadId) {
-      const lead = await assertLeadOwnership(leadId, req.user.id);
+      const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
     }
 

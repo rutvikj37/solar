@@ -1,15 +1,15 @@
 import express from 'express';
-import crypto from 'crypto';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { logActivity } from './crm.js';
 import { sendTwilioSms, sendEmail } from '../services/outreachDelivery.js';
+import { requireTwilioSignature } from '../utils/twilioVerify.js';
+import { fetchLeadForUser } from '../utils/leadAccess.js';
 
 const router = express.Router();
 
-async function assertLeadOwnership(leadId, userId) {
-  const [rows] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [leadId, userId]);
-  return rows[0] || null;
+async function assertLeadOwnership(leadId, userId, role) {
+  return fetchLeadForUser(leadId, userId, role);
 }
 
 function defaultSolarScript(lead) {
@@ -20,47 +20,9 @@ function digitsOnly(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-function isTwilioAuthConfigured() {
-  const token = process.env.TWILIO_AUTH_TOKEN || '';
-  return token && !token.toLowerCase().includes('your_');
-}
-
-/** Validate X-Twilio-Signature (HMAC-SHA1) when auth token is configured. */
-function verifyTwilioSignature(req) {
-  if (!isTwilioAuthConfigured()) {
-    return process.env.NODE_ENV !== 'production';
-  }
-  const signature = req.headers['x-twilio-signature'];
-  if (!signature) return false;
-
-  const proto = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  const url = `${proto}://${host}${req.originalUrl}`;
-
-  const params = req.body && typeof req.body === 'object' ? req.body : {};
-  const sortedKeys = Object.keys(params).sort();
-  let data = url;
-  for (const key of sortedKeys) {
-    data += key + String(params[key] ?? '');
-  }
-
-  const expected = crypto
-    .createHmac('sha1', process.env.TWILIO_AUTH_TOKEN)
-    .update(Buffer.from(data, 'utf-8'))
-    .digest('base64');
-
-  try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
-    return false;
-  }
-}
-
 // Twilio inbound SMS → record on the server so drip stop-on-reply works without the UI open.
 router.post('/webhooks/sms', async (req, res) => {
-  if (!verifyTwilioSignature(req)) {
-    return res.status(403).type('text/plain').send('Forbidden');
-  }
+  if (!requireTwilioSignature(req, res)) return;
 
   const from = req.body?.From || req.body?.from;
   const body = req.body?.Body || req.body?.body || '';
@@ -102,7 +64,7 @@ router.post('/sms', authenticateToken, async (req, res) => {
   if (!leadId || !message) return res.status(400).json({ error: 'leadId and message required' });
 
   try {
-    const lead = await assertLeadOwnership(leadId, req.user.id);
+    const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     if (!lead.phone || lead.phone === 'Not Available') {
       return res.status(400).json({ error: 'Lead has no phone number' });
@@ -135,14 +97,19 @@ router.post('/email', authenticateToken, async (req, res) => {
   if (!leadId || !message) return res.status(400).json({ error: 'leadId and message required' });
 
   try {
-    const lead = await assertLeadOwnership(leadId, req.user.id);
+    const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     if (!lead.email || lead.email === 'Not Available') {
       return res.status(400).json({ error: 'Lead has no email' });
     }
 
     const emailSubject = subject || `Solar savings estimate for ${lead.address}`;
-    const result = await sendEmail(lead.email, emailSubject, message);
+    const result = await sendEmail({
+      userId: req.user.id,
+      to: lead.email,
+      subject: emailSubject,
+      body: message,
+    });
     const status = result.simulated ? 'simulated' : 'sent';
 
     const [ins] = await db.query(
@@ -159,7 +126,8 @@ router.post('/email', authenticateToken, async (req, res) => {
     res.status(201).json({ id: ins.insertId, status, simulated: !!result.simulated });
   } catch (error) {
     console.error('Email outreach error:', error);
-    res.status(500).json({ error: 'Failed to send email' });
+    const status = error.code === 'EMAIL_NOT_CONNECTED' ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to send email' });
   }
 });
 
@@ -173,7 +141,7 @@ router.post('/bulk-sms', authenticateToken, async (req, res) => {
   const results = [];
   for (const leadId of leadIds.slice(0, 50)) {
     try {
-      const lead = await assertLeadOwnership(leadId, req.user.id);
+      const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
       if (!lead || !lead.phone || lead.phone === 'Not Available') {
         results.push({ leadId, status: 'skipped' });
         continue;
@@ -201,7 +169,7 @@ router.post('/calls', authenticateToken, async (req, res) => {
   if (!leadId || !scheduledAt) return res.status(400).json({ error: 'leadId and scheduledAt required' });
 
   try {
-    const lead = await assertLeadOwnership(leadId, req.user.id);
+    const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const callScript = script || defaultSolarScript(lead);
@@ -302,7 +270,7 @@ router.patch('/calls/:id', authenticateToken, async (req, res) => {
 // Outreach history for a lead
 router.get('/history/:leadId', authenticateToken, async (req, res) => {
   try {
-    const lead = await assertLeadOwnership(req.params.leadId, req.user.id);
+    const lead = await assertLeadOwnership(req.params.leadId, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const [rows] = await db.query(
@@ -319,7 +287,7 @@ router.get('/history/:leadId', authenticateToken, async (req, res) => {
 // AI call center: generate script for a lead
 router.get('/script/:leadId', authenticateToken, async (req, res) => {
   try {
-    const lead = await assertLeadOwnership(req.params.leadId, req.user.id);
+    const lead = await assertLeadOwnership(req.params.leadId, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     res.json({ script: defaultSolarScript(lead), leadId: lead.id });
   } catch (error) {

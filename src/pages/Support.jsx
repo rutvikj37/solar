@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
+
+import ApiErrorBanner from '../components/ApiErrorBanner.jsx';
 
 export default function Support() {
   const [tickets, setTickets] = useState([]);
@@ -9,6 +10,7 @@ export default function Support() {
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('billing');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
@@ -24,11 +26,12 @@ export default function Support() {
       return;
     }
     try {
+      setLoadError('');
       const res = await fetch(`${API_BASE}/api/tickets/mine`, { headers: headers() });
       if (!res.ok) throw new Error('Failed to load tickets');
       setTickets(await res.json());
     } catch (err) {
-      console.error(err);
+      setLoadError(err.message || 'Failed to load tickets');
     } finally {
       setLoading(false);
     }
@@ -60,7 +63,8 @@ export default function Support() {
   };
 
   return (
-    <AppLayout>
+    <>
+      <ApiErrorBanner error={loadError} onRetry={load} />
       <div className="mb-6">
         <h2 className="font-headline-lg text-2xl font-bold text-primary">Support</h2>
         <p className="text-on-surface-variant text-sm mt-1">Open a ticket for billing, credits, data quality, or technical issues.</p>
@@ -119,6 +123,6 @@ export default function Support() {
           ))}
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

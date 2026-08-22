@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { signInWithGoogle } from "../lib/socialAuth.js";
-import { isFirebaseConfigured } from "../lib/firebase.js";
+import { API_BASE } from "../config.js";
 
 function GoogleIcon() {
   return (
@@ -31,15 +31,36 @@ export default function SocialLoginButtons({
   disabled = false,
 }) {
   const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const envReady = Boolean(
+        import.meta.env.VITE_FIREBASE_API_KEY &&
+          import.meta.env.VITE_FIREBASE_PROJECT_ID &&
+          import.meta.env.VITE_FIREBASE_APP_ID,
+      );
+      if (envReady) {
+        if (!cancelled) setAvailable(true);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/firebase-config`, { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled) setAvailable(Boolean(res.ok && data.configured));
+      } catch {
+        if (!cancelled) setAvailable(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleGoogle = async () => {
     setBusy(true);
     try {
-      if (!isFirebaseConfigured()) {
-        throw new Error(
-          "Social login is not configured. Add VITE_FIREBASE_* values to .env and restart Vite.",
-        );
-      }
       const data = await signInWithGoogle();
       onSuccess?.(data);
     } catch (err) {
@@ -53,10 +74,16 @@ export default function SocialLoginButtons({
     }
   };
 
-  const locked = disabled || busy;
+  const locked = disabled || busy || available !== true;
 
   return (
     <div className="space-y-3">
+      {available === false && (
+        <p className="text-[11px] text-amber-300/90 leading-relaxed">
+          Social login is not configured. Add VITE_FIREBASE_* values to .env and restart Vite, or
+          configure Firebase Admin in server/.env.
+        </p>
+      )}
       <div className="relative flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-glass-stroke" />
         <span className="text-[10px] uppercase tracking-wider text-on-surface-variant/70">

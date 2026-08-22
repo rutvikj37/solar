@@ -15,6 +15,8 @@ import { buildRealtimeSystemPrompt } from '../services/ai-calling/aiOrchestrator
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { requireTwilioSignature } from '../utils/twilioVerify.js';
+import { verifyMediaFileAccess } from '../utils/signedMediaUrl.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -570,6 +572,7 @@ router.put('/prompts/:campaignId', ...adminAuth, asyncHandler(async (req, res) =
 // ═══════════════════════════════════════════════════════════════════
 
 router.post('/webhooks/voice-status', asyncHandler(async (req, res) => {
+  if (!requireTwilioSignature(req, res)) return;
   const callRecordId = req.query.callRecordId;
   if (!callRecordId) return res.status(400).send('Missing callRecordId');
 
@@ -578,6 +581,7 @@ router.post('/webhooks/voice-status', asyncHandler(async (req, res) => {
 }));
 
 router.post('/webhooks/recording', asyncHandler(async (req, res) => {
+  if (!requireTwilioSignature(req, res)) return;
   const callRecordId = req.query.callRecordId;
   if (!callRecordId) return res.status(400).send('Missing callRecordId');
 
@@ -591,6 +595,7 @@ router.post('/webhooks/recording', asyncHandler(async (req, res) => {
 }));
 
 router.post('/webhooks/amd', asyncHandler(async (req, res) => {
+  if (!requireTwilioSignature(req, res)) return;
   const callRecordId = req.query.callRecordId;
   if (!callRecordId) return res.status(400).send('Missing callRecordId');
   await callFlowManager.handleAmdWebhook(callRecordId, req.body);
@@ -651,6 +656,9 @@ router.get('/tts-audio', ...adminAuth, asyncHandler(async (req, res) => {
 
 router.get('/tts-audio/file/:fileName', asyncHandler(async (req, res) => {
   const safe = path.basename(req.params.fileName);
+  if (!verifyMediaFileAccess(safe, req.query.exp, req.query.sig)) {
+    return res.status(403).send('Forbidden');
+  }
   const filePath = path.join(VM_CACHE_DIR, safe);
   if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
   res.setHeader('Content-Type', 'audio/mpeg');

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import AppLayout from '../../components/AppLayout';
 import KpiCard from '../../components/ai-calling/KpiCard';
 import { API_BASE } from '../../config.js';
 
@@ -22,11 +21,11 @@ export default function AiCallingAnalytics() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <span className="material-symbols-outlined text-4xl animate-spin text-primary">progress_activity</span>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
@@ -36,7 +35,7 @@ export default function AiCallingAnalytics() {
   const overallBookingRate = totalAnswered > 0 ? Math.round((totalBookings / totalAnswered) * 100) : 0;
 
   return (
-    <AppLayout>
+    <>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white font-display">AI Call Analytics & Reporting</h1>
         <p className="text-xs text-on-surface-variant mt-0.5">Performance tracking across campaigns and voice interactions</p>
@@ -84,6 +83,6 @@ export default function AiCallingAnalytics() {
           </table>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

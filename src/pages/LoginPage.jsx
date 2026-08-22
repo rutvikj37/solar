@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../config.js";
+import { setToken } from "../lib/auth.js";
 import SatelliteUplinkLoader from "../components/SatelliteUplinkLoader.jsx";
 import SocialLoginButtons from "../components/SocialLoginButtons.jsx";
 
@@ -15,15 +16,15 @@ export default function LoginPage() {
 
   const completeLogin = (token, { needsOnboarding = false } = {}) => {
     setShowAuthLoader(true);
-    localStorage.setItem("solar_token", token);
+    setToken(token);
     if (needsOnboarding) {
-      navigate("/complete-profile");
+      navigate("/complete-profile", { replace: true });
       return;
     }
     const next = searchParams.get("next");
     const safeNext =
       next && next.startsWith("/") && !next.startsWith("//") ? next : null;
-    navigate(safeNext || "/dashboard");
+    navigate(safeNext || "/dashboard", { replace: true });
   };
 
   const handleLogin = async (e) => {
@@ -115,12 +116,12 @@ export default function LoginPage() {
                 <label className="text-on-surface-variant block font-medium">
                   Password
                 </label>
-                <a
-                  href="#"
+                <Link
+                  to="/forgot-password"
                   className="text-primary hover:underline text-[10px]"
                 >
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <input
                 type="password"

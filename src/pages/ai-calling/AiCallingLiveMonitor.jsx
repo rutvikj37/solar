@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import AppLayout from '../../components/AppLayout';
 import DispositionBadge from '../../components/ai-calling/DispositionBadge';
 import { API_BASE } from '../../config.js';
 
@@ -90,7 +89,7 @@ export default function AiCallingLiveMonitor() {
   const liveCallsCount = calls.filter((c) => c.status === 'in_progress' || c.status === 'ringing').length;
 
   return (
-    <AppLayout>
+    <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
@@ -348,6 +347,6 @@ export default function AiCallingLiveMonitor() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

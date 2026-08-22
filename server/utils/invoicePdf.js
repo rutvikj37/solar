@@ -33,15 +33,16 @@ export function invoicePdfFilename(id) {
 
 export function formatBillingReason(reason) {
   const map = {
-    initial: 'Subscription',
-    renewal: 'Subscription renewal',
+    initial: 'Lead plan purchase',
+    renewal: 'Lead plan renewal',
     admin_plan_grant: 'Plan purchase',
     admin_plan_change: 'Plan change',
     admin_plan_restrict: 'Plan restriction',
     admin_plan_unrestrict: 'Restriction lifted',
-    admin_credit_adjustment: 'Credit adjustment'
+    admin_credit_adjustment: 'Lead credit adjustment',
+    marketplace_wallet: 'Bid wallet top-up',
   };
-  return map[reason] || String(reason || 'Subscription').replace(/_/g, ' ');
+  return map[reason] || String(reason || 'Lead plan purchase').replace(/_/g, ' ');
 }
 
 function formatUsd(cents) {
@@ -77,6 +78,23 @@ function lineItem(invoice) {
   const reason = String(invoice.billing_reason || 'initial');
   const issued = invoice.created_at ? new Date(invoice.created_at) : new Date();
   const periodEnd = addMonths(issued, 1);
+
+  if (reason === 'marketplace_wallet') {
+    const pack = String(invoice.package_id || '');
+    const match = pack.match(/^mkt_(\d+)$/);
+    const title = match ? `$${match[1]} Bid Wallet top-up` : 'Bid Wallet top-up';
+    const detail =
+      credits > 0
+        ? `$${credits.toLocaleString('en-US')} marketplace bid balance (USD) · not used for map lead unlocks`
+        : 'Marketplace bid wallet (USD)';
+    return {
+      title,
+      detail,
+      qty: 1,
+      unitCents: Number(invoice.amount_cents || 0),
+      amountCents: Number(invoice.amount_cents || 0),
+    };
+  }
 
   if (reason === 'admin_credit_adjustment') {
     const delta = credits >= 0 ? `+${credits.toLocaleString('en-US')}` : credits.toLocaleString('en-US');
@@ -135,6 +153,9 @@ function memoText(invoice) {
   }
   if (reason === 'renewal') {
     return 'Thank you for your business. This invoice is for your SolarX.live subscription.';
+  }
+  if (reason === 'marketplace_wallet') {
+    return 'Thank you for your business. This payment adds USD to your marketplace bid wallet for installer bidding.';
   }
   return 'Thank you for your business.';
 }

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import AppLayout from '../../components/AppLayout';
 import { API_BASE } from '../../config.js';
 
 const API = API_BASE;
@@ -60,16 +59,16 @@ export default function AiCallingPrompts() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <span className="material-symbols-outlined text-4xl animate-spin text-primary">progress_activity</span>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white font-display">AI Prompt & Script Engineering</h1>
@@ -137,6 +136,6 @@ export default function AiCallingPrompts() {
           </button>
         </form>
       )}
-    </AppLayout>
+    </>
   );
 }

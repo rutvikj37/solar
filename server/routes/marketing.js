@@ -1,17 +1,18 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import db from '../db.js';
 
 const router = express.Router();
 
-const recentByIp = new Map();
+const contactLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Please wait before submitting again' },
+});
 
-function clientIp(req) {
-  const xf = req.headers['x-forwarded-for'];
-  if (typeof xf === 'string' && xf.length) return xf.split(',')[0].trim();
-  return req.socket?.remoteAddress || 'unknown';
-}
-
-router.post('/contact', async (req, res) => {
+router.post('/contact', contactLimiter, async (req, res) => {
   const {
     name,
     company,
@@ -41,14 +42,6 @@ router.post('/contact', async (req, res) => {
   if (!['demo', 'partner'].includes(clean.intent)) {
     clean.intent = 'demo';
   }
-
-  const ip = clientIp(req);
-  const now = Date.now();
-  const last = recentByIp.get(ip) || 0;
-  if (now - last < 15_000) {
-    return res.status(429).json({ error: 'Please wait a moment before submitting again' });
-  }
-  recentByIp.set(ip, now);
 
   try {
     const [result] = await db.query(

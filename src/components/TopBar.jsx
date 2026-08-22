@@ -10,7 +10,10 @@ export default function TopBar({ onMenuToggle, showBanner }) {
   const [credits, setCredits] = useState(0);
   const [activePackage, setActivePackage] = useState('Free');
   const [hasSubscription, setHasSubscription] = useState(false);
-  const [leadsCount, setLeadsCount] = useState(8);
+  const [leadsCount, setLeadsCount] = useState(0);
+  const [scanUsedToday, setScanUsedToday] = useState(0);
+  const [scanRemaining, setScanRemaining] = useState(0);
+  const [scanTotal, setScanTotal] = useState(0);
 
   useEffect(() => {
     fetchMe().then((data) => {
@@ -21,6 +24,10 @@ export default function TopBar({ onMenuToggle, showBanner }) {
       setCredits(data.credits !== undefined ? data.credits : 0);
       setActivePackage(data.activePackage || data.subscription?.packageName || 'Free');
       setHasSubscription(Boolean(data.subscription));
+      const quota = data.scanQuota || {};
+      setScanUsedToday(Number(quota.usedToday) || Number(data.creditsUsedToday) || 0);
+      setScanRemaining(Number(quota.remaining) ?? Number(data.credits) ?? 0);
+      setScanTotal(Number(quota.total) || Math.max(Number(data.credits) + Number(quota.usedToday || data.creditsUsedToday || 0), 0));
     });
 
     fetch(`${API_BASE}/api/leads`, { headers: authHeaders() })
@@ -89,7 +96,9 @@ export default function TopBar({ onMenuToggle, showBanner }) {
         {/* SCANS badge */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold tracking-wider">
           <span className="text-slate-300">SCANS</span>
-          <span className="text-white font-mono tabular-nums">10/10</span>
+          <span className="text-white font-mono tabular-nums">
+            {isAdmin ? '∞' : `${scanUsedToday}/${Math.max(scanTotal, scanRemaining + scanUsedToday) || scanRemaining}`}
+          </span>
         </div>
 
         {/* Plan / credits badge — remaining credits are source of truth (not hardcoded /5) */}
@@ -99,7 +108,7 @@ export default function TopBar({ onMenuToggle, showBanner }) {
             {isAdmin ? 'ADMIN' : hasSubscription ? activePackage : activePackage === 'Free' ? 'FREE' : activePackage}
           </span>
           <span className="text-on-surface font-mono tabular-nums ml-0.5">
-            | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} CREDITS`}
+            | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} LEAD CREDITS`}
           </span>
         </div>
       </div>
@@ -126,7 +135,7 @@ export default function TopBar({ onMenuToggle, showBanner }) {
           <div className="text-left hidden md:block">
             <p className="text-on-surface text-xs font-semibold leading-none truncate max-w-[150px]">{userEmail}</p>
             <p className="text-primary-glow text-[9px] font-bold tracking-wider leading-none mt-1 uppercase">
-              {isAdmin ? 'ADMIN · UNLIMITED' : `${credits} CREDITS`}
+              {isAdmin ? 'ADMIN · UNLIMITED' : `${credits} LEAD CREDITS`}
             </p>
           </div>
         </div>

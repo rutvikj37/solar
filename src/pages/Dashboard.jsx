@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../config.js";
+import { clearToken } from "../lib/auth.js";
 import { formatLeadGeneratedAt } from "../lib/formatDate.js";
 import { buildLeadMarkerIcon } from "../lib/mapMarkers.js";
 import FullPageLoader from "../components/FullPageLoader.jsx";
@@ -11,6 +12,7 @@ export default function Dashboard() {
   const [creditsUsedToday, setCreditsUsedToday] = useState(0);
   const [activePackage, setActivePackage] = useState("Growth");
   const [leads, setLeads] = useState([]);
+  const [territorySummary, setTerritorySummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [googleMapsKey, setGoogleMapsKey] = useState("");
   const [mapsLoaded, setMapsLoaded] = useState(false);
@@ -34,7 +36,7 @@ export default function Dashboard() {
   useEffect(() => {
     const token = localStorage.getItem("solar_token");
     if (!token) {
-      navigate("/login");
+      navigate("/login", { replace: true });
       return;
     }
 
@@ -60,8 +62,16 @@ export default function Dashboard() {
           setLeads(leadsData);
         }
 
-        const { getGoogleMapsApiKey } = await import("../lib/mapsKey.js");
-        const mapsKey = getGoogleMapsApiKey();
+        const analyticsResponse = await fetch(`${API_BASE}/api/team/territory-analytics`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (analyticsResponse.ok) {
+          const analyticsData = await analyticsResponse.json();
+          setTerritorySummary(analyticsData.summary || null);
+        }
+
+        const { resolveGoogleMapsApiKey } = await import("../lib/mapsKey.js");
+        const mapsKey = await resolveGoogleMapsApiKey();
         if (mapsKey && !mapsKey.startsWith("AizaSyCBA9")) {
           setGoogleMapsKey(mapsKey);
           loadGoogleMapsScript(mapsKey);
@@ -69,8 +79,8 @@ export default function Dashboard() {
       } catch (error) {
         console.error(error);
         // If token is invalid, redirect to login
-        localStorage.removeItem("solar_token");
-        navigate("/login");
+        clearToken();
+        navigate("/login", { replace: true });
       } finally {
         setLoading(false);
       }
@@ -89,7 +99,7 @@ export default function Dashboard() {
     if (!script) {
       script = document.createElement("script");
       script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,drawing,geometry&v=weekly`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,drawing,geometry&v=weekly&loading=async`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -208,7 +218,7 @@ export default function Dashboard() {
         <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
-              Remaining Leads
+              Lead credits
             </p>
             <span className="material-symbols-outlined text-secondary opacity-80">
               hourglass_empty
@@ -219,7 +229,7 @@ export default function Dashboard() {
               {credits}
             </p>
             <p className="font-label-mono text-[9px] text-slate-300 pb-1">
-              Credits left
+              Lead credits left
             </p>
           </div>
         </div>
@@ -406,10 +416,17 @@ export default function Dashboard() {
               auto_awesome
             </span>
             <p className="font-button text-sm text-on-surface mb-1 font-semibold">
-              AI Lead Insights
+              Territory Insights
             </p>
             <p className="text-xs text-on-surface-variant max-w-[200px]">
-              California sectors show a 12% higher conversion probability today.
+              {territorySummary?.totalTerritories > 0 ? (
+                <>
+                  {territorySummary.totalTerritories} active ZIP{territorySummary.totalTerritories !== 1 ? "s" : ""} ·{" "}
+                  {territorySummary.overallClosingRate || 0}% overall close rate
+                </>
+              ) : (
+                "Scan properties on the map to build territory conversion metrics."
+              )}
             </p>
             <Link
               to="/analysis"

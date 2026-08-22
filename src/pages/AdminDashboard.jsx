@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast, Toaster } from 'sonner';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 import { invoiceNumber, openInvoicePdf } from '../utils/invoicePdf.js';
+import { setToken } from '../lib/auth.js';
 
 import TeamWorkspacePanel from '../components/TeamWorkspacePanel';
 import TerritoryAnalyticsPanel from '../components/TerritoryAnalyticsPanel';
+import AdminMarketplacePanel from '../components/marketplace/AdminMarketplacePanel';
+import AdminIntegrationsPanel from '../components/admin/AdminIntegrationsPanel';
 
 function ActionBanner({ type, message }) {
   if (!message) return null;
@@ -29,12 +31,14 @@ function ActionBanner({ type, message }) {
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { id: 'marketplace', label: 'Marketplace', icon: 'storefront' },
   { id: 'team', label: 'Team Workspace', icon: 'groups' },
   { id: 'territory', label: 'Territory Analytics', icon: 'analytics' },
   { id: 'users', label: 'Users', icon: 'group' },
   { id: 'subscriptions', label: 'Subscriptions', icon: 'card_membership' },
   { id: 'plans', label: 'Plans', icon: 'sell' },
   { id: 'apis', label: 'APIs', icon: 'api' },
+  { id: 'integrations', label: 'Integrations', icon: 'extension' },
   { id: 'inquiries', label: 'Inquiries', icon: 'mail' },
   { id: 'tickets', label: 'Tickets', icon: 'support_agent' }
 ];
@@ -154,7 +158,8 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t && TABS.some((x) => x.id === t)) setTab(t);
+    const normalized = t === 'crm' || t === 'email' ? 'integrations' : t;
+    if (normalized && TABS.some((x) => x.id === normalized)) setTab(normalized);
   }, [searchParams]);
 
   useEffect(() => {
@@ -179,7 +184,7 @@ export default function AdminDashboard() {
       alert(data.error || 'Bootstrap failed');
       return;
     }
-    if (data.token) localStorage.setItem('solar_token', data.token);
+    if (data.token) setToken(data.token);
     alert('You are now an admin');
     loadTab(tab);
   };
@@ -488,7 +493,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <AppLayout>
+    <>
       <Toaster theme="dark" position="top-center" richColors />
       <div className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
@@ -543,6 +548,9 @@ export default function AdminDashboard() {
           ))}
         </div>
       )}
+
+      {tab === 'marketplace' && <AdminMarketplacePanel />}
+      {tab === 'integrations' && <AdminIntegrationsPanel />}
 
       {tab === 'team' && <TeamWorkspacePanel />}
 
@@ -1186,6 +1194,6 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

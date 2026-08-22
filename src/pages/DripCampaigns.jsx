@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import AppLayout from '../components/AppLayout';
 import DripCampaignList from '../components/drip/DripCampaignList';
 import DripCampaignEditor from '../components/drip/DripCampaignEditor';
 import DripStepBuilder from '../components/drip/DripStepBuilder';
@@ -7,6 +6,7 @@ import DripEnrollmentTable from '../components/drip/DripEnrollmentTable';
 import DripStatsBar from '../components/drip/DripStatsBar';
 import DripFunnelChart from '../components/drip/DripFunnelChart';
 import { apiService } from '../services/api.js';
+import ApiErrorBanner from '../components/ApiErrorBanner.jsx';
 
 const DEFAULT_FORM = {
   name: '',
@@ -53,13 +53,15 @@ export default function DripCampaigns() {
   const [steps, setSteps] = useState(DEFAULT_STEPS);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const fetchCampaigns = useCallback(async () => {
     try {
+      setLoadError('');
       const data = await apiService.getDripCampaigns();
       setCampaigns(data);
     } catch (err) {
-      console.error('Fetch drip campaigns error:', err);
+      setLoadError(err.message || 'Failed to load drip campaigns');
     } finally {
       setLoading(false);
     }
@@ -204,7 +206,8 @@ export default function DripCampaigns() {
   }
 
   return (
-    <AppLayout>
+    <>
+      <ApiErrorBanner error={loadError} onRetry={fetchCampaigns} />
       <div className="space-y-6 text-xs max-w-7xl mx-auto pb-8">
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 border-b border-glass-stroke pb-4">
           <div>
@@ -330,6 +333,6 @@ export default function DripCampaigns() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import express from 'express';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { fetchLeadForUser } from '../utils/leadAccess.js';
 
 const router = express.Router();
 
@@ -20,11 +21,6 @@ async function logActivity(leadId, userId, type, content, meta = null) {
     'INSERT INTO lead_activities (lead_id, user_id, type, content, meta) VALUES (?, ?, ?, ?, ?)',
     [leadId, userId, type, content, meta ? JSON.stringify(meta) : null]
   );
-}
-
-async function assertLeadOwnership(leadId, userId) {
-  const [rows] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [leadId, userId]);
-  return rows[0] || null;
 }
 
 // Pipeline summary counts (must be before /:id routes)
@@ -51,7 +47,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
   const { status, notes, assigned_to } = req.body;
 
   try {
-    const lead = await assertLeadOwnership(id, req.user.id);
+    const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const updates = [];
@@ -77,7 +73,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
-    values.push(id, req.user.id);
+    values.push(id, lead.user_id);
     await db.query(`UPDATE leads SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, values);
 
     if (status !== undefined && status !== lead.status) {
@@ -95,7 +91,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    const [updated] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [id, req.user.id]);
+    const [updated] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [id, lead.user_id]);
     res.json(updated[0]);
   } catch (error) {
     console.error('Lead update error:', error);
@@ -110,12 +106,12 @@ router.post('/:id/activities', authenticateToken, async (req, res) => {
   if (!content) return res.status(400).json({ error: 'content is required' });
 
   try {
-    const lead = await assertLeadOwnership(id, req.user.id);
+    const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     await logActivity(id, req.user.id, type, content);
     if (type === 'note') {
-      await db.query('UPDATE leads SET notes = ? WHERE id = ? AND user_id = ?', [content, id, req.user.id]);
+      await db.query('UPDATE leads SET notes = ? WHERE id = ? AND user_id = ?', [content, id, lead.user_id]);
     }
 
     const [activities] = await db.query(
@@ -133,7 +129,7 @@ router.post('/:id/activities', authenticateToken, async (req, res) => {
 router.get('/:id/activities', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    const lead = await assertLeadOwnership(id, req.user.id);
+    const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const [activities] = await db.query(
@@ -147,12 +143,12 @@ router.get('/:id/activities', authenticateToken, async (req, res) => {
   }
 });
 
-// Webhook-style CRM export (stores activity + returns payload for Zapier/HubSpot)
+// CRM export (stores activity + returns payload)
 router.post('/:id/export-crm', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { target = 'generic' } = req.body;
   try {
-    const lead = await assertLeadOwnership(id, req.user.id);
+    const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
     const payload = {
@@ -170,20 +166,6 @@ router.post('/:id/export-crm', authenticateToken, async (req, res) => {
     };
 
     await logActivity(id, req.user.id, 'crm_export', `Exported to ${target}`, { target });
-
-    // Optional outbound webhook if configured
-    const webhookUrl = process.env.CRM_WEBHOOK_URL;
-    if (webhookUrl && !webhookUrl.toLowerCase().includes('your_')) {
-      try {
-        await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } catch (err) {
-        console.error('[CRM Webhook] push failed:', err.message);
-      }
-    }
 
     res.json({ success: true, payload });
   } catch (error) {

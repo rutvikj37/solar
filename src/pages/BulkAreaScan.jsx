@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import UpgradeModal from '../components/UpgradeModal';
+import LocationSearchField from '../components/LocationSearchField.jsx';
 import { API_BASE } from '../config.js';
 
 export default function BulkAreaScan() {
+  const [searchMode, setSearchMode] = useState('zip');
   const [zip, setZip] = useState('');
+  const [areaQuery, setAreaQuery] = useState('');
+  const [resolvedArea, setResolvedArea] = useState(null);
+  const [scanError, setScanError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [radius, setRadius] = useState(5);
   const [homesToScan, setHomesToScan] = useState(15);
   const [useMinSqFt, setUseMinSqFt] = useState(false);
   const [minSqFt, setMinSqFt] = useState(1500);
-  const [intentLevel, setIntentLevel] = useState('High Intent');
   const [singleFamily, setSingleFamily] = useState(true);
   const [skipPaneled, setSkipPaneled] = useState(true);
-  const [minSavings, setMinSavings] = useState('Any');
   const [leadCredits, setLeadCredits] = useState(26);
   const [unlimitedCredits, setUnlimitedCredits] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -52,9 +55,45 @@ export default function BulkAreaScan() {
 
   const creditCost = homesToScan;
 
-  const handleStartScan = (e) => {
+  const handleStartScan = async (e) => {
     e.preventDefault();
-    if (!zip) return;
+    setScanError('');
+
+    let scanZip = zip.trim();
+    let lat = null;
+    let lng = null;
+    let areaLabel = '';
+
+    if (searchMode === 'zip') {
+      if (!/^\d{5}(-\d{4})?$/.test(scanZip)) {
+        setScanError('Enter a valid 5-digit ZIP code.');
+        return;
+      }
+      areaLabel = `ZIP ${scanZip}`;
+    } else {
+      if (!areaQuery.trim()) {
+        setScanError('Search and select an area from the suggestions.');
+        return;
+      }
+      if (!resolvedArea) {
+        setScanError('Pick a location from the dropdown to confirm your search area.');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const resolved = resolvedArea;
+        setResolvedArea(resolved);
+        lat = resolved.lat;
+        lng = resolved.lng;
+        scanZip = resolved.zip || '';
+        areaLabel = resolved.shortLabel || areaQuery.trim();
+      } catch (err) {
+        setScanError(err.message || 'Could not find that area.');
+        setSubmitting(false);
+        return;
+      }
+      setSubmitting(false);
+    }
 
     if (!unlimitedCredits && leadCredits < creditCost) {
       setShowUpgradeModal(true);
@@ -63,26 +102,43 @@ export default function BulkAreaScan() {
 
     navigate('/generate', {
       state: {
-        zip,
+        fromBulkScan: true,
+        zip: scanZip,
+        lat,
+        lng,
+        areaLabel,
         radius,
         radiusUnit: 'miles',
         homesToScan,
         leadCreditCost: creditCost,
         minSqFt: useMinSqFt ? minSqFt : 0,
-        intentLevel,
         singleFamily,
         skipPaneled,
-        minSavings
-      }
+      },
     });
   };
 
+  const radiusHint =
+    searchMode === 'zip'
+      ? 'Homes within this distance of the ZIP center.'
+      : 'Homes within this distance of the searched area center.';
+
+  const targetSummary =
+    searchMode === 'zip'
+      ? zip.trim()
+        ? `ZIP ${zip.trim()}`
+        : 'ZIP not set'
+      : resolvedArea?.shortLabel || areaQuery.trim() || 'Area not set';
+
+  const targetReady =
+    searchMode === 'zip' ? /^\d{5}/.test(zip.trim()) : Boolean(resolvedArea || areaQuery.trim().length >= 3);
+
   return (
-    <AppLayout>
+    <>
       <div className="mb-stack-lg">
         <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Bulk Area Scan</h2>
         <p className="text-on-surface-variant text-sm mt-1">
-          Specify parameters to analyze, enrich, and unlock multiple solar prospects in a targeted area.
+          Scan by ZIP code or search any city, neighborhood, or address — then unlock multiple solar prospects at once.
         </p>
       </div>
 
@@ -95,34 +151,29 @@ export default function BulkAreaScan() {
               Scan Parameters
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-on-surface-variant block font-medium">Target ZIP Code</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 90210"
-                  value={zip}
-                  onChange={(e) => setZip(e.target.value)}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs placeholder:text-on-surface-variant/30"
-                />
-              </div>
+            <LocationSearchField
+              mode={searchMode}
+              onModeChange={(next) => {
+                setSearchMode(next);
+                setScanError('');
+                setResolvedArea(null);
+              }}
+              zip={zip}
+              onZipChange={setZip}
+              areaQuery={areaQuery}
+              onAreaQueryChange={setAreaQuery}
+              resolvedArea={resolvedArea}
+              onAreaResolved={setResolvedArea}
+              radius={radius}
+              onRadiusChange={setRadius}
+              radiusHint={radiusHint}
+            />
 
-              <div className="space-y-1">
-                <label className="text-on-surface-variant block font-medium">Scan Radius (Miles)</label>
-                <select
-                  value={radius}
-                  onChange={(e) => setRadius(Number(e.target.value))}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs"
-                >
-                  <option value={1}>1 Mile</option>
-                  <option value={5}>5 Miles</option>
-                  <option value={10}>10 Miles</option>
-                  <option value={20}>20 Miles</option>
-                </select>
-                <p className="text-[10px] text-on-surface-variant">Applied around the ZIP center (geocoded).</p>
-              </div>
-            </div>
+            {scanError && (
+              <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                {scanError}
+              </p>
+            )}
 
             <div className="space-y-2">
               <div className="flex justify-between items-center text-[11px] text-on-surface-variant font-medium">
@@ -141,56 +192,41 @@ export default function BulkAreaScan() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-[11px] text-on-surface-variant font-medium">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      id="toggleMinSqFt"
-                      checked={useMinSqFt}
-                      onChange={(e) => setUseMinSqFt(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-glass-stroke bg-surface-container-low text-primary focus:ring-0 cursor-pointer"
-                    />
-                    <label htmlFor="toggleMinSqFt" className="cursor-pointer">
-                      Filter by Min Roof Area
-                    </label>
-                  </div>
-                  <span className="text-primary font-bold">
-                    {useMinSqFt ? `${minSqFt} sq ft` : 'Any Size (Default)'}
-                  </span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px] text-on-surface-variant font-medium">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    id="toggleMinSqFt"
+                    checked={useMinSqFt}
+                    onChange={(e) => setUseMinSqFt(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-glass-stroke bg-surface-container-low text-primary focus:ring-0 cursor-pointer"
+                  />
+                  <label htmlFor="toggleMinSqFt" className="cursor-pointer">
+                    Filter by Min Roof Area
+                  </label>
                 </div>
-                <input
-                  type="range"
-                  min="1000"
-                  max="10000"
-                  step="500"
-                  disabled={!useMinSqFt}
-                  value={minSqFt}
-                  onChange={(e) => setMinSqFt(Number(e.target.value))}
-                  className={`w-full accent-primary h-1 rounded-lg appearance-none mt-2 ${
-                    useMinSqFt
-                      ? 'cursor-pointer bg-surface-container-high'
-                      : 'cursor-not-allowed opacity-30 bg-surface-container-highest'
-                  }`}
-                />
+                <span className="text-primary font-bold">
+                  {useMinSqFt ? `${minSqFt} sq ft` : 'Any Size (Default)'}
+                </span>
               </div>
-
-              <div className="space-y-1">
-                <label className="text-on-surface-variant block font-medium">Lead Quality Segment</label>
-                <select
-                  value={intentLevel}
-                  onChange={(e) => setIntentLevel(e.target.value)}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 focus:outline-none focus:border-primary text-white text-xs"
-                >
-                  <option value="All">All Prospects</option>
-                  <option value="Qualified">Qualified (Score &gt; 70)</option>
-                  <option value="High Intent">High Intent (Score &gt; 85)</option>
-                </select>
-              </div>
+              <input
+                type="range"
+                min="1000"
+                max="10000"
+                step="500"
+                disabled={!useMinSqFt}
+                value={minSqFt}
+                onChange={(e) => setMinSqFt(Number(e.target.value))}
+                className={`w-full accent-primary h-1 rounded-lg appearance-none mt-2 ${
+                  useMinSqFt
+                    ? 'cursor-pointer bg-surface-container-high'
+                    : 'cursor-not-allowed opacity-30 bg-surface-container-highest'
+                }`}
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="flex items-center gap-2 p-3 bg-surface/30 rounded-xl border border-glass-stroke cursor-pointer">
                 <input
                   type="checkbox"
@@ -209,28 +245,14 @@ export default function BulkAreaScan() {
                 />
                 <span className="text-white text-[11px] font-semibold">Skip paneled homes</span>
               </label>
-              <div className="space-y-1 p-3 bg-surface/30 rounded-xl border border-glass-stroke">
-                <label className="text-on-surface-variant text-[10px] block">Min savings</label>
-                <select
-                  value={minSavings}
-                  onChange={(e) => setMinSavings(e.target.value)}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-1.5 px-2 focus:outline-none focus:border-primary text-white text-[11px]"
-                >
-                  <option value="Any">Any</option>
-                  <option value="10000">$10k+</option>
-                  <option value="25000">$25k+</option>
-                  <option value="50000">$50k+</option>
-                </select>
-              </div>
             </div>
-
-
 
             <button
               type="submit"
-              className="w-full bg-primary text-on-primary font-bold py-3 rounded-lg mt-4 hover:brightness-110 active:scale-[0.98] transition-all text-xs"
+              disabled={submitting}
+              className="w-full bg-primary text-on-primary font-bold py-3 rounded-lg mt-4 hover:brightness-110 active:scale-[0.98] transition-all text-xs disabled:opacity-50"
             >
-              Initiate Bulk Area Scan
+              {submitting ? 'Locating area…' : 'Initiate Bulk Area Scan'}
             </button>
           </form>
         </div>
@@ -247,9 +269,24 @@ export default function BulkAreaScan() {
             </div>
 
             <div className="flex justify-between items-baseline py-2 border-b border-glass-stroke/50">
+              <span className="text-xs text-on-surface-variant">Target</span>
+              <span
+                className={`text-sm font-semibold text-right max-w-[60%] truncate flex items-center gap-1 justify-end ${
+                  targetReady ? 'text-white' : 'text-on-surface-variant'
+                }`}
+                title={targetSummary}
+              >
+                {targetReady && (
+                  <span className="material-symbols-outlined text-green-400 text-sm shrink-0">check_circle</span>
+                )}
+                {targetSummary}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-baseline py-2 border-b border-glass-stroke/50">
               <span className="text-xs text-on-surface-variant">Radius</span>
               <span className="text-sm font-semibold text-white">
-                {radius} mile{radius === 1 ? '' : 's'} around ZIP
+                {radius} mile{radius === 1 ? '' : 's'}
               </span>
             </div>
 
@@ -306,6 +343,6 @@ export default function BulkAreaScan() {
         credits={leadCredits}
         message={`Bulk scan requires at least ${creditCost} credits. Subscribe to a monthly plan for more lead credits.`}
       />
-    </AppLayout>
+    </>
   );
 }

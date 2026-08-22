@@ -1,19 +1,33 @@
 import express from 'express';
 import Stripe from 'stripe';
 import db from '../db.js';
-import { authenticateToken, isAdminRole } from '../middleware/auth.js';
+import { authenticateToken, isAdminRole, optionalAuthenticateToken } from '../middleware/auth.js';
 import { invoicePdfFilename, renderInvoicePdf } from '../utils/invoicePdf.js';
 import { logApiCall } from '../services/apiUsage.js';
 import {
   cancelRazorpaySubscription,
+  createRazorpayPlan,
   createRazorpaySubscription,
   fetchRazorpaySubscription,
   getActivePaymentProvider,
   getRazorpay,
+  getRazorpayKeyId,
   mapRazorpayStatus,
   razorpayPeriodDates,
-  verifyRazorpayWebhookSignature
+  verifyRazorpayWebhookSignature,
+  verifyRazorpaySubscriptionSignature,
 } from '../services/razorpayBilling.js';
+import {
+  fulfillMarketplaceWalletFromStripeSession,
+  fulfillMarketplaceWalletFromRazorpayPayment,
+} from '../services/marketplace/walletTopup.js';
+import { getLedger, getWalletBalance, ensureWallet } from '../services/marketplace/wallet.js';
+import { clientErrorMessage } from '../utils/clientError.js';
+import {
+  confirmLeadPlanRazorpayPayment,
+  createLeadPlanRazorpayCheckout,
+  fulfillLeadPlanFromRazorpayPayment,
+} from '../services/leadPlanCheckout.js';
 
 const router = express.Router();
 
@@ -30,6 +44,24 @@ function allowDevCheckout() {
 
 function isSubscriptionPackage(pkg) {
   return Number(pkg.is_subscription) === 1 || pkg.billing_interval === 'month';
+}
+
+function frontendBase() {
+  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
+  return raw.split(',')[0].trim();
+}
+
+async function ensureRazorpayPlanForPackage(pkg) {
+  if (pkg.razorpay_plan_id) return pkg.razorpay_plan_id;
+  const planId = await createRazorpayPlan({
+    name: pkg.name,
+    amountUsd: Number(pkg.price),
+    description: `${pkg.lead_limit || 0} lead credits per month`,
+    interval: pkg.billing_interval === 'year' ? 'yearly' : 'monthly',
+  });
+  await db.query('UPDATE packages SET razorpay_plan_id = ? WHERE id = ?', [planId, pkg.id]);
+  pkg.razorpay_plan_id = planId;
+  return planId;
 }
 
 /** Reset credits to monthly plan allowance (subscription refresh). */
@@ -58,6 +90,9 @@ export async function setSubscriptionCredits(userId, packageId, credits) {
 
 /** Legacy one-time credit add (non-subscription packs). */
 export async function grantCredits(userId, packageId, credits) {
+  if (String(packageId || '').startsWith('mkt_')) {
+    throw new Error('Marketplace wallet packs must not grant map lead credits');
+  }
   const [packages] = await db.query(
     'SELECT id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
     [userId]
@@ -333,10 +368,13 @@ router.get('/provider', (_req, res) => {
   });
 });
 
-// Public/active packages for purchase UI (exclude Free)
-router.get('/packages', async (req, res) => {
+// Public/active packages for purchase UI (exclude Free); ?all=1 requires admin
+router.get('/packages', optionalAuthenticateToken, async (req, res) => {
   try {
     const adminAll = req.query.all === '1';
+    if (adminAll && (!req.user || !isAdminRole(req.user.role))) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
     const sql = adminAll
       ? 'SELECT * FROM packages ORDER BY price ASC'
       : `SELECT * FROM packages WHERE is_active = 1 AND id != 'Free' AND price > 0 ORDER BY price ASC`;
@@ -461,7 +499,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
 
   const credits = Number(pkg.lead_limit) || 0;
   const amountCents = Math.round(Number(pkg.price) * 100);
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5200';
+  const frontendUrl = frontendBase();
   const provider = getActivePaymentProvider();
   const stripe = getStripe();
   const started = Date.now();
@@ -469,47 +507,24 @@ router.post('/checkout', authenticateToken, async (req, res) => {
 
   try {
     if (provider === 'razorpay' && subscriptionMode) {
-      if (!pkg.razorpay_plan_id) {
-        return res.status(400).json({
-          error: 'This plan requires a Razorpay Plan ID. Ask an admin to configure razorpay_plan_id.'
-        });
-      }
-
-      const subscription = await createRazorpaySubscription({
-        planId: pkg.razorpay_plan_id,
+      const [users] = await db.query('SELECT name, email FROM users WHERE id = ? LIMIT 1', [
+        req.user.id,
+      ]);
+      const user = users[0] || {};
+      const checkout = await createLeadPlanRazorpayCheckout({
         userId: req.user.id,
-        packageId: pkg.id,
-        credits
-      });
-
-      await upsertUserSubscription({
-        userId: req.user.id,
-        packageId: pkg.id,
-        paymentProvider: 'razorpay',
-        razorpaySubscriptionId: subscription.id,
-        status: mapRazorpayStatus(subscription.status),
-        periodStart: subscription.start_at ? new Date(subscription.start_at * 1000) : new Date(),
-        periodEnd: subscription.charge_at ? new Date(subscription.charge_at * 1000) : null,
-        cancelAtPeriodEnd: false
-      });
-
-      await recordInvoice({
-        userId: req.user.id,
-        packageId: pkg.id,
-        amountCents,
+        pkg,
         credits,
-        status: 'pending',
-        method: 'razorpay_subscription',
-        stripeSessionId: subscription.id,
-        billingReason: 'initial'
+        prefill: {
+          name: user.name || undefined,
+          email: user.email || undefined,
+        },
       });
 
       await logApiCall('razorpay', true, Date.now() - started);
       return res.json({
-        mode: 'razorpay',
-        subscriptionId: subscription.id,
-        url: subscription.short_url,
-        keyId: process.env.RAZORPAY_KEY_ID
+        ...checkout,
+        keyId: getRazorpayKeyId(),
       });
     }
 
@@ -631,9 +646,11 @@ router.post('/checkout', authenticateToken, async (req, res) => {
     await logApiCall('stripe', true, Date.now() - started);
     res.json({ mode: 'stripe', sessionId: session.id, url: session.url });
   } catch (error) {
-    await logApiCall('stripe', false, Date.now() - started);
+    await logApiCall(provider === 'razorpay' ? 'razorpay' : 'stripe', false, Date.now() - started);
     console.error('Checkout error:', error);
-    res.status(500).json({ error: 'Server error creating checkout' });
+    res.status(error.status || 500).json({
+      error: clientErrorMessage(error, 'Server error creating checkout'),
+    });
   }
 });
 
@@ -696,6 +713,11 @@ router.post('/confirm', authenticateToken, async (req, res) => {
 });
 
 async function handleCheckoutCompleted(stripe, session) {
+  if (await fulfillMarketplaceWalletFromStripeSession(session)) {
+    console.log(`[Stripe Webhook] Marketplace wallet topped up for user ${session.metadata?.userId}`);
+    return;
+  }
+
   const userId = Number(session.metadata?.userId);
   const packageId = session.metadata?.packageId;
   if (!userId || !packageId) return;
@@ -887,7 +909,10 @@ async function syncRazorpaySubscription(subscription, { refreshCredits = false, 
   const { periodStart, periodEnd } = razorpayPeriodDates(subscription);
   const mappedStatus = mapRazorpayStatus(subscription.status);
 
-  if (refreshCredits) {
+  const alreadyPaid = paymentId && (await invoiceAlreadyProcessed(paymentId));
+  const shouldRefreshCredits = refreshCredits && !alreadyPaid;
+
+  if (shouldRefreshCredits) {
     await refreshSubscriptionCredits(userId, packageId, credits);
   }
 
@@ -902,7 +927,7 @@ async function syncRazorpaySubscription(subscription, { refreshCredits = false, 
     cancelAtPeriodEnd: subscription.status === 'cancelled'
   });
 
-  if (refreshCredits && paymentId && !(await invoiceAlreadyProcessed(paymentId))) {
+  if (shouldRefreshCredits && paymentId) {
     await recordInvoice({
       userId,
       packageId,
@@ -966,17 +991,37 @@ async function handleRazorpayWebhookEvent(event) {
     if (sub) {
       await db.query('UPDATE user_subscriptions SET status = "past_due" WHERE razorpay_subscription_id = ?', [sub.id]);
     }
+    return;
+  }
+
+  if (eventType === 'payment.captured' || eventType === 'order.paid') {
+    const payment = payload.payment?.entity;
+    if (payment) {
+      const planHandled = await fulfillLeadPlanFromRazorpayPayment(payment);
+      if (planHandled) {
+        console.log(`[Razorpay Webhook] Lead plan activated for payment ${payment.id}`);
+        return;
+      }
+      const handled = await fulfillMarketplaceWalletFromRazorpayPayment(payment);
+      if (handled) {
+        console.log(`[Razorpay Webhook] Marketplace wallet topped up for payment ${payment.id}`);
+      }
+    }
   }
 }
 
 router.post('/razorpay-webhook', async (req, res) => {
   try {
     const signature = req.headers['x-razorpay-signature'];
-    const rawBody = JSON.stringify(req.body);
+    const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body ?? {}), 'utf8');
     if (!verifyRazorpayWebhookSignature(rawBody, signature)) {
       return res.status(400).json({ error: 'Invalid webhook signature' });
     }
-    await handleRazorpayWebhookEvent(req.body);
+    const payload =
+      typeof req.body === 'object' && req.body !== null
+        ? req.body
+        : JSON.parse(rawBody.toString('utf8'));
+    await handleRazorpayWebhookEvent(payload);
     res.json({ received: true });
   } catch (error) {
     console.error('[Razorpay Webhook] handler error:', error);
@@ -984,10 +1029,37 @@ router.post('/razorpay-webhook', async (req, res) => {
   }
 });
 
+router.post('/confirm-razorpay-plan', authenticateToken, async (req, res) => {
+  try {
+    const result = await confirmLeadPlanRazorpayPayment({
+      userId: req.user.id,
+      razorpayOrderId: req.body?.razorpay_order_id,
+      razorpayPaymentId: req.body?.razorpay_payment_id,
+      razorpaySignature: req.body?.razorpay_signature,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Confirm Razorpay plan error:', error);
+    res.status(error.status || 500).json({ error: clientErrorMessage(error, 'Server error confirming plan payment') });
+  }
+});
+
 router.post('/confirm-razorpay', authenticateToken, async (req, res) => {
-  const { subscriptionId } = req.body;
+  const { subscriptionId, razorpay_payment_id, razorpay_signature } = req.body;
   if (!subscriptionId) return res.status(400).json({ error: 'subscriptionId required' });
+  if (!razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ error: 'razorpay_payment_id and razorpay_signature required' });
+  }
   if (!getRazorpay()) return res.status(400).json({ error: 'Razorpay not configured' });
+
+  const valid = verifyRazorpaySubscriptionSignature(
+    subscriptionId,
+    razorpay_payment_id,
+    razorpay_signature,
+  );
+  if (!valid) {
+    return res.status(400).json({ error: 'Invalid Razorpay payment signature' });
+  }
 
   try {
     const subscription = await fetchRazorpaySubscription(subscriptionId);
@@ -1024,6 +1096,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const rawBody = req.rawBody || req.body;
 
   let event;
   try {
@@ -1039,13 +1112,18 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       if (!sig) {
         return res.status(400).json({ error: 'Missing Stripe signature' });
       }
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      const bodyForStripe = Buffer.isBuffer(rawBody)
+        ? rawBody
+        : typeof rawBody === 'string'
+          ? rawBody
+          : JSON.stringify(rawBody);
+      event = stripe.webhooks.constructEvent(bodyForStripe, sig, webhookSecret);
     } else {
       // Local/dev only: accept unsigned body when secret unset
       event =
-        typeof req.body === 'string' || Buffer.isBuffer(req.body)
-          ? JSON.parse(req.body.toString())
-          : req.body;
+        typeof rawBody === 'string' || Buffer.isBuffer(rawBody)
+          ? JSON.parse(rawBody.toString())
+          : rawBody;
     }
   } catch (err) {
     console.error('[Stripe Webhook] signature error:', err.message);
@@ -1087,6 +1165,18 @@ router.get('/invoices', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Invoices fetch error:', error);
     res.status(500).json({ error: 'Server error fetching invoices' });
+  }
+});
+
+router.get('/marketplace-wallet', authenticateToken, async (req, res) => {
+  try {
+    await ensureWallet(req.user.id);
+    const balance = await getWalletBalance(req.user.id);
+    const ledger = await getLedger(req.user.id, { limit: 50 });
+    res.json({ balance, ledger });
+  } catch (error) {
+    console.error('Marketplace wallet billing fetch error:', error);
+    res.status(500).json({ error: 'Server error fetching bid wallet history' });
   }
 });
 

@@ -14,7 +14,9 @@ import { prepareRealtimeSession } from './realtimeVoiceAgent.js';
 import { synthesizeSpeechAudio } from './elevenLabsService.js';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { buildSignedMediaFileUrl } from '../../utils/signedMediaUrl.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,12 +29,31 @@ function formatMysqlDateTime(date = new Date()) {
 }
 
 export async function createCallRecord({ campaignId, queueId, leadId, userId }) {
+  const streamToken = crypto.randomBytes(24).toString('hex');
   const [result] = await db.query(
-    `INSERT INTO ai_call_records (campaign_id, queue_id, lead_id, user_id, status, started_at)
-     VALUES (?, ?, ?, ?, 'initiated', NOW())`,
-    [campaignId || null, queueId || null, leadId, userId]
+    `INSERT INTO ai_call_records (campaign_id, queue_id, lead_id, user_id, status, stream_token, started_at)
+     VALUES (?, ?, ?, ?, 'initiated', ?, NOW())`,
+    [campaignId || null, queueId || null, leadId, userId, streamToken]
   );
-  return result.insertId;
+  return { callRecordId: result.insertId, streamToken };
+}
+
+/** Verify Twilio media stream custom parameters against an active call record. */
+export async function validateMediaStreamStart({ callRecordId, streamToken, twilioCallSid = null }) {
+  if (!callRecordId || !streamToken) return false;
+  const [rows] = await db.query(
+    `SELECT id, stream_token, twilio_call_sid, status FROM ai_call_records
+     WHERE id = ? AND stream_token = ? LIMIT 1`,
+    [callRecordId, streamToken]
+  );
+  if (!rows.length) return false;
+  const record = rows[0];
+  const allowedStatuses = new Set(['initiated', 'ringing', 'in_progress']);
+  if (!allowedStatuses.has(record.status)) return false;
+  if (twilioCallSid && record.twilio_call_sid && record.twilio_call_sid !== twilioCallSid) {
+    return false;
+  }
+  return true;
 }
 
 export async function updateCallRecord(callRecordId, updates) {
@@ -95,9 +116,14 @@ export async function initiateAICall({ campaignId, queueId, leadId, userId, phon
     throw new Error('Lead marked do_not_call');
   }
 
-  const callRecordId = await createCallRecord({ campaignId, queueId, leadId, userId });
+  const { callRecordId: recordId, streamToken } = await createCallRecord({
+    campaignId,
+    queueId,
+    leadId,
+    userId,
+  });
 
-  prepareRealtimeSession({ callRecordId, leadId, campaignId, userId }).catch((err) => {
+  prepareRealtimeSession({ callRecordId: recordId, leadId, campaignId, userId }).catch((err) => {
     console.error('[CallFlow] Error pre-warming voice session:', err.message);
   });
 
@@ -112,7 +138,8 @@ export async function initiateAICall({ campaignId, queueId, leadId, userId, phon
 <Response>
   <Connect>
     <Stream url="${wsBase}/media-stream">
-      <Parameter name="callRecordId" value="${callRecordId}" />
+      <Parameter name="callRecordId" value="${recordId}" />
+      <Parameter name="streamToken" value="${streamToken}" />
       <Parameter name="leadId" value="${leadId}" />
       <Parameter name="campaignId" value="${campaignId || ''}" />
       <Parameter name="userId" value="${userId}" />
@@ -120,28 +147,28 @@ export async function initiateAICall({ campaignId, queueId, leadId, userId, phon
   </Connect>
 </Response>`;
 
-  const statusCallbackUrl = `${publicBase}/api/ai-calling/webhooks/voice-status?callRecordId=${callRecordId}`;
-  const amdCallbackUrl = `${publicBase}/api/ai-calling/webhooks/amd?callRecordId=${callRecordId}`;
+  const statusCallbackUrl = `${publicBase}/api/ai-calling/webhooks/voice-status?callRecordId=${recordId}`;
+  const amdCallbackUrl = `${publicBase}/api/ai-calling/webhooks/amd?callRecordId=${recordId}`;
 
   try {
     const result = await initiateOutboundCall(phoneNumber, statusCallbackUrl, {
       callerId: campaign?.twilio_number || process.env.TWILIO_PHONE_NUMBER,
       twiml,
       record: true,
-      recordingCallbackUrl: `${publicBase}/api/ai-calling/webhooks/recording?callRecordId=${callRecordId}`,
+      recordingCallbackUrl: `${publicBase}/api/ai-calling/webhooks/recording?callRecordId=${recordId}`,
       amdStatusCallbackUrl: amdCallbackUrl,
       timeout: 30,
     });
 
-    await updateCallRecord(callRecordId, {
+    await updateCallRecord(recordId, {
       twilio_call_sid: result.callSid,
       status: 'ringing',
     });
 
-    return { callRecordId, callSid: result.callSid, simulated: result.simulated };
+    return { callRecordId: recordId, callSid: result.callSid, simulated: result.simulated };
   } catch (err) {
     console.error(`[CallFlow] Failed to initiate call for lead ${leadId}:`, err.message);
-    await updateCallRecord(callRecordId, { status: 'failed', ended_at: formatMysqlDateTime() });
+    await updateCallRecord(recordId, { status: 'failed', ended_at: formatMysqlDateTime() });
     if (queueId) await updateQueueStatus(queueId, 'failed');
     throw err;
   }
@@ -195,7 +222,7 @@ export async function handleAmdWebhook(callRecordId, twilioData) {
       const filePath = path.join(VM_CACHE_DIR, fileName);
       fs.writeFileSync(filePath, audio);
       const publicBase = process.env.PUBLIC_URL || process.env.FRONTEND_URL || BASE_URL;
-      audioUrl = `${publicBase}/api/ai-calling/tts-audio/file/${fileName}`;
+      audioUrl = buildSignedMediaFileUrl(publicBase, fileName);
     }
   } catch (err) {
     console.error('[CallFlow] Voicemail TTS failed:', err.message);

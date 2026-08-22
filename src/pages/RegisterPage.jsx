@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../config.js";
+import { setToken } from "../lib/auth.js";
 import { US_STATES } from "../lib/usStates.js";
 import SatelliteUplinkLoader from "../components/SatelliteUplinkLoader.jsx";
 import SocialLoginButtons from "../components/SocialLoginButtons.jsx";
@@ -27,15 +28,17 @@ export default function RegisterPage() {
   };
 
   const finishAuth = (token, { needsOnboarding = false } = {}) => {
-    localStorage.setItem("solar_token", token);
+    setToken(token);
     if (needsOnboarding) {
-      navigate("/complete-profile");
+      navigate("/complete-profile", { replace: true });
       return;
     }
     if (selectedPlan) {
-      navigate(`/billing?plan=${encodeURIComponent(selectedPlan)}#plans`);
+      navigate(`/billing?plan=${encodeURIComponent(selectedPlan)}#plans`, {
+        replace: true,
+      });
     } else {
-      navigate("/dashboard?welcome=1");
+      navigate("/dashboard?welcome=1", { replace: true });
     }
   };
 
@@ -59,7 +62,16 @@ export default function RegisterPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Registration failed");
 
-      finishAuth(data.token);
+      if (data.emailVerificationRequired) {
+        setShowAuthLoader(false);
+        setLoading(false);
+        navigate(`/verify-email?pending=1&email=${encodeURIComponent(formData.email)}`, { replace: true });
+        return;
+      }
+
+      if (data.token) {
+        finishAuth(data.token);
+      }
     } catch (err) {
       setShowAuthLoader(false);
       setError(err.message);

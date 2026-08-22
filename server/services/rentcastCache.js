@@ -34,9 +34,10 @@ function read(key) {
   return hit.prop;
 }
 
-function normalizeAddress(addr) {
+export function normalizeAddress(addr) {
   return String(addr || '')
     .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

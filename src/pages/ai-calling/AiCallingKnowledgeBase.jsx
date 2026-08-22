@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import AppLayout from '../../components/AppLayout';
 import { API_BASE } from '../../config.js';
 
 const API = API_BASE;
@@ -68,7 +67,7 @@ export default function AiCallingKnowledgeBase() {
   };
 
   return (
-    <AppLayout>
+    <>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white font-display">AI Knowledge Base</h1>
@@ -180,6 +179,6 @@ export default function AiCallingKnowledgeBase() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

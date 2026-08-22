@@ -26,6 +26,24 @@ export async function apiRequest(endpoint, options = {}) {
   return response.json();
 }
 
+/** Run bulk area scan — 1 credit per lead saved (max 50). */
+export async function bulkScan(payload, options = {}) {
+  const response = await fetch(`${API_BASE}/api/leads/bulk-scan`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+    signal: options.signal,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(data.error || 'Bulk scan failed');
+    err.status = response.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
 // API Service Methods
 export const apiService = {
   // Auth
@@ -36,7 +54,11 @@ export const apiService = {
   getLead: (id) => apiRequest(`/api/leads/${id}`),
   updateLeadStatus: (id, status) => apiRequest(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   bulkDeleteLeads: (leadIds) => apiRequest('/api/leads/bulk-delete', { method: 'POST', body: JSON.stringify({ leadIds }) }),
-  pushWebhook: (leadId, webhookUrl) => apiRequest(`/api/leads/${leadId}/webhook`, { method: 'POST', body: JSON.stringify({ webhookUrl }) }),
+  bulkScan: (payload, options) => bulkScan(payload, options),
+  pushLeadToCrm: (leadId, provider) =>
+    apiRequest(`/api/crm/integrations/push/${leadId}`, { method: 'POST', body: JSON.stringify({ provider }) }),
+  pushBulkLeadsToCrm: (leadIds, provider) =>
+    apiRequest('/api/crm/integrations/push-bulk', { method: 'POST', body: JSON.stringify({ provider, leadIds }) }),
 
   // Properties & Map
   searchProperties: (query, polygon) => apiRequest(`/api/properties/search?q=${encodeURIComponent(query)}${polygon ? `&polygon=${encodeURIComponent(JSON.stringify(polygon))}` : ''}`),

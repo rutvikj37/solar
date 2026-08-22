@@ -22,8 +22,6 @@ export default function MapFilterBar({
   setSingleFamily,
   skipPaneled,
   setSkipPaneled,
-  minSavings,
-  setMinSavings,
   isDrawingPolygon,
   lassoMode,
   setLassoMode,
@@ -31,6 +29,7 @@ export default function MapFilterBar({
   onToggleDrawing,
   onClearPolygon,
   hasPolygon,
+  canBulkScan = false,
   onOpenScanModal
 }) {
   const [presets, setPresets] = useState([]);
@@ -250,7 +249,6 @@ export default function MapFilterBar({
     if (preset && preset.filters) {
       if (preset.filters.singleFamily !== undefined) setSingleFamily(preset.filters.singleFamily);
       if (preset.filters.skipPaneled !== undefined) setSkipPaneled(preset.filters.skipPaneled);
-      if (preset.filters.minSavings !== undefined) setMinSavings(preset.filters.minSavings);
       if (preset.filters.zip !== undefined) {
         setZip(preset.filters.zip);
         onSearch(preset.filters.zip);
@@ -275,7 +273,6 @@ export default function MapFilterBar({
           filters: {
             singleFamily,
             skipPaneled,
-            minSavings,
             zip
           }
         })
@@ -424,9 +421,9 @@ export default function MapFilterBar({
           {isDrawingPolygon ? 'Finish Lasso' : 'Draw Lasso'}
         </button>
 
-        {hasPolygon && (
+        {canBulkScan && (
           <>
-            {polygonAreaSqMiles > 0 && (
+            {hasPolygon && polygonAreaSqMiles > 0 && (
               <span className="px-2 py-1 rounded-lg bg-primary/15 border border-primary/30 text-primary font-mono font-bold text-[10px]">
                 {polygonAreaSqMiles} sq mi
               </span>
@@ -435,11 +432,21 @@ export default function MapFilterBar({
             <button
               type="button"
               onClick={onOpenScanModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-[10px] uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-95 transition-all border border-emerald-400/40 animate-pulse"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-[10px] uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-95 transition-all border border-emerald-400/40"
             >
-              <span className="material-symbols-outlined text-sm">bolt</span>
-              Scan Territory Leads
+              <span className="material-symbols-outlined text-sm">radar</span>
+              Scan this area
             </button>
+          </>
+        )}
+
+        {hasPolygon && (
+          <>
+            {!canBulkScan && polygonAreaSqMiles > 0 && (
+              <span className="px-2 py-1 rounded-lg bg-primary/15 border border-primary/30 text-primary font-mono font-bold text-[10px]">
+                {polygonAreaSqMiles} sq mi
+              </span>
+            )}
 
             <button
               type="button"
@@ -487,11 +494,11 @@ export default function MapFilterBar({
               </button>
             </div>
             <p className="text-[11px] text-on-surface-variant">
-              Save your current search settings (Single-family, Skip paneled, Min savings, ZIP) for quick 1-click loading.
+              Save your current search settings (single-family, skip paneled, ZIP) for quick one-click loading.
             </p>
             <input
               type="text"
-              placeholder="e.g. High Value SFR + >$25k Savings"
+              placeholder="e.g. Beverly Hills SFR"
               value={newPresetName}
               onChange={(e) => setNewPresetName(e.target.value)}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white text-xs focus:outline-none focus:border-primary"

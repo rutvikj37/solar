@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigationType } from 'react-router-dom';
 import {
+  AUTH_CHANGED_EVENT,
+  clearAuthSessionCache,
   getToken,
   isAdminRole,
+  isTokenValid,
   loadAuthSession,
   peekAuthSessionCache,
 } from '../lib/auth.js';
@@ -10,9 +13,31 @@ import SatelliteUplinkLoader from './SatelliteUplinkLoader.jsx';
 
 export default function ProtectedRoute({ children, requireAdmin = false }) {
   const location = useLocation();
+  const navType = useNavigationType();
+  const [authTick, setAuthTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setAuthTick((n) => n + 1);
+    const onPageShow = (event) => {
+      if (event.persisted) clearAuthSessionCache();
+      bump();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('popstate', bump);
+    window.addEventListener(AUTH_CHANGED_EVENT, bump);
+    window.addEventListener('storage', bump);
+    return () => {
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('popstate', bump);
+      window.removeEventListener(AUTH_CHANGED_EVENT, bump);
+      window.removeEventListener('storage', bump);
+    };
+  }, []);
+
+  const tokenOk = isTokenValid();
   const token = getToken();
   const [status, setStatus] = useState(() => {
-    if (!token) return 'denied';
+    if (!tokenOk) return 'denied';
     const cached = peekAuthSessionCache(token);
     if (cached) {
       if (requireAdmin && !isAdminRole(cached.role)) return 'forbidden';
@@ -23,15 +48,15 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
 
   useEffect(() => {
     const currentToken = getToken();
-    if (!currentToken) {
+    if (!currentToken || !isTokenValid(currentToken)) {
       setStatus('denied');
       return;
     }
 
-    const cached = peekAuthSessionCache(currentToken);
-    if (cached) {
+    const skipNetwork = navType !== 'POP' && peekAuthSessionCache(currentToken);
+    if (skipNetwork) {
       setStatus(
-        requireAdmin && !isAdminRole(cached.role) ? 'forbidden' : 'ok'
+        requireAdmin && !isAdminRole(skipNetwork.role) ? 'forbidden' : 'ok'
       );
       return;
     }
@@ -52,7 +77,11 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
     return () => {
       cancelled = true;
     };
-  }, [requireAdmin, location.pathname]);
+  }, [requireAdmin, location.pathname, location.key, navType, authTick]);
+
+  if (!tokenOk || status === 'denied') {
+    return <Navigate to="/login" replace />;
+  }
 
   if (status === 'loading') {
     return (
@@ -60,11 +89,6 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
         <SatelliteUplinkLoader visible />
       </div>
     );
-  }
-
-  if (status === 'denied') {
-    const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
   }
 
   if (status === 'forbidden') {

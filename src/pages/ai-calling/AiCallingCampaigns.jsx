@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AppLayout from '../../components/AppLayout';
 import DispositionBadge from '../../components/ai-calling/DispositionBadge';
 import { API_BASE } from '../../config.js';
 
@@ -114,16 +113,16 @@ export default function AiCallingCampaigns() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <span className="material-symbols-outlined text-4xl animate-spin text-primary">progress_activity</span>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white font-display">AI Calling Campaigns</h1>
@@ -357,6 +356,6 @@ export default function AiCallingCampaigns() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

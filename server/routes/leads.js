@@ -1,10 +1,11 @@
 import express from 'express';
 import db from '../db.js';
 import { authenticateToken, isAdminRole } from '../middleware/auth.js';
+import { fetchLeadForUser } from '../utils/leadAccess.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkLeadCreditAccess } from './billing.js';
 import { trackedFetch } from '../services/apiUsage.js';
-import { cacheRentcastRecords, getCachedRentcastRecord } from '../services/rentcastCache.js';
+import { cacheRentcastRecords, getCachedRentcastRecord, normalizeAddress } from '../services/rentcastCache.js';
 import { getZipFromCoords } from '../services/leadService.js';
 import { normalizeDetailsCoordinates, ensureLeadCoordinates, assertAddressMatchesSearch, looksLikeStreetAddress } from '../services/coordinateService.js';
 import {
@@ -27,7 +28,6 @@ import {
   leadSharePdfFilename,
   buildLeadShareWhatsAppText,
 } from '../utils/leadSharePdf.js';
-
 const router = express.Router();
 
 const isKeyValid = (key) => {
@@ -349,9 +349,10 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
   const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
   if (isKeyValid(rentcastApiKey)) {
-    let rentcastSearchUrl = `https://api.rentcast.io/v1/properties?zipCode=${zip}&limit=80`;
+    const rentcastLimit = Math.min(500, Math.max(80, queryLimit * 5));
+    let rentcastSearchUrl = `https://api.rentcast.io/v1/properties?zipCode=${zip}&limit=${rentcastLimit}`;
     if (Number.isFinite(centerLat) && Number.isFinite(centerLng) && radiusMiles > 0) {
-      rentcastSearchUrl = `https://api.rentcast.io/v1/properties?latitude=${centerLat}&longitude=${centerLng}&radius=${radiusMiles.toFixed(2)}&limit=80`;
+      rentcastSearchUrl = `https://api.rentcast.io/v1/properties?latitude=${centerLat}&longitude=${centerLng}&radius=${radiusMiles.toFixed(2)}&limit=${rentcastLimit}`;
     }
     const searchRes = await trackedFetch('rentcast', rentcastSearchUrl, {
       headers: {
@@ -416,7 +417,28 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     }
   }
 
+  // Dedupe property list by normalized address so enrichment cannot collapse to one home
+  const dedupedProperties = [];
+  const seenPropertyAddresses = new Set();
+  for (const prop of propertiesList) {
+    const addrLine = prop.formattedAddress || (prop.address ? prop.address.oneLine : '');
+    const norm = normalizeAddress(addrLine);
+    if (norm && seenPropertyAddresses.has(norm)) continue;
+    if (norm) seenPropertyAddresses.add(norm);
+    dedupedProperties.push(prop);
+  }
+  propertiesList = dedupedProperties;
+
+  const [existingLeadRows] = await db.query('SELECT address FROM leads WHERE user_id = ?', [req.user.id]);
+  const existingNormalizedAddresses = new Set(
+    existingLeadRows.map((row) => normalizeAddress(row.address)).filter(Boolean)
+  );
+  const seenInBatch = new Set();
+
   const summary = {
+    requested: queryLimit,
+    propertiesFound: propertiesList.length,
+    usedMockListing,
     leadsCount: 0,
     withContact: 0,
     withoutContact: 0,
@@ -435,6 +457,22 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
   const deferredPropertyOnly = [];
   const createdLeadIds = [];
+  const createdLeadsPreview = [];
+
+  const isDuplicateLeadAddress = (address) => {
+    const norm = normalizeAddress(address);
+    if (!norm) return false;
+    if (seenInBatch.has(norm)) return true;
+    if (existingNormalizedAddresses.has(norm)) return true;
+    return false;
+  };
+
+  const markLeadAddressSaved = (address) => {
+    const norm = normalizeAddress(address);
+    if (!norm) return;
+    seenInBatch.add(norm);
+    existingNormalizedAddresses.add(norm);
+  };
 
   const saveLeadFromDetails = async (details, { hasContact, incompleteNote }) => {
     const parseValueSafe = (val, regex) => {
@@ -497,17 +535,28 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
       ]
     );
 
-    if (insertResult?.insertId) createdLeadIds.push(insertResult.insertId);
+    if (insertResult?.insertId) {
+      createdLeadIds.push(insertResult.insertId);
+      createdLeadsPreview.push({
+        id: insertResult.insertId,
+        owner_name: details.propertyData.ownerName,
+        address: details.address,
+        lead_score: details.aiLeadScore.overall,
+        created_at: new Date().toISOString(),
+      });
+      markLeadAddressSaved(details.address);
+    }
 
     summary.leadsCount++;
     if (hasContact) summary.withContact++;
     else summary.withoutContact++;
   };
 
-  for (const prop of propertiesList) {
+  for (let propIndex = 0; propIndex < propertiesList.length; propIndex++) {
+    const prop = propertiesList[propIndex];
     if (summary.leadsCount >= queryLimit) break;
 
-    const propIdStr = prop.id || (prop.identifier ? (prop.identifier.attomId || prop.identifier.Id) : `bulk-${zip}-${Date.now()}`);
+    const propIdStr = prop.id || (prop.identifier ? (prop.identifier.attomId || prop.identifier.Id) : `bulk-${zip}-${propIndex}`);
     const addressLine = prop.formattedAddress || (prop.address ? prop.address.oneLine : '');
     const latVal = parseFloat(prop.latitude) || (prop.location ? parseFloat(prop.location.latitude) : 0);
     const lngVal = parseFloat(prop.longitude) || (prop.location ? parseFloat(prop.location.longitude) : 0);
@@ -520,13 +569,10 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
     const targetId = `rentcast-${propIdStr}__${encodeURIComponent(addressLine || `${latVal},${lngVal}`)}`;
 
-    if (addressLine) {
-      const [existing] = await db.query('SELECT id FROM leads WHERE user_id = ? AND address = ?', [req.user.id, addressLine]);
-      if (existing.length > 0) {
-        summary.skipped++;
-        summary.skippedReasons.duplicate++;
-        continue;
-      }
+    if (addressLine && isDuplicateLeadAddress(addressLine)) {
+      summary.skipped++;
+      summary.skippedReasons.duplicate++;
+      continue;
     }
 
     let details = await retrievePropertyDetails(
@@ -543,8 +589,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
       continue;
     }
 
-    const [existingEnriched] = await db.query('SELECT id FROM leads WHERE user_id = ? AND address = ?', [req.user.id, details.address]);
-    if (existingEnriched.length > 0) {
+    if (isDuplicateLeadAddress(details.address)) {
       summary.skipped++;
       summary.skippedReasons.duplicate++;
       continue;
@@ -624,6 +669,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     if (hasContact) {
       await saveLeadFromDetails(details, { hasContact: true, incompleteNote });
     } else {
+      markLeadAddressSaved(details.address);
       deferredPropertyOnly.push({ details, incompleteNote });
     }
   }
@@ -633,10 +679,11 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     await saveLeadFromDetails(item.details, { hasContact: false, incompleteNote: item.incompleteNote });
   }
 
-  const unsavedDeferred = Math.max(0, deferredPropertyOnly.length - summary.withoutContact);
-  if (unsavedDeferred > 0) {
-    summary.skipped += unsavedDeferred;
+  const previewById = new Map();
+  for (const lead of createdLeadsPreview) {
+    previewById.set(lead.id, lead);
   }
+  const uniqueLeadsPreview = Array.from(previewById.values());
 
   if (!adminBypass && packageRecord && summary.leadsCount > 0) {
     await db.query(
@@ -653,7 +700,8 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     message: `Bulk scan complete. Created ${summary.leadsCount} leads (${summary.withContact} with contact details).`,
     creditsDeducted: adminBypass ? 0 : summary.leadsCount,
     creditsRemaining: currentCredits,
-    createdLeadIds,
+    createdLeadIds: [...new Set(createdLeadIds)],
+    leads: uniqueLeadsPreview,
     summary,
     adminBypass
   });
@@ -662,13 +710,9 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 // Refresh lead map coordinates (Google Solar rooftop center preferred)
 router.post('/:id/refresh-coordinates', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const [leads] = await db.query(
-    'SELECT * FROM leads WHERE id = ? AND user_id = ?',
-    [id, req.user.id]
-  );
-  if (leads.length === 0) return res.status(404).json({ error: 'Lead not found' });
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-  const lead = leads[0];
   const coordFix = await ensureLeadCoordinates(lead, { force: true });
 
   if (coordFix.lat != null && coordFix.lng != null) {
@@ -690,28 +734,10 @@ router.post('/:id/refresh-coordinates', authenticateToken, asyncHandler(async (r
 // Branded SolarX.live lead sheet PDF (share / download)
 router.get('/:id/share-pdf', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  let [leads] = await db.query(
-    `SELECT l.* FROM leads l
-     LEFT JOIN users u ON u.id = l.user_id
-     LEFT JOIN team_members tm ON LOWER(tm.member_email) = LOWER(u.email)
-     WHERE l.id = ? AND (
-       l.user_id = ?
-       OR tm.owner_user_id = ?
-       OR l.user_id IN (SELECT id FROM users WHERE email IN (SELECT member_email FROM team_members WHERE owner_user_id = ?))
-     )`,
-    [id, req.user.id, req.user.id, req.user.id]
-  );
-
-  if (leads.length === 0 && isAdminRole(req.user.role)) {
-    const [anyLead] = await db.query('SELECT * FROM leads WHERE id = ?', [id]);
-    leads = anyLead;
-  }
-
-  if (leads.length === 0) {
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
+  if (!lead) {
     return res.status(404).json({ error: 'Lead not found' });
   }
-
-  const lead = leads[0];
   const download = req.query.download === '1' || String(req.query.download).toLowerCase() === 'true';
   const buffer = await renderLeadSharePdf(lead);
   const filename = leadSharePdfFilename(lead);
@@ -729,30 +755,11 @@ router.get('/:id/share-pdf', authenticateToken, asyncHandler(async (req, res) =>
 // Get Single Lead details
 router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  let [leads] = await db.query(
-    `SELECT l.* FROM leads l
-     LEFT JOIN users u ON u.id = l.user_id
-     LEFT JOIN team_members tm ON LOWER(tm.member_email) = LOWER(u.email)
-     WHERE l.id = ? AND (
-       l.user_id = ?
-       OR tm.owner_user_id = ?
-       OR l.user_id IN (SELECT id FROM users WHERE email IN (SELECT member_email FROM team_members WHERE owner_user_id = ?))
-     )`,
-    [id, req.user.id, req.user.id, req.user.id]
-  );
-
-  if (leads.length === 0) {
-    const [anyLead] = await db.query('SELECT * FROM leads WHERE id = ?', [id]);
-    if (anyLead.length > 0) {
-      leads = anyLead;
-    }
-  }
-
-  if (leads.length === 0) {
+  const leadRow = await fetchLeadForUser(id, req.user.id, req.user.role);
+  if (!leadRow) {
     return res.status(404).json({ error: 'Lead not found' });
   }
-
-  const lead = leads[0];
+  const lead = leadRow;
   let solar = null;
   let propertyExtra = null;
   try {
@@ -895,28 +902,13 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
 // Satellite rooftop image proxy — same-origin bytes for proposal PDF/print (avoids Static Maps referrer/key failures in <img>)
 router.get('/:id/satellite-image', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  let [leads] = await db.query(
-    `SELECT l.id, l.latitude, l.longitude FROM leads l
-     LEFT JOIN users u ON u.id = l.user_id
-     LEFT JOIN team_members tm ON LOWER(tm.member_email) = LOWER(u.email)
-     WHERE l.id = ? AND (
-       l.user_id = ?
-       OR tm.owner_user_id = ?
-       OR l.user_id IN (SELECT id FROM users WHERE email IN (SELECT member_email FROM team_members WHERE owner_user_id = ?))
-     )
-     LIMIT 1`,
-    [id, req.user.id, req.user.id, req.user.id]
+  const lead = await fetchLeadForUser(
+    id,
+    req.user.id,
+    req.user.role,
+    'l.id, l.latitude, l.longitude'
   );
-  if (leads.length === 0) {
-    const [anyLead] = await db.query(
-      'SELECT id, latitude, longitude FROM leads WHERE id = ?',
-      [id]
-    );
-    if (anyLead.length === 0) return res.status(404).json({ error: 'Lead not found' });
-    leads = anyLead;
-  }
-
-  const lead = leads[0];
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
   const lat = parseFloat(lead.latitude);
   const lng = parseFloat(lead.longitude);
   if (Number.isNaN(lat) || Number.isNaN(lng) || (!lat && !lng)) {
@@ -949,8 +941,8 @@ router.get('/:id/satellite-image', authenticateToken, asyncHandler(async (req, r
 // Get activities for a lead
 router.get('/:id/activities', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const [leads] = await db.query('SELECT id FROM leads WHERE id = ?', [id]);
-  if (leads.length === 0) return res.status(404).json({ error: 'Lead not found' });
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id');
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
   const [activities] = await db.query(
     'SELECT * FROM lead_activities WHERE lead_id = ? ORDER BY created_at DESC LIMIT 100',
@@ -965,15 +957,15 @@ router.post('/:id/activities', authenticateToken, asyncHandler(async (req, res) 
   const { type = 'note', content } = req.body;
   if (!content) return res.status(400).json({ error: 'content is required' });
 
-  const [leads] = await db.query('SELECT id FROM leads WHERE id = ?', [id]);
-  if (leads.length === 0) return res.status(404).json({ error: 'Lead not found' });
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id');
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
   await db.query(
     'INSERT INTO lead_activities (lead_id, user_id, type, content, meta) VALUES (?, ?, ?, ?, NULL)',
     [id, req.user.id, type, content]
   );
   if (type === 'note') {
-    await db.query('UPDATE leads SET notes = ? WHERE id = ?', [content, id]);
+    await db.query('UPDATE leads SET notes = ? WHERE id = ? AND user_id = ?', [content, id, req.user.id]);
   }
 
   const [activities] = await db.query(
@@ -988,8 +980,8 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status, notes } = req.body;
 
-  const [leads] = await db.query('SELECT * FROM leads WHERE id = ?', [id]);
-  if (leads.length === 0) return res.status(404).json({ error: 'Lead not found' });
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id, l.user_id');
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
   const updates = [];
   const params = [];
@@ -1003,77 +995,12 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   if (updates.length > 0) {
-    params.push(id);
-    await db.query(`UPDATE leads SET ${updates.join(', ')} WHERE id = ?`, params);
+    params.push(id, lead.user_id);
+    await db.query(`UPDATE leads SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
   }
 
-  const [updated] = await db.query('SELECT * FROM leads WHERE id = ?', [id]);
+  const [updated] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [id, lead.user_id]);
   res.json(updated[0]);
-}));
-
-// Instant Webhook CRM Lead Push (GoHighLevel, HubSpot, Salesforce, Zapier)
-router.post('/:id/webhook', authenticateToken, asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { webhookUrl } = req.body;
-  if (!webhookUrl) return res.status(400).json({ error: 'webhookUrl is required' });
-
-  const [leads] = await db.query('SELECT * FROM leads WHERE user_id = ? AND id = ?', [req.user.id, id]);
-  if (leads.length === 0) return res.status(404).json({ error: 'Lead not found' });
-
-  const lead = leads[0];
-  let solar = null;
-  let propertyExtra = null;
-  try {
-    solar = lead.solar_json ? JSON.parse(lead.solar_json) : null;
-  } catch (_) {
-    solar = null;
-  }
-  try {
-    propertyExtra = lead.property_json ? JSON.parse(lead.property_json) : null;
-  } catch (_) {
-    propertyExtra = null;
-  }
-
-  const payload = {
-    event: 'lead.created',
-    timestamp: new Date().toISOString(),
-    lead: {
-      id: lead.id,
-      ownerName: lead.owner_name,
-      address: lead.address,
-      latitude: lead.latitude,
-      longitude: lead.longitude,
-      phone: lead.phone,
-      phoneType: lead.phone_type,
-      email: lead.email,
-      emailStatus: lead.email_status,
-      linkedIn: lead.linkedin,
-      status: lead.status,
-      leadScore: lead.lead_score,
-      propertyValue: lead.property_value,
-      roofSize: lead.roof_size,
-      estimatedSavings: lead.estimated_savings,
-      solarDetails: solar,
-      propertyDetails: propertyExtra,
-      imageUrl: lead.image_url
-    }
-  };
-
-  try {
-    const fetchRes = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    res.json({
-      success: true,
-      message: `Lead #${id} pushed successfully to webhook.`,
-      status: fetchRes.status
-    });
-  } catch (err) {
-    console.error(`[Webhook Push Error] Lead #${id}:`, err.message);
-    res.status(500).json({ error: 'Webhook push failed' });
-  }
 }));
 
 export default router;

@@ -46,30 +46,35 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
     {
       title: 'DISCOVER',
       items: [
-        { name: 'Targeting', path: '/map', icon: 'radar' }
-        // Automation (/bulk-scan) hidden until feature ships
+        { name: 'Targeting', path: '/map', icon: 'radar' },
+        { name: 'Bulk Scan', path: '/bulk-scan', icon: 'layers' }
       ]
     },
     {
       title: 'PIPELINE',
       items: [
+        { name: 'Marketplace', path: '/marketplace', icon: 'storefront' },
         { name: 'Lead Manager', path: '/my-leads', icon: 'assignment' },
+        { name: 'Reports', path: '/reports', icon: 'analytics' },
+        { name: 'Integrations', path: '/integrations', icon: 'hub' },
         { name: 'Drip Workflows', path: '/drip', icon: 'campaign' },
         { name: 'Appointments', path: '/appointments', icon: 'calendar_month' }
       ]
     },
-    {
-      title: 'AI VOICE CALLING',
-      items: [
-        { name: 'Dashboard', path: '/ai-calling', icon: 'smart_toy', badge: isAdmin ? null : 'Soon' },
-        { name: 'Campaigns', path: '/ai-calling/campaigns', icon: 'campaign', badge: isAdmin ? null : 'Soon' },
-        { name: 'Live Monitor', path: '/ai-calling/live', icon: 'monitor_heart', badge: isAdmin ? null : 'Soon' },
-        { name: 'Knowledge Base', path: '/ai-calling/knowledge-base', icon: 'auto_stories', badge: isAdmin ? null : 'Soon' },
-        { name: 'Prompts & Scripts', path: '/ai-calling/prompts', icon: 'edit_note', badge: isAdmin ? null : 'Soon' },
-        { name: 'Analytics', path: '/ai-calling/analytics', icon: 'analytics', badge: isAdmin ? null : 'Soon' },
-        { name: 'Settings', path: '/ai-calling/settings', icon: 'settings', badge: isAdmin ? null : 'Soon' }
-      ]
-    },
+    ...(isAdmin
+      ? [{
+          title: 'AI VOICE CALLING',
+          items: [
+            { name: 'Dashboard', path: '/ai-calling', icon: 'smart_toy' },
+            { name: 'Campaigns', path: '/ai-calling/campaigns', icon: 'campaign' },
+            { name: 'Live Monitor', path: '/ai-calling/live', icon: 'monitor_heart' },
+            { name: 'Knowledge Base', path: '/ai-calling/knowledge-base', icon: 'auto_stories' },
+            { name: 'Prompts & Scripts', path: '/ai-calling/prompts', icon: 'edit_note' },
+            { name: 'Analytics', path: '/ai-calling/analytics', icon: 'analytics' },
+            { name: 'Settings', path: '/ai-calling/settings', icon: 'settings' }
+          ]
+        }]
+      : []),
     {
       title: 'ACCOUNT',
       items: [

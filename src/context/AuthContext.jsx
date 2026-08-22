@@ -1,4 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../config.js';
+import {
+  AUTH_CHANGED_EVENT,
+  clearToken,
+  getToken,
+  isAuthError,
+  isTokenValid,
+  logoutToLogin,
+  setToken,
+} from '../lib/auth.js';
 
 const AuthContext = createContext(null);
 
@@ -10,18 +20,26 @@ export function AuthProvider({ children }) {
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const resetSession = useCallback(() => {
+    setUser(null);
+    setCredits(0);
+    setActivePackage('Free');
+    setUnlimitedCredits(false);
+    setSubscription(null);
+  }, []);
+
   const fetchUserData = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setUser(null);
-      setCredits(0);
+    if (!isTokenValid()) {
+      if (getToken()) clearToken();
+      resetSession();
       setLoading(false);
       return;
     }
 
     try {
-      const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+        cache: 'no-store',
       });
       if (res.ok) {
         const data = await res.json();
@@ -31,34 +49,48 @@ export function AuthProvider({ children }) {
         setUnlimitedCredits(Boolean(data.unlimitedCredits));
         setSubscription(data.subscription || null);
       } else {
-        localStorage.removeItem('token');
-        setUser(null);
-        setCredits(0);
+        if (isAuthError(res.status) || res.status === 404) {
+          clearToken();
+        }
+        resetSession();
       }
     } catch (err) {
       console.error('Error loading user data:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetSession]);
 
   useEffect(() => {
     fetchUserData();
   }, [fetchUserData]);
 
+  useEffect(() => {
+    const onAuthChanged = () => {
+      if (!isTokenValid()) {
+        resetSession();
+        setLoading(false);
+        return;
+      }
+      fetchUserData();
+    };
+    window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
+    window.addEventListener('pageshow', onAuthChanged);
+    return () => {
+      window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
+      window.removeEventListener('pageshow', onAuthChanged);
+    };
+  }, [fetchUserData, resetSession]);
+
   const login = (token, userData) => {
-    localStorage.setItem('token', token);
+    setToken(token);
     setUser(userData);
     fetchUserData();
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-    setCredits(0);
-    setActivePackage('Free');
-    setUnlimitedCredits(false);
-    setSubscription(null);
+    resetSession();
+    logoutToLogin();
   };
 
   const value = {

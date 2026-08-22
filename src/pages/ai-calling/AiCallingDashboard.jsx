@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import AppLayout from '../../components/AppLayout';
 import KpiCard from '../../components/ai-calling/KpiCard';
 import DispositionBadge from '../../components/ai-calling/DispositionBadge';
 import { API_BASE } from '../../config.js';
@@ -84,18 +83,18 @@ export default function AiCallingDashboard() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <span className="material-symbols-outlined text-4xl animate-spin text-primary">progress_activity</span>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   const s = stats || {};
 
   return (
-    <AppLayout>
+    <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
@@ -348,6 +347,6 @@ export default function AiCallingDashboard() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

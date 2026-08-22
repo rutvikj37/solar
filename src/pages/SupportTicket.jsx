@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 
 export default function SupportTicket() {
@@ -65,7 +64,7 @@ export default function SupportTicket() {
   const { ticket, messages } = data;
 
   return (
-    <AppLayout>
+    <>
       <div className="mb-4">
         <Link to="/support" className="text-xs text-primary font-semibold hover:underline">
           ← Back to Support
@@ -105,6 +104,6 @@ export default function SupportTicket() {
       ) : (
         <p className="text-xs text-on-surface-variant">This ticket is {ticket.status}.</p>
       )}
-    </AppLayout>
+    </>
   );
 }

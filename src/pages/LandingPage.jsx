@@ -1,1 +1,1 @@
-export { default } from '../marketing/LandingPage.jsx';
+export { default } from './homeowner/HomeownerLandingPage';

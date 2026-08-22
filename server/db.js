@@ -9,6 +9,11 @@ if (isProd && (!dbPassword || dbPassword === 'admin123')) {
   process.exit(1);
 }
 
+const sslEnabled =
+  process.env.DB_SSL === '1' ||
+  process.env.DB_SSL === 'true' ||
+  process.env.MYSQL_SSL === '1';
+
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 3306,
@@ -17,7 +22,8 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'techx_solar',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  ...(sslEnabled ? { ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== '0' } } : {}),
 });
 
 export default pool;

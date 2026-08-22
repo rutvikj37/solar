@@ -19,7 +19,6 @@ export { default as AskHeraFab } from './map/AskHeraFab';
 export { default as SatelliteUplinkLoader } from './SatelliteUplinkLoader';
 
 // Modals
-export { default as WebhookModal } from './WebhookModal';
 export { default as SolarProposalModal } from './SolarProposalModal';
 export { default as UpgradeModal } from './UpgradeModal';
 

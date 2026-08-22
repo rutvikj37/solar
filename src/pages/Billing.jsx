@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
 import { API_BASE } from '../config.js';
 import { invoiceNumber, openInvoicePdf } from '../utils/invoicePdf.js';
+import { openRazorpayOrderCheckout } from '../lib/razorpayCheckout.js';
+import { formatLedgerEntryType, formatMoney, formatWhen } from '../lib/marketplace.js';
 
 const API = API_BASE;
 
@@ -51,15 +52,53 @@ function InvoiceStatusPill({ status }) {
 
 function formatBillingReason(reason) {
   const map = {
-    initial: 'Initial',
-    renewal: 'Renewal',
+    initial: 'Lead plan purchase',
+    renewal: 'Lead plan renewal',
     admin_plan_grant: 'Admin plan grant',
     admin_plan_change: 'Admin plan change',
     admin_plan_restrict: 'Admin plan restrict',
     admin_plan_unrestrict: 'Admin restriction lifted',
-    admin_credit_adjustment: 'Admin credit adjustment'
+    admin_credit_adjustment: 'Lead credit adjustment',
+    marketplace_wallet: 'Bid wallet top-up',
   };
   return map[reason] || String(reason || 'initial').replace(/_/g, ' ');
+}
+
+function isMarketplaceWalletInvoice(tx) {
+  return tx?.billing_reason === 'marketplace_wallet';
+}
+
+function invoiceProductLabel(tx) {
+  if (isMarketplaceWalletInvoice(tx)) {
+    const pack = String(tx.package_id || '');
+    const match = pack.match(/^mkt_(\d+)$/);
+    if (match) return `$${match[1]} Bid Wallet`;
+    if (pack === 'mkt_custom') return 'Custom Bid Wallet top-up';
+    return 'Bid Wallet';
+  }
+  return tx.package_name || tx.package_id || '—';
+}
+
+function invoiceQuantityLabel(tx) {
+  if (isMarketplaceWalletInvoice(tx)) {
+    const usd = Number(tx.credits || 0);
+    return usd ? `$${usd.toLocaleString()} bid balance` : '—';
+  }
+  if (tx.credits == null) return '—';
+  return `${Number(tx.credits).toLocaleString()} lead credits`;
+}
+
+function invoicePaymentMethod(tx) {
+  if (!tx?.method) return '—';
+  const map = {
+    razorpay_marketplace: 'Razorpay',
+    razorpay_plan: 'Razorpay',
+    razorpay_subscription: 'Razorpay',
+    stripe: 'Stripe',
+    stripe_marketplace: 'Stripe',
+    dev_credit: 'Dev checkout',
+  };
+  return map[tx.method] || String(tx.method).replace(/_/g, ' ');
 }
 
 export default function Billing() {
@@ -78,7 +117,9 @@ export default function Billing() {
   const [plansLoading, setPlansLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
   const [portalLoading, setPortalLoading] = useState(false);
+  const [marketplaceWallet, setMarketplaceWallet] = useState({ balance: 0, ledger: [] });
   const [cancelLoading, setCancelLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -121,27 +162,66 @@ export default function Billing() {
     }
     setPurchasing(true);
     setSelectedPlan(pkgId);
+    setCheckoutError('');
+    setMessage('');
     try {
       const res = await fetch(`${API}/api/billing/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ packageId: pkgId })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Checkout failed');
-      if (data.mode === 'razorpay' && data.url) {
-        sessionStorage.setItem('pending_razorpay_sub', data.subscriptionId || '');
-        window.location.href = data.url;
+      if (data.mode === 'razorpay' && data.orderId && data.keyId) {
+        try {
+          const result = await openRazorpayOrderCheckout({
+            keyId: data.keyId,
+            orderId: data.orderId,
+            amount: data.amount,
+            currency: data.currency || 'USD',
+            name: 'SolarX.live',
+            description: data.description || `${data.packName || 'Monthly plan'} (USD)`,
+            prefill: data.prefill || {},
+            onSuccess: async (response) => {
+              const confirmRes = await fetch(`${API}/api/billing/confirm-razorpay-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const confirmData = await confirmRes.json().catch(() => ({}));
+              if (!confirmRes.ok) throw new Error(confirmData.error || 'Could not confirm plan payment');
+              setMessage(confirmData.message || 'Monthly plan activated — lead credits updated.');
+              await load();
+            },
+            onFailure: ({ message }) => setCheckoutError(message),
+          });
+          if (result?.dismissed) {
+            setCheckoutError('Checkout canceled — no changes were made.');
+          }
+        } catch (err) {
+          setCheckoutError(err.message || 'Payment failed');
+        } finally {
+          setPurchasing(false);
+        }
         return;
       }
       if (data.mode === 'stripe' && data.url) {
         window.location.href = data.url;
         return;
       }
+      if (data.mode === 'dev') {
+        setMessage(data.message || 'Subscription activated (dev checkout)');
+        await load();
+        return;
+      }
       setMessage(data.message || 'Subscription activated');
       await load();
     } catch (err) {
-      alert(err.message);
+      setCheckoutError(err.message || 'Could not start checkout');
     } finally {
       setPurchasing(false);
     }
@@ -154,10 +234,11 @@ export default function Billing() {
       return;
     }
     try {
-      const [meRes, invRes, subRes] = await Promise.all([
+      const [meRes, invRes, subRes, mktWalletRes] = await Promise.all([
         fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/billing/invoices`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API}/api/billing/subscription`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${API}/api/billing/subscription`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/billing/marketplace-wallet`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (!meRes.ok) throw new Error('Unauthorized');
       const me = await meRes.json();
@@ -178,6 +259,13 @@ export default function Billing() {
         if (subData.subscription) setSubscription(subData.subscription);
         if (subData.credits !== undefined) setCredits(subData.credits);
         if (subData.activePackage) setActivePackage(subData.activePackage);
+      }
+      if (mktWalletRes.ok) {
+        const walletData = await mktWalletRes.json();
+        setMarketplaceWallet({
+          balance: walletData.balance ?? 0,
+          ledger: walletData.ledger ?? [],
+        });
       }
     } catch (err) {
       localStorage.removeItem('solar_token');
@@ -396,7 +484,7 @@ export default function Billing() {
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">
@@ -532,9 +620,9 @@ export default function Billing() {
       <section className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">
         <div className="px-6 py-4 border-b border-glass-stroke flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h3 className="font-headline-md text-base font-bold text-on-surface">Invoice History</h3>
+            <h3 className="font-headline-md text-base font-bold text-on-surface">Payment History</h3>
             <p className="text-[11px] text-on-surface-variant mt-0.5">
-              Stripe/Razorpay receipts plus admin plan grants and credit adjustments.
+              Lead credit plans, bid wallet top-ups, and admin adjustments — with downloadable invoices.
             </p>
           </div>
           {invoices.length > 0 && (
@@ -555,7 +643,8 @@ export default function Billing() {
             </div>
             <p className="text-sm font-semibold text-white mb-1">No invoices yet</p>
             <p className="text-xs text-on-surface-variant max-w-sm leading-relaxed mb-5">
-              Subscription charges and admin plan or credit adjustments will appear here.
+              Lead plan purchases, bid wallet top-ups, and account adjustments will appear here after
+              payment.
             </p>
             <a
               href="#plans"
@@ -569,7 +658,7 @@ export default function Billing() {
             <table className="w-full border-collapse text-xs text-left min-w-[720px]">
               <thead>
                 <tr className="bg-white/[0.03]">
-                  {['Invoice', 'Date', 'Package', 'Type', 'Amount', 'Credits', 'Status', ''].map((h) => (
+                  {['Invoice', 'Date', 'Product', 'Type', 'Amount', 'Purchased', 'Status', ''].map((h) => (
                     <th
                       key={h || 'actions'}
                       className="px-6 py-3.5 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
@@ -600,14 +689,16 @@ export default function Billing() {
                     <td className="px-6 py-4 text-on-surface-variant whitespace-nowrap">
                       {tx.created_at ? formatDate(tx.created_at) : '—'}
                     </td>
-                    <td className="px-6 py-4 text-on-surface">{tx.package_name || tx.package_id || '—'}</td>
+                    <td className="px-6 py-4 text-on-surface">{invoiceProductLabel(tx)}</td>
                     <td className="px-6 py-4 text-on-surface-variant capitalize">
                       {formatBillingReason(tx.billing_reason)}
                     </td>
                     <td className="px-6 py-4 font-semibold text-white tabular-nums">
                       {formatAmount(tx.amount_cents)}
                     </td>
-                    <td className="px-6 py-4 text-on-surface-variant tabular-nums">{tx.credits ?? '—'}</td>
+                    <td className="px-6 py-4 text-on-surface-variant tabular-nums">
+                      {invoiceQuantityLabel(tx)}
+                    </td>
                     <td className="px-6 py-4">
                       <InvoiceStatusPill status={tx.status} />
                     </td>
@@ -642,6 +733,63 @@ export default function Billing() {
         )}
       </section>
 
+      {/* Bid wallet activity (marketplace wins & top-ups) */}
+      <section className="glass-card rounded-2xl border border-glass-stroke overflow-hidden mt-8">
+        <div className="px-6 py-4 border-b border-glass-stroke flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="font-headline-md text-base font-bold text-on-surface">Bid Wallet Activity</h3>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">
+              Marketplace bid wallet balance and charges — including lead win deductions.
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wider text-on-surface-variant">Balance</p>
+            <p className="text-lg font-bold text-primary">{formatMoney(marketplaceWallet.balance)}</p>
+          </div>
+        </div>
+        {marketplaceWallet.ledger.length === 0 ? (
+          <div className="px-6 py-10 text-center text-sm text-on-surface-variant">
+            No bid wallet activity yet. Top-ups and lead win charges appear here.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs text-left min-w-[640px]">
+              <thead>
+                <tr className="bg-white/[0.03]">
+                  {['Date', 'Type', 'Amount', 'Balance', 'Note'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-6 py-3 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-glass-stroke">
+                {marketplaceWallet.ledger.map((row) => (
+                  <tr key={row.id} className="hover:bg-white/[0.03]">
+                    <td className="px-6 py-3 text-on-surface-variant whitespace-nowrap">
+                      {formatWhen(row.created_at)}
+                    </td>
+                    <td className="px-6 py-3 text-white">{formatLedgerEntryType(row.entry_type)}</td>
+                    <td
+                      className={`px-6 py-3 font-semibold ${
+                        Number(row.amount) < 0 ? 'text-red-300' : 'text-emerald-300'
+                      }`}
+                    >
+                      {formatMoney(row.amount)}
+                    </td>
+                    <td className="px-6 py-3">{formatMoney(row.balance_after)}</td>
+                    <td className="px-6 py-3 text-on-surface-variant">{row.note || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {/* Monthly plans */}
       <section id="plans" className="mt-10 scroll-mt-24">
         <div className="mb-6 text-center sm:text-left">
@@ -649,6 +797,12 @@ export default function Billing() {
           <p className="text-on-surface-variant text-sm mt-1 max-w-2xl">
             1 lead unlock = 1 credit. Plans renew every month — credits refresh each billing cycle.
           </p>
+          {checkoutError && (
+            <p className="mt-3 inline-flex items-center gap-1.5 text-amber-300 text-xs font-semibold bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 max-w-2xl">
+              <span className="material-symbols-outlined text-sm">error</span>
+              {checkoutError}
+            </p>
+          )}
         </div>
 
         {plansLoading ? (
@@ -764,10 +918,11 @@ export default function Billing() {
             <dl className="grid grid-cols-2 gap-3 text-xs">
               {[
                 ['Date', viewingInvoice.created_at ? formatDate(viewingInvoice.created_at) : '—'],
-                ['Package', viewingInvoice.package_name || viewingInvoice.package_id || '—'],
+                ['Product', invoiceProductLabel(viewingInvoice)],
                 ['Type', formatBillingReason(viewingInvoice.billing_reason)],
                 ['Amount', formatAmount(viewingInvoice.amount_cents)],
-                ['Credits', viewingInvoice.credits ?? '—']
+                ['Purchased', invoiceQuantityLabel(viewingInvoice)],
+                ['Payment', invoicePaymentMethod(viewingInvoice)],
               ].map(([label, value]) => (
                 <div key={label} className="bg-white/5 rounded-lg p-3">
                   <dt className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
@@ -835,6 +990,6 @@ export default function Billing() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </>
   );
 }

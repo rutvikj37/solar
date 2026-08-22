@@ -1,10 +1,28 @@
 import express from 'express';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { maskLeadContactForPublic } from '../utils/leadAccess.js';
 
 const router = express.Router();
+
+const publicProposalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
+
+const publicSignLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many signature attempts' },
+});
 
 function randomSlug() {
   return `prop_${Date.now()}_${crypto.randomBytes(16).toString('hex')}`;
@@ -200,7 +218,7 @@ router.get('/lead/:leadId', authenticateToken, asyncHandler(async (req, res) => 
 }));
 
 // GET /api/proposals/public/:slug (Public) - Fetch proposal details for public homeowner page
-router.get('/public/:slug', async (req, res) => {
+router.get('/public/:slug', publicProposalLimiter, async (req, res) => {
   try {
     const { slug } = req.params;
     const [rows] = await db.query('SELECT * FROM proposals WHERE slug = ? LIMIT 1', [slug]);
@@ -241,7 +259,7 @@ router.get('/public/:slug', async (req, res) => {
 
     res.json({
       proposal: { ...proposal, roi },
-      lead: lead ? { ...lead, solar, propertyExtra } : null
+      lead: lead ? maskLeadContactForPublic({ ...lead, solar, propertyExtra }) : null
     });
   } catch (err) {
     console.error('Public proposal fetch error:', err);
@@ -250,7 +268,7 @@ router.get('/public/:slug', async (req, res) => {
 });
 
 // POST /api/proposals/public/:slug/recalculate (Public) - Recalculate ROI in real-time
-router.post('/public/:slug/recalculate', async (req, res) => {
+router.post('/public/:slug/recalculate', publicProposalLimiter, async (req, res) => {
   try {
     const { slug } = req.params;
     const [rows] = await db.query('SELECT * FROM proposals WHERE slug = ? LIMIT 1', [slug]);
@@ -280,13 +298,19 @@ router.post('/public/:slug/recalculate', async (req, res) => {
 });
 
 // POST /api/proposals/public/:slug/sign (Public) - E-Signature Submission
-router.post('/public/:slug/sign', async (req, res) => {
+router.post('/public/:slug/sign', publicSignLimiter, async (req, res) => {
   try {
     const { slug } = req.params;
     const { signedName, signedEmail, signatureData } = req.body;
 
     if (!signedName || !signatureData) {
       return res.status(400).json({ error: 'Signed full name and signature drawing are required.' });
+    }
+    if (String(signedName).length > 200) {
+      return res.status(400).json({ error: 'Signed name is too long.' });
+    }
+    if (String(signatureData).length > 500_000) {
+      return res.status(400).json({ error: 'Signature data is too large.' });
     }
 
     const [rows] = await db.query('SELECT * FROM proposals WHERE slug = ? LIMIT 1', [slug]);

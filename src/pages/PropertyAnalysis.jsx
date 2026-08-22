@@ -1,186 +1,175 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import AppLayout from '../components/AppLayout';
+import { API_BASE } from '../config.js';
+import FullPageLoader from '../components/FullPageLoader.jsx';
 
 export default function PropertyAnalysis() {
-  const [enriching, setEnriching] = useState(false);
-  const [enriched, setEnriched] = useState(false);
-  const [showPopup, setShowPopup] = useState(true);
+  const [data, setData] = useState(null);
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleEnrich = () => {
-    setEnriching(true);
-    setTimeout(() => {
-      setEnriching(false);
-      setEnriched(true);
-    }, 1800);
-  };
+  useEffect(() => {
+    const token = localStorage.getItem('solar_token');
+    if (!token) return;
+
+    const headers = { Authorization: `Bearer ${token}` };
+
+    Promise.all([
+      fetch(`${API_BASE}/api/team/territory-analytics`, { headers }),
+      fetch(`${API_BASE}/api/leads`, { headers }),
+    ])
+      .then(async ([analyticsRes, leadsRes]) => {
+        if (analyticsRes.ok) {
+          setData(await analyticsRes.json());
+        } else {
+          setError('Could not load territory analytics.');
+        }
+        if (leadsRes.ok) {
+          setLeads(await leadsRes.json());
+        }
+      })
+      .catch(() => setError('Failed to load analysis data.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <FullPageLoader />;
+
+  const summary = data?.summary || {};
+  const territories = data?.territories || [];
+  const topTerritory = territories[0];
+  const topLead = leads.find((l) => l.lead_score >= 70) || leads[0];
 
   return (
-    <AppLayout>
-      <div className="relative h-[calc(100vh-140px)] w-full rounded-2xl overflow-hidden bg-[#111319] border border-glass-stroke">
-        {/* Background Map Grid Pattern */}
-        <div 
-          onClick={() => setShowPopup(prev => !prev)}
-          className="absolute inset-0 bg-cover bg-center opacity-40 grayscale cursor-pointer"
-          style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuBGD2L8HVyXoGN5-K4M1oZyxbZYTrbZv8No351Ghwc2JNdXRRn2YQE1hv8PlXbPTCPqJWknp1zGNhd5fByadCXhOLoQ9x1rDkkMYkslbGHcbsGb43V6BD2S37xi35gqb79-7HZ8n-4MSFuylNS98qT_xnXUd30j4xoKlval4qXhvopw-BmHHCHo_5vQBq4Sk20oQ_NB9M3LsBo7KUMvaES1DjylnRYX3PEU0bnpm2Gaw_mUrLxmLqyR')" }}
-        />
+    <>
+      <div className="mb-stack-lg">
+        <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">
+          Territory Insight Report
+        </h2>
+        <p className="text-on-surface-variant text-sm mt-1">
+          Real conversion metrics from your scanned leads and ZIP territories.
+        </p>
+      </div>
 
-        {/* Pulse Marker */}
-        <div 
-          onClick={(e) => { e.stopPropagation(); setShowPopup(true); }}
-          className="absolute top-[52%] left-[48%] -translate-x-1/2 -translate-y-1/2 z-10 cursor-pointer hover:scale-110 transition-transform"
-        >
-          <div className="relative flex items-center justify-center">
-            <div className="absolute w-12 h-12 bg-primary/30 rounded-full animate-ping"></div>
-            <div className="relative w-4 h-4 bg-primary border-2 border-white rounded-full shadow-[0_0_15px_rgba(173,198,255,0.8)]"></div>
-          </div>
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+          {error}
         </div>
+      )}
 
-        {/* PROPERTY POPUP OVERLAY */}
-        {showPopup && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[500px] px-4 animate-in fade-in zoom-in duration-300">
-            <div className="glass-card rounded-2xl overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)]">
-              {/* Satellite Thumbnail with Overlay */}
-              <div className="relative h-48 sm:h-56 w-full bg-surface-container-highest">
-                <img 
-                  className="w-full h-full object-cover opacity-80" 
-                  alt="Rooftop analysis visualization" 
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAegPtIvyY1q4W5k0XfsAoTk4FBzA0pYgswigeH-jFcmye74Fo9jShjuLRSabudN27dSdS-bDcCttv7p_jTLjpxOivXjmB0t0L-LG_mKGF6wjQPRRoDij3eDhxO5xL0cU0XPHZgruLspzq87nEY5NU-9pAmthMlxsbbwjEtXqpqqSQXeqh8YtqLRugO4lJY_jLcmmB0cru9iB_E1ZwYEYgutrgjjsFAZRY-w14gMKwmOkwziAv8XYxe"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-surface-elevated via-transparent to-transparent"></div>
-                
-                {/* Lead Score Badge */}
-                <div className="absolute top-4 right-4 bg-primary-container/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-primary/20 flex flex-col items-center">
-                  <span className="text-[8px] font-label-mono text-on-primary-container font-bold tracking-tighter">LEAD SCORE</span>
-                  <span className="font-headline-md text-base text-on-primary-container leading-none font-bold">94<span className="text-[10px] opacity-60">/100</span></span>
-                </div>
-
-                {/* Location Header */}
-                <div className="absolute bottom-4 left-6">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="material-symbols-outlined text-primary text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>location_on</span>
-                    <span className="font-label-mono text-on-surface-variant text-[9px] tracking-widest uppercase">Target Property</span>
-                  </div>
-                  <h2 className="font-headline-md text-lg md:text-xl font-bold text-white">824 Sunnyvale Dr.</h2>
-                </div>
-              </div>
-
-              {/* Data Grid */}
-              <div className="p-6 space-y-6 bg-surface-elevated/40">
-                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                  {/* Potential */}
-                  <div className="space-y-0.5">
-                    <p className="font-label-mono text-on-surface-variant text-[9px] tracking-wider uppercase">Solar Potential</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-green-400 text-base">verified</span>
-                      <span className="font-headline-md text-sm md:text-base text-white font-semibold">Excellent</span>
-                    </div>
-                  </div>
-                  {/* System Size */}
-                  <div className="space-y-0.5">
-                    <p className="font-label-mono text-on-surface-variant text-[9px] tracking-wider uppercase">Est. System Size</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="font-headline-md text-sm md:text-base text-white font-semibold">12.4</span>
-                      <span className="font-label-mono text-primary text-xs font-bold">kW</span>
-                    </div>
-                  </div>
-                  {/* Area */}
-                  <div className="space-y-0.5">
-                    <p className="font-label-mono text-on-surface-variant text-[9px] tracking-wider uppercase">Usable Roof Area</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="font-headline-md text-sm md:text-base text-white font-semibold">2,100</span>
-                      <span className="font-label-mono text-on-surface-variant text-xs">sq ft</span>
-                    </div>
-                  </div>
-                  {/* Savings */}
-                  <div className="space-y-0.5">
-                    <p className="font-label-mono text-on-surface-variant text-[9px] tracking-wider uppercase">Annual Savings</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="font-headline-md text-sm md:text-base text-white font-semibold">$1,850</span>
-                      <span className="font-label-mono text-on-surface-variant text-xs">/ yr</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="h-px w-full bg-glass-stroke"></div>
-
-                {/* Footer Actions */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <Link 
-                    to="/lead/1" 
-                    className="w-full sm:flex-1 bg-surface-container-highest border border-glass-stroke hover:bg-surface-bright text-white font-button py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-xs font-semibold"
-                  >
-                    <span className="material-symbols-outlined text-base">visibility</span>
-                    View Full Report
-                  </Link>
-
-                  <button 
-                    disabled={enriching || enriched}
-                    onClick={handleEnrich}
-                    className={`w-full sm:flex-[1.3] font-button py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-xs font-bold shadow-lg ${
-                      enriched 
-                        ? 'bg-green-500 text-white' 
-                        : enriching 
-                          ? 'bg-primary/80 text-on-primary cursor-not-allowed' 
-                          : 'bg-primary text-on-primary hover:opacity-90 active:scale-[0.98] shadow-primary/20'
-                    }`}
-                  >
-                    {enriching ? (
-                      <>
-                        <span className="material-symbols-outlined text-base animate-spin">sync</span>
-                        Enriching Data...
-                      </>
-                    ) : enriched ? (
-                      <>
-                        <span className="material-symbols-outlined text-base">check_circle</span>
-                        Lead Qualified
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-                        Generate Qualified Lead
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Close Button */}
-              <button 
-                onClick={() => setShowPopup(false)}
-                className="absolute top-4 left-4 w-7 h-7 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-              >
-                <span className="material-symbols-outlined text-base">close</span>
-              </button>
-            </div>
-
-            {/* Bottom Indicator for Map Anchor */}
-            <div className="flex justify-center -mt-1">
-              <div className="w-3.5 h-3.5 bg-surface-elevated border-r border-b border-glass-stroke rotate-45"></div>
-            </div>
-          </div>
-        )}
-
-        {/* Floating controls */}
-        <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-10">
-          <div className="glass-card p-1.5 rounded-xl flex flex-col gap-1.5">
-            <button className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
-              <span className="material-symbols-outlined">add</span>
-            </button>
-            <div className="h-px bg-glass-stroke mx-1.5"></div>
-            <button className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors">
-              <span className="material-symbols-outlined">remove</span>
-            </button>
-          </div>
-          <button 
-            onClick={() => setShowPopup(true)}
-            className="w-11 h-11 glass-card rounded-full flex items-center justify-center text-primary shadow-xl hover:scale-110 transition-transform"
-          >
-            <span className="material-symbols-outlined">my_location</span>
-          </button>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-stack-md mb-stack-lg text-xs">
+        <div className="glass-card p-5 rounded-xl">
+          <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">Active ZIP Territories</p>
+          <p className="text-2xl font-bold text-white font-mono mt-1">{summary.totalTerritories || 0}</p>
+        </div>
+        <div className="glass-card p-5 rounded-xl">
+          <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">Total Scanned Leads</p>
+          <p className="text-2xl font-bold text-white font-mono mt-1">{summary.totalScannedLeads || leads.length}</p>
+        </div>
+        <div className="glass-card p-5 rounded-xl">
+          <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">Overall Closing Rate</p>
+          <p className="text-2xl font-bold text-green-400 font-mono mt-1">{summary.overallClosingRate || 0}%</p>
+        </div>
+        <div className="glass-card p-5 rounded-xl">
+          <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">Avg. Cost Per Lead</p>
+          <p className="text-2xl font-bold text-primary font-mono mt-1">${summary.avgCplUsd || '0.50'}</p>
         </div>
       </div>
-    </AppLayout>
+
+      {topTerritory && (
+        <div className="glass-card rounded-2xl overflow-hidden mb-stack-lg border border-glass-stroke">
+          <div className="p-6 border-b border-glass-stroke">
+            <h3 className="font-headline-md text-lg font-bold text-white">Top Performing Territory</h3>
+            <p className="text-on-surface-variant text-sm mt-1">
+              ZIP {topTerritory.zip} — {topTerritory.closingRatePct}% closing rate across{' '}
+              {topTerritory.totalScanned} scanned leads
+            </p>
+          </div>
+          <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+            <div>
+              <p className="text-[9px] text-on-surface-variant uppercase">Qualified</p>
+              <p className="text-lg font-bold text-white font-mono">{topTerritory.qualifiedCount}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-on-surface-variant uppercase">Closed / Won</p>
+              <p className="text-lg font-bold text-green-400 font-mono">{topTerritory.closedWonCount}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-on-surface-variant uppercase">CPL</p>
+              <p className="text-lg font-bold text-primary font-mono">${topTerritory.cplUsd?.toFixed(2)}</p>
+            </div>
+            <div className="flex items-end">
+              <Link
+                to="/map"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold"
+              >
+                <span className="material-symbols-outlined text-base">travel_explore</span>
+                Scan More in This Area
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="glass-card rounded-2xl overflow-hidden mb-stack-lg">
+        <div className="p-4 border-b border-glass-stroke">
+          <h4 className="font-bold text-white text-xs uppercase font-mono tracking-wider">
+            ZIP Code Performance
+          </h4>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-xs text-left">
+            <thead>
+              <tr className="bg-white/5 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
+                <th className="px-5 py-3 border-b border-glass-stroke">ZIP</th>
+                <th className="px-5 py-3 border-b border-glass-stroke">Scanned</th>
+                <th className="px-5 py-3 border-b border-glass-stroke">Qualified</th>
+                <th className="px-5 py-3 border-b border-glass-stroke">Won</th>
+                <th className="px-5 py-3 border-b border-glass-stroke">Close Rate</th>
+                <th className="px-5 py-3 border-b border-glass-stroke text-right">CPL</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-glass-stroke">
+              {territories.map((t) => (
+                <tr key={t.zip} className="hover:bg-white/5">
+                  <td className="px-5 py-3 font-bold text-white font-mono">{t.zip}</td>
+                  <td className="px-5 py-3 text-slate-300 font-mono">{t.totalScanned}</td>
+                  <td className="px-5 py-3 text-slate-300 font-mono">{t.qualifiedCount}</td>
+                  <td className="px-5 py-3 text-green-400 font-mono">{t.closedWonCount}</td>
+                  <td className="px-5 py-3 text-green-400 font-mono">{t.closingRatePct}%</td>
+                  <td className="px-5 py-3 text-right text-primary font-mono">${t.cplUsd?.toFixed(2)}</td>
+                </tr>
+              ))}
+              {territories.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="text-center py-8 text-on-surface-variant">
+                    No territory data yet. Run a map scan to build your insight report.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {topLead && (
+        <div className="glass-card p-6 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">Highest-scoring lead</p>
+            <h3 className="text-white font-bold mt-1">{topLead.address?.split(',')[0] || 'Lead'}</h3>
+            <p className="text-on-surface-variant text-xs mt-0.5">
+              Score {topLead.lead_score}/100 · {topLead.status || 'new'}
+            </p>
+          </div>
+          <Link
+            to={`/lead/${topLead.id}`}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-container-highest border border-glass-stroke text-white text-xs font-semibold hover:bg-white/5"
+          >
+            <span className="material-symbols-outlined text-base">visibility</span>
+            View Lead
+          </Link>
+        </div>
+      )}
+    </>
   );
 }

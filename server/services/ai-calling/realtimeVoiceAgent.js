@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import db from '../../db.js';
-import { updateCallRecord, handleCallCompletion } from './callFlowManager.js';
+import { updateCallRecord, handleCallCompletion, validateMediaStreamStart } from './callFlowManager.js';
 import { executeTool } from './toolExecutor.js';
 import { buildRealtimeSystemPrompt, buildRealtimeTools } from './aiOrchestrator.js';
 import { isElevenLabsLive } from './elevenLabsService.js';
@@ -398,7 +398,19 @@ export function handleMediaStreamConnection(twilioWs) {
           leadId = params.leadId || params.leadid;
           campaignId = params.campaignId || params.campaignid;
           userId = params.userId || params.userid;
+          const streamToken = params.streamToken || params.streamtoken;
           const twilioCallSid = msg.start.callSid || params.callSid || params.callsid;
+
+          const authorized = await validateMediaStreamStart({
+            callRecordId,
+            streamToken,
+            twilioCallSid,
+          });
+          if (!authorized) {
+            console.warn('[RealtimeAgent] Rejected unauthorized media stream connection');
+            twilioWs.close(4403, 'Unauthorized');
+            return;
+          }
 
           console.log(
             `[RealtimeAgent] Stream started — SID: ${streamSid}, CallRecord: ${callRecordId}, Lead: ${leadId}`

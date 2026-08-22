@@ -63,7 +63,12 @@ export async function executeDripStep({ step, enrollment, lead, campaignName, us
       lead
     );
     try {
-      const result = await sendEmail(lead.email, subject, body);
+      const result = await sendEmail({
+        userId,
+        to: lead.email,
+        subject,
+        body,
+      });
       const status = result.simulated ? 'simulated' : 'sent';
       const [ins] = await db.query(
         `INSERT INTO outreach_messages (user_id, lead_id, channel, subject, body, status, external_id)

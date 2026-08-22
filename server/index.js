@@ -5,7 +5,10 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import db from './db.js';
 import { migrateSchema } from './schema.js';
+import { ensurePlatformCrmSettingsLoaded } from './services/crm/platformCrmSettings.js';
+import { ensurePlatformEmailSettingsLoaded } from './services/email/platformEmailSettings.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { handleMediaStreamConnection } from './services/ai-calling/realtimeVoiceAgent.js';
 
@@ -13,6 +16,8 @@ import authRoutes from './routes/auth.js';
 import propertyRoutes from './routes/properties.js';
 import leadRoutes from './routes/leads.js';
 import crmRoutes from './routes/crm.js';
+import crmIntegrationsRoutes from './routes/crmIntegrations.js';
+import emailIntegrationsRoutes from './routes/emailIntegrations.js';
 import billingRoutes from './routes/billing.js';
 import outreachRoutes from './routes/outreach.js';
 import appointmentRoutes from './routes/appointments.js';
@@ -25,8 +30,20 @@ import dripRoutes from './routes/drip.js';
 import teamRoutes from './routes/team.js';
 import aiCallingRoutes from './routes/ai-calling.js';
 import proposalRoutes from './routes/proposals.js';
+import marketplaceRoutes from './routes/marketplace.js';
+import marketplaceAdminRoutes from './routes/marketplace-admin.js';
 import { startDialerWorker, stopDialerWorker } from './services/ai-calling/dialerWorker.js';
 import { startDripWorker, stopDripWorker } from './services/drip/dripWorker.js';
+import {
+  startMarketplaceWorker,
+  stopMarketplaceWorker,
+} from './services/marketplace/marketplaceWorker.js';
+import { loadFirebaseWebConfig } from './services/firebaseWebConfig.js';
+import { isFirebaseAdminConfigured } from './firebase.js';
+import { validateProductionSecurityConfig } from './utils/productionGuard.js';
+import { logger } from './utils/logger.js';
+
+validateProductionSecurityConfig();
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -98,7 +115,16 @@ function isAllowedOrigin(origin) {
 
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: isProd
+      ? {
+          useDefaults: true,
+          directives: {
+            defaultSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            baseUri: ["'none'"],
+          },
+        }
+      : false,
     frameguard: { action: 'deny' },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     hsts: isProd
@@ -112,7 +138,7 @@ app.use((_req, res, next) => {
   res.setHeader('X-XSS-Protection', '0');
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), usb=()'
+    'camera=(), microphone=(), geolocation=(), payment=*, usb=()'
   );
   next();
 });
@@ -135,6 +161,13 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests' },
 });
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 app.use('/api/', globalLimiter);
 
 const authLimiter = rateLimit({
@@ -147,15 +180,45 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/firebase', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/resend-verification', authLimiter);
 
-app.use(express.json());
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => {
+    if (
+      req.originalUrl.startsWith('/api/billing/razorpay-webhook') ||
+      req.originalUrl.startsWith('/api/billing/webhook')
+    ) {
+      req.rawBody = buf;
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 
-// Public config — no secrets (Maps key comes from VITE_GOOGLE_MAPS_API_KEY on the client)
+app.get('/health', async (_req, res) => {
+  try {
+    await db.query('SELECT 1');
+    res.json({ status: 'ok', db: 'connected' });
+  } catch (err) {
+    logger.error('Health check DB failure', { error: err.message });
+    res.status(503).json({
+      status: 'degraded',
+      db: 'unavailable',
+      ...(isProd ? {} : { error: err.message }),
+    });
+  }
+});
+
+// Public config — Maps browser key from server env (GOOGLE_MAPS_API_KEY)
 app.get('/api/config', (req, res) => {
-  res.json({
-    googleMapsApiKey: '',
-  });
+  const key = String(
+    process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '',
+  ).trim();
+  const googleMapsApiKey =
+    key && !key.toLowerCase().includes('your_') ? key : '';
+  res.json({ googleMapsApiKey });
 });
 
 // Mounted Modular Routes
@@ -165,6 +228,8 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/presets', presetRoutes);
 app.use('/api/drip', dripRoutes);
 app.use('/api/team', teamRoutes);
+app.use('/api/crm/integrations', crmIntegrationsRoutes);
+app.use('/api/email/integrations', emailIntegrationsRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/outreach', outreachRoutes);
@@ -174,6 +239,8 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/ai-calling', aiCallingRoutes);
 app.use('/api/proposals', proposalRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/marketplace/admin', marketplaceAdminRoutes);
 
 // Centralized Error Handling Middleware
 app.use(errorHandler);
@@ -199,19 +266,35 @@ wss.on('error', (err) => {
 function startBackgroundWorkers() {
   startDialerWorker({ intervalMs: 15000 });
   startDripWorker({ intervalMs: 60000 });
-  console.log('[SolarX.live] Background workers started: drip (60s), AI dialer (15s), appointment reminders (5m)');
+  startMarketplaceWorker({ intervalMs: 30000 });
+  console.log(
+    '[SolarX.live] Background workers started: drip (60s), AI dialer (15s), marketplace (30s), appointment reminders (5m)',
+  );
 }
 
 function stopBackgroundWorkers() {
   stopDialerWorker();
   stopDripWorker();
+  stopMarketplaceWorker();
 }
 
 async function startServer() {
   try {
     await migrateSchema();
+    await ensurePlatformCrmSettingsLoaded();
+    await ensurePlatformEmailSettingsLoaded();
   } catch (err) {
     console.error('[Schema] Migration failed; API will still start and workers will retry:', err.message);
+  }
+
+  if (isFirebaseAdminConfigured()) {
+    loadFirebaseWebConfig()
+      .then((cfg) => {
+        if (cfg) {
+          console.log('[Firebase] Web SDK config loaded for social login');
+        }
+      })
+      .catch(() => {});
   }
 
   server.on('error', (err) => {

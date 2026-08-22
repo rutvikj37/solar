@@ -12,7 +12,7 @@ import BulkScanDialog from '../components/map/BulkScanDialog';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../config.js';
 import { buildScoreMarkerIcon } from '../lib/mapMarkers.js';
-import { getGoogleMapsApiKey } from '../lib/mapsKey.js';
+import { resolveGoogleMapsApiKey } from '../lib/mapsKey.js';
 
 function ToggleSwitch({ id, checked, onChange, disabled = false }) {
   return (
@@ -70,6 +70,17 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
             Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function polygonCentroid(points) {
+  if (!points?.length) return null;
+  let lat = 0;
+  let lng = 0;
+  for (const p of points) {
+    lat += p.lat;
+    lng += p.lng;
+  }
+  return { lat: lat / points.length, lng: lng / points.length };
 }
 
 function looksLikeStreetAddress(query) {
@@ -140,13 +151,11 @@ export default function InteractiveMap() {
   const [skipPaneled, setSkipPaneled] = useState(true);
   const [aiVision, setAiVision] = useState(true);
   const [singleFamily, setSingleFamily] = useState(true);
-  const [minSavings, setMinSavings] = useState('Any');
   const [cityInput, setCityInput] = useState('');
 
   // Deploy Scan Modal & Progress
   const [showScanModal, setShowScanModal] = useState(false);
   const [leadsToCapture, setLeadsToCapture] = useState(15);
-  const [scanPackage, setScanPackage] = useState('data');
   const [scanAddress, setScanAddress] = useState('Resolving address...');
 
   const [isScanning, setIsScanning] = useState(false);
@@ -218,19 +227,25 @@ export default function InteractiveMap() {
     if (initialSearchDoneRef.current) {
       handleSearch(zip);
     }
-  }, [singleFamily, skipPaneled, minSavings]);
+  }, [singleFamily, skipPaneled]);
 
   useEffect(() => {
-    const key = getGoogleMapsApiKey();
-    const isMockKey = key && key.toLowerCase().includes('your_');
-    if (key && !isMockKey) {
-      setGoogleMapsKey(key);
-      setConfigStatus('ready');
-      loadGoogleMapsScript(key);
-    } else {
-      setConfigStatus('fallback');
-      setMapError('Google Maps API key is not configured (set VITE_GOOGLE_MAPS_API_KEY).');
-    }
+    let cancelled = false;
+    resolveGoogleMapsApiKey().then((key) => {
+      if (cancelled) return;
+      const isMockKey = key && key.toLowerCase().includes('your_');
+      if (key && !isMockKey) {
+        setGoogleMapsKey(key);
+        setConfigStatus('ready');
+        loadGoogleMapsScript(key);
+      } else {
+        setConfigStatus('fallback');
+        setMapError('Google Maps API key is not configured (set GOOGLE_MAPS_API_KEY or VITE_GOOGLE_MAPS_API_KEY).');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const loadGoogleMapsScript = (apiKey) => {
@@ -244,7 +259,7 @@ export default function InteractiveMap() {
     if (!script) {
       script = document.createElement('script');
       script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,drawing,geometry&v=weekly`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,drawing,geometry&v=weekly&loading=async`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -678,7 +693,6 @@ export default function InteractiveMap() {
       if (query) params.set('zip', query);
       if (singleFamily) params.set('singleFamily', 'true');
       if (skipPaneled) params.set('skipPaneled', 'true');
-      if (minSavings) params.set('minSavings', String(minSavings));
       if (activePolygon && activePolygon.length >= 3) {
         params.set('polygon', JSON.stringify(activePolygon));
       } else if (useGeo) {
@@ -823,51 +837,69 @@ export default function InteractiveMap() {
     selectedMarkerIdRef.current = nextId;
   }, [selectedProperty?.id, properties]);
 
-  const handleExecuteScan = async () => {
-    setShowScanModal(false);
-    if (!scanPin) return;
-
-    if (scanAbortRef.current) scanAbortRef.current.abort();
-    const controller = new AbortController();
-    scanAbortRef.current = controller;
-
-    setIsScanning(true);
-    setScanProgress(10);
-    setScanPhase('fetching');
-
-    const token = localStorage.getItem('solar_token');
-    try {
-      const response = await fetch(`${API_BASE}/api/leads/bulk-scan`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          zip: zip || '',
-          lat: scanPin?.lat,
-          lng: scanPin?.lng,
-          radius: scanRadius,
-          polygon: polygonPath,
-          homesToScan: leadsToCapture,
-          skipPaneled,
-          singleFamily,
-          minSavings
-        })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setScanFoundLeads(data.leadsCount || 0);
-        setScanProgress(100);
-        refreshUserData();
-        setLeadsRefreshKey((k) => k + 1);
-      }
-    } catch (err) {
-      console.error('Scan error:', err);
-    } finally {
-      setIsScanning(false);
+  const resolveScanArea = () => {
+    if (polygonPath?.length >= 3) {
+      const center = polygonCentroid(polygonPath);
+      return {
+        zip: zip?.trim() || '',
+        lat: center?.lat,
+        lng: center?.lng,
+        polygon: polygonPath,
+      };
     }
+    if (zip?.trim()) {
+      const center = mapInstanceRef.current?.getCenter?.();
+      if (center) {
+        return {
+          zip: zip.trim(),
+          lat: center.lat(),
+          lng: center.lng(),
+          polygon: null,
+        };
+      }
+      return { zip: zip.trim(), lat: null, lng: null, polygon: null };
+    }
+    if (scanPin) {
+      return { zip: zip?.trim() || '', lat: scanPin.lat, lng: scanPin.lng, polygon: null };
+    }
+    return null;
+  };
+
+  const canBulkScan = Boolean(
+    (polygonPath && polygonPath.length >= 3) || zip?.trim()
+  );
+
+  const handleExecuteScan = () => {
+    const area = resolveScanArea();
+    if (!area?.zip && !area?.polygon) {
+      setUpgradeMessage('Search a ZIP or draw a territory on the map first.');
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (!unlimitedCredits && leadCredits < leadsToCapture) {
+      setUpgradeMessage(`Bulk scan requires at least ${leadsToCapture} lead credits.`);
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    setShowScanModal(false);
+    navigate('/generate', {
+      state: {
+        fromMap: true,
+        zip: area.zip,
+        lat: area.lat,
+        lng: area.lng,
+        polygon: area.polygon,
+        radius: scanRadius,
+        radiusUnit: area.polygon ? 'meters' : 'miles',
+        homesToScan: leadsToCapture,
+        leadCreditCost: leadsToCapture,
+        minSqFt: useMinSqFt ? minSqFt : 0,
+        singleFamily,
+        skipPaneled,
+      },
+    });
   };
 
   const handleGenerateLead = async () => {
@@ -932,8 +964,6 @@ export default function InteractiveMap() {
               setSingleFamily={setSingleFamily}
               skipPaneled={skipPaneled}
               setSkipPaneled={setSkipPaneled}
-              minSavings={minSavings}
-              setMinSavings={setMinSavings}
               isDrawingPolygon={isDrawingPolygon}
               lassoMode={lassoMode}
               setLassoMode={setLassoMode}
@@ -941,6 +971,7 @@ export default function InteractiveMap() {
               onToggleDrawing={handleToggleDrawing}
               onClearPolygon={handleClearPolygon}
               hasPolygon={Boolean(polygonPath && polygonPath.length > 0)}
+              canBulkScan={canBulkScan}
               onOpenScanModal={() => setShowScanModal(true)}
             />
             <MapModePill mapType={mapType} onChange={setMapType} />
@@ -997,14 +1028,37 @@ export default function InteractiveMap() {
         </div>
 
         {/* Floating Scan Territory Pill */}
+        {!canBulkScan && !isDrawingPolygon && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+            <div className="glass-card px-4 py-2.5 rounded-full border border-glass-stroke text-[11px] text-on-surface-variant">
+              Search a ZIP or draw a territory to bulk scan
+            </div>
+          </div>
+        )}
+
+        {canBulkScan && !isDrawingPolygon && !(polygonPath && polygonPath.length >= 3) && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
+            <button
+              type="button"
+              onClick={() => setShowScanModal(true)}
+              className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-xs px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 border border-emerald-400/50 hover:brightness-110 active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-lg">radar</span>
+              Scan this area
+            </button>
+          </div>
+        )}
+
         {polygonPath && polygonPath.length >= 3 && !isDrawingPolygon && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setShowScanModal(true)}
-              className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-xs px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 border border-emerald-400/50 hover:brightness-110 active:scale-95 transition-all shadow-emerald-500/25 animate-bounce"
+              className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-xs px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 border border-emerald-400/50 hover:brightness-110 active:scale-95 transition-all shadow-emerald-500/25"
             >
-              <span className="material-symbols-outlined text-lg">bolt</span>
-              Scan Territory Leads ({polygonAreaSqMiles > 0 ? `${polygonAreaSqMiles} sq mi` : 'Polygon Area'})
+              <span className="material-symbols-outlined text-lg">radar</span>
+              Scan this area
+              {polygonAreaSqMiles > 0 ? ` (${polygonAreaSqMiles} sq mi)` : ''}
             </button>
             <button
               onClick={handleClearPolygon}
@@ -1033,18 +1087,24 @@ export default function InteractiveMap() {
         <BulkScanDialog
           show={showScanModal}
           onClose={() => setShowScanModal(false)}
-          scanRadius={scanRadius}
           hasPolygon={Boolean(polygonPath && polygonPath.length >= 3)}
           polygonAreaSqMiles={polygonAreaSqMiles}
+          zipLabel={zip?.trim() || scanAddress}
           leadsToCapture={leadsToCapture}
           setLeadsToCapture={setLeadsToCapture}
-          scanPackage={scanPackage}
-          setScanPackage={setScanPackage}
-          handleExecuteScan={handleExecuteScan}
+          leadCredits={leadCredits}
+          unlimitedCredits={unlimitedCredits}
+          onStartScan={handleExecuteScan}
         />
 
         <AskHeraFab className="absolute bottom-6 right-6 z-40" />
       </div>
+
+      <UpgradeModal
+        show={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        message={upgradeMessage}
+      />
     </>
   );
 }

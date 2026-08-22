@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import AppLayout from '../../components/AppLayout';
 import DispositionBadge from '../../components/ai-calling/DispositionBadge';
 import { API_BASE } from '../../config.js';
 
@@ -25,29 +24,29 @@ export default function AiCallingCallDetail() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <span className="material-symbols-outlined text-4xl animate-spin text-primary">progress_activity</span>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (!call) {
     return (
-      <AppLayout>
+      <>
         <div className="p-8 text-center text-white">
           <p>Call record not found.</p>
           <button onClick={() => navigate('/ai-calling')} className="mt-4 px-4 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs">
             Back to Dashboard
           </button>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="mb-8 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="p-2 rounded-xl bg-white/5 text-slate-300 hover:text-white">
           <span className="material-symbols-outlined">arrow_back</span>
@@ -129,6 +128,6 @@ export default function AiCallingCallDetail() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }
