@@ -7,7 +7,7 @@ import { reviewDispute } from '../services/marketplace/disputes.js';
 import { unlockOpportunity, maskOpportunity } from '../services/marketplace/mask.js';
 import { clearMarketplaceDemos } from '../services/marketplace/seedDemo.js';
 import { ensureInstallerProfile } from '../services/marketplace/eligibility.js';
-import { qualifyMarketplaceLead } from '../services/marketplace/qualifyLead.js';
+import { qualifyMarketplaceLead, verifyMarketplaceLeadContact, approveMarketplaceLead } from '../services/marketplace/qualifyLead.js';
 
 const router = express.Router();
 
@@ -359,15 +359,50 @@ router.get('/settings', ...adminAuth, async (req, res) => {
   }
 });
 
+router.post('/leads/:id/verify-contact', ...adminAuth, async (req, res) => {
+  try {
+    const leadId = Number(req.params.id);
+    const result = await verifyMarketplaceLeadContact(leadId);
+    const settings = await getMarketplaceSettings();
+    return res.json({
+      ok: true,
+      contactCheck: result.contactCheck,
+      lead: unlockOpportunity(result.lead, settings),
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Contact verification failed' });
+  }
+});
+
+router.post('/leads/:id/approve', ...adminAuth, async (req, res) => {
+  try {
+    const leadId = Number(req.params.id);
+    const [rows] = await db.query(`SELECT id, status FROM marketplace_leads WHERE id = ?`, [leadId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (!['new', 'ai_qualified', 'pending_admin'].includes(rows[0].status)) {
+      return res.status(400).json({ error: 'Only pending leads can be approved for marketplace' });
+    }
+    const result = await approveMarketplaceLead(leadId);
+    const settings = await getMarketplaceSettings();
+    return res.json({
+      ok: true,
+      contactCheck: result.contactCheck,
+      lead: unlockOpportunity(result.lead, settings),
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Approve failed' });
+  }
+});
+
 router.post('/leads/:id/re-qualify', ...adminAuth, async (req, res) => {
   try {
     const leadId = Number(req.params.id);
     const [rows] = await db.query(`SELECT id, status FROM marketplace_leads WHERE id = ?`, [leadId]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    if (!['new', 'ai_qualified'].includes(rows[0].status)) {
-      return res.status(400).json({ error: 'Only new or ai_qualified leads can be re-qualified' });
+    if (!['new', 'ai_qualified', 'pending_admin'].includes(rows[0].status)) {
+      return res.status(400).json({ error: 'Only pending leads can be re-qualified' });
     }
-    const lead = await qualifyMarketplaceLead(leadId);
+    const lead = await qualifyMarketplaceLead(leadId, { listInMarketplace: true });
     const settings = await getMarketplaceSettings();
     return res.json({ ok: true, lead: unlockOpportunity(lead, settings) });
   } catch (err) {

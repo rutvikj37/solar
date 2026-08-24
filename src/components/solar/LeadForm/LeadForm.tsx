@@ -87,8 +87,6 @@ export function LeadForm() {
     if (!email) return 'Email address is required.';
     if (!phone) return 'Phone number is required.';
     if (!address) return 'Property address is required.';
-    if (!formData.emailVerified) return 'Please verify your email address.';
-    if (!formData.phoneVerified) return 'Please verify your mobile number with the SMS code.';
     if (formData.propertyType !== 'Residential' && formData.propertyType !== 'Commercial') {
       return 'Please select Residential or Commercial.';
     }
@@ -187,14 +185,11 @@ export function LeadForm() {
         leadCode: data.leadCode,
         opportunityScore: data.opportunityScore,
         marketplaceStatus: data.status,
-        listedInMarketplace: data.listedInMarketplace,
         propertyType: data.propertyType,
         solarPotentialLabel: data.solarPotentialLabel,
         billRange: data.billRange,
         estimatedSolarKw: data.estimatedSolarKw ?? data.solarReport?.systemKw ?? formData.estimatedSolarKw,
         estimatedRoofSqft: data.estimatedRoofSqft ?? data.solarReport?.usableRoofSqft ?? formData.estimatedRoofSqft,
-        scoreBreakdown: data.scoreBreakdown,
-        validationChecks: data.validationChecks,
         qualificationMessage: data.message,
         enrichmentSource: data.enrichmentSource ?? 'estimated',
         dataSources: data.dataSources ?? null,

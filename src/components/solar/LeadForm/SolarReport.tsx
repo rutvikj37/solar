@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  CheckCircle2,
   Sun,
   Zap,
   DollarSign,
@@ -49,10 +48,8 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
   if (!data) return null;
 
   const estimates = buildSolarReportEstimates(data);
-  const validationChecks = Array.isArray(data.validationChecks) ? data.validationChecks : [];
-  const fit = mapValidationToFitRows(validationChecks, estimates);
+  const fit = mapValidationToFitRows([], estimates);
   const leadCode = String(data.leadCode || 'Pending');
-  const listed = Boolean(data.listedInMarketplace);
   const address = String(data.address || 'Your property');
   const roofType = String(data.roofType || 'Roof assessed');
   const reportDate = new Date().toLocaleDateString(undefined, {
@@ -217,31 +214,23 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
           </div>
         </motion.div>
 
-        {/* Marketplace / qualification status */}
+        {/* Submission status — no verification details shown to homeowner */}
         <motion.div
           variants={itemVariants}
-          className={`glass-form-container rounded-[28px] p-6 md:p-7 border ${
-            listed ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-amber-500/25 bg-amber-500/5'
-          }`}
+          className="glass-form-container rounded-[28px] p-6 md:p-7 border border-cyan-500/25 bg-cyan-500/5"
         >
           <div className="flex flex-col md:flex-row gap-4 md:items-start">
             <div className="size-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-              {listed ? (
-                <CheckCircle2 className="size-6 text-emerald-400" />
-              ) : (
-                <ShieldCheck className="size-6 text-amber-400" />
-              )}
+              <ShieldCheck className="size-6 text-cyan-400" />
             </div>
             <div className="space-y-1.5">
               <h2 className="text-lg font-black uppercase tracking-tight">
-                {listed ? 'Qualified for installer marketplace' : 'Report saved — under review'}
+                Your solar report is ready
               </h2>
               <p className="text-sm text-white/65 leading-relaxed">
                 {String(
                   data.qualificationMessage ||
-                    (listed
-                      ? 'Qualified installers can bid on this opportunity. Your contact details stay private until a winner is selected.'
-                      : 'We validated your submission. Some checks need review before listing in the marketplace.'),
+                    'Thank you! Your inquiry was received and is under review. A qualified installer will reach out once your request is approved.',
                 )}
               </p>
               <p className="text-[10px] font-black uppercase tracking-wider text-cyan-400/80">
@@ -269,8 +258,7 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
                   <span className="text-[10px] font-bold text-white/40 uppercase">/ 100</span>
                 </div>
                 <p className="mt-3 text-xs text-white/45 max-w-xs">
-                  Combined score from property, usage, intent, and qualification checks run by
-                  SolarXAI.
+                  Combined score from property, usage, intent, and solar potential for your address.
                 </p>
               </div>
             </div>
@@ -476,43 +464,6 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
             <StatTile label="CO₂ avoided" value={`${estimates.co2Tons25}t`} sub="over 25 yrs est." />
           </div>
         </motion.div>
-
-        {/* API validation breakdown if present */}
-        {validationChecks.length > 0 ? (
-          <motion.div variants={itemVariants} className="glass-form-container rounded-[28px] p-6">
-            <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-              <Zap className="size-4" /> Qualification checks (API)
-            </h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {validationChecks.map(
-                (check: { key: string; label: string; score: number; passed: boolean; detail?: string }) => (
-                  <div
-                    key={check.key}
-                    className={`rounded-xl border px-3 py-2.5 ${
-                      check.passed
-                        ? 'border-emerald-500/20 bg-emerald-500/5'
-                        : 'border-amber-500/20 bg-amber-500/5'
-                    }`}
-                  >
-                    <div className="flex justify-between gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-white/80">
-                        {check.label}
-                      </p>
-                      <span
-                        className={`text-[10px] font-bold ${check.passed ? 'text-emerald-400' : 'text-amber-400'}`}
-                      >
-                        {check.passed ? 'Pass' : 'Review'} · {check.score}
-                      </span>
-                    </div>
-                    {check.detail ? (
-                      <p className="mt-1 text-[10px] text-white/40">{check.detail}</p>
-                    ) : null}
-                  </div>
-                ),
-              )}
-            </div>
-          </motion.div>
-        ) : null}
 
         <motion.p
           variants={itemVariants}

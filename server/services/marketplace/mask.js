@@ -54,6 +54,8 @@ export function unlockOpportunity(row, settings = {}) {
     homeownerName: row.homeowner_name,
     phone: row.phone,
     email: row.email,
+    emailStatus: row.email_status,
+    phoneType: row.phone_type,
     address: row.address,
     zip: row.zip,
     city: row.city,

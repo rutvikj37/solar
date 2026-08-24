@@ -52,7 +52,6 @@ import {
   verifyHomeownerEmail,
   sendHomeownerPhoneOtp,
   confirmHomeownerPhoneOtp,
-  isHomeownerPhoneVerified,
 } from '../services/marketplace/contactVerify.js';
 
 const router = express.Router();
@@ -175,14 +174,7 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Name, phone, email, and property address are required' });
     }
 
-    // Soft gate: prefer verified phone when OTP was completed in the form flow.
-    if (process.env.MARKETPLACE_REQUIRE_PHONE_OTP === 'true' && !isHomeownerPhoneVerified(phone)) {
-      return res.status(400).json({
-        error: 'Please verify your mobile number with the SMS code before submitting.',
-        code: 'PHONE_NOT_VERIFIED',
-      });
-    }
-
+    // Phone OTP verification removed — admin verifies contact before marketplace listing.
     const lead = await createInquiry({
       name,
       phone,

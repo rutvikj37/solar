@@ -1136,4 +1136,6 @@ export async function migrateSchema() {
 
   await ensureColumn("marketplace_leads", "latitude", "DECIMAL(10,7) NULL");
   await ensureColumn("marketplace_leads", "longitude", "DECIMAL(10,7) NULL");
+  await ensureColumn("marketplace_leads", "email_status", "VARCHAR(128) NULL");
+  await ensureColumn("marketplace_leads", "phone_type", "VARCHAR(64) NULL");
 }

@@ -8,6 +8,10 @@ import {
 import { computeBiddingWindow } from './bidWindow.js';
 import { enrichHomeownerInquiry } from './enrichHomeownerInquiry.js';
 import { notifyHomeownerListed } from './notifications.js';
+import {
+  validateEmailWithVerifalia,
+  lookupPhoneWithTwilio,
+} from '../contactEnrichmentService.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /\d{7,}/;
@@ -91,13 +95,14 @@ function scoreBuyingIntent(timeline, projectDetails = '') {
 }
 
 /**
- * Validate + score inquiry and open bidding window.
+ * Validate + score inquiry. Opens bidding only when listInMarketplace is true (admin approve).
  */
-export async function qualifyMarketplaceLead(leadId) {
+export async function qualifyMarketplaceLead(leadId, options = {}) {
+  const { listInMarketplace = true } = options;
   const [rows] = await db.query(`SELECT * FROM marketplace_leads WHERE id = ?`, [leadId]);
   const lead = rows[0];
   if (!lead) throw new Error('Marketplace lead not found');
-  if (!['new', 'ai_qualified'].includes(lead.status)) {
+  if (!['new', 'ai_qualified', 'pending_admin'].includes(lead.status)) {
     return lead;
   }
 
@@ -158,8 +163,54 @@ export async function qualifyMarketplaceLead(leadId) {
   const addressParts = parseAddressParts(lead.address);
   const leadState = lead.state || addressParts.state || null;
 
-  // Soft fail: still list but low score; hard fail contact/property → stay ai_qualified without bidding
+  // Hard fail contact/property → ai_qualified without bidding
   const canList = contact.valid && property.valid && !existing.likely;
+
+  const sharedFields = [
+    zip,
+    leadState,
+    propType.type,
+    overall,
+    JSON.stringify(breakdown),
+    billRange,
+    existing.likely ? 1 : 0,
+    solar.label,
+    solar.estimatedRoofSqft,
+    solar.estimatedSolarKw,
+  ];
+
+  // Homeowner submit: score only, wait for admin approval
+  if (!listInMarketplace) {
+    await db.query(
+      `UPDATE marketplace_leads SET
+         status = 'pending_admin',
+         zip = COALESCE(?, zip),
+         state = COALESCE(?, state),
+         property_type = ?,
+         opportunity_score = ?,
+         score_breakdown = ?,
+         bill_range = ?,
+         existing_solar_likely = ?,
+         solar_potential_label = ?,
+         estimated_roof_sqft = ?,
+         estimated_solar_kw = ?,
+         enrichment_json = ?
+       WHERE id = ?`,
+      [
+        ...sharedFields,
+        JSON.stringify({
+          ...enrichment,
+          scoredAt: new Date().toISOString(),
+          listed: false,
+          awaitingAdmin: true,
+          canList,
+        }),
+        leadId,
+      ],
+    );
+    const [updated] = await db.query(`SELECT * FROM marketplace_leads WHERE id = ?`, [leadId]);
+    return updated[0];
+  }
 
   if (!canList) {
     await db.query(
@@ -260,88 +311,26 @@ function safeJson(value) {
 }
 
 /**
- * Public homeowner-facing payload after qualification.
+ * Public homeowner-facing payload — no verification or marketplace status details.
  */
 export function formatInquiryResponse(lead) {
   if (!lead) return null;
 
-  const breakdown = safeJson(lead.score_breakdown) || {};
   const enrichment = safeJson(lead.enrichment_json) || {};
-  const listed =
-    lead.status === 'bidding' || lead.status === 'no_bid_expanding';
-
-  const validationChecks = [
-    {
-      key: 'contactValidity',
-      label: 'Contact validity',
-      score: breakdown.contactValidity ?? 0,
-      passed: Boolean(breakdown.contactValid),
-      detail: breakdown.contactValid ? 'Valid email and phone' : 'Invalid or missing contact details',
-    },
-    {
-      key: 'propertyValidity',
-      label: 'Property validity',
-      score: breakdown.propertyValidity ?? 0,
-      passed: Boolean(breakdown.propertyValid),
-      detail: breakdown.propertyValid ? 'Address and ZIP verified' : 'Address or ZIP could not be verified',
-    },
-    {
-      key: 'residentialCommercial',
-      label: 'Residential/commercial status',
-      score: breakdown.residentialCommercial ?? 0,
-      passed: true,
-      detail: (breakdown.propertyType || lead.property_type || 'residential').replace(/^./, (c) => c.toUpperCase()),
-    },
-    {
-      key: 'existingSolar',
-      label: 'Existing solar check',
-      score: breakdown.existingSolar ?? 0,
-      passed: !breakdown.existingSolarLikely,
-      detail: breakdown.existingSolarLikely
-        ? 'Existing solar may already be installed'
-        : 'No existing solar detected',
-    },
-    {
-      key: 'solarPotential',
-      label: 'Solar potential',
-      score: breakdown.solarPotential ?? 0,
-      passed: (breakdown.solarPotential ?? 0) >= 45,
-      detail: lead.solar_potential_label || 'Assessed from electricity usage',
-    },
-    {
-      key: 'buyingIntent',
-      label: 'Buying intent',
-      score: breakdown.buyingIntent ?? 0,
-      passed: (breakdown.buyingIntent ?? 0) >= 40,
-      detail: lead.installation_timeline || 'Timeline provided',
-    },
-  ];
-
-  let message =
-    'Your inquiry was received and is under review.';
-  if (listed) {
-    message = 'Your inquiry was qualified and entered the installer marketplace.';
-  } else if (lead.status === 'ai_qualified') {
-    message =
-      'Your inquiry was scored but needs review before it appears in the installer marketplace.';
-  }
 
   return {
     ok: true,
     leadCode: lead.lead_code,
-    status: lead.status,
-    opportunityScore: Number(lead.opportunity_score) || 0,
-    listedInMarketplace: listed,
-    propertyType: lead.property_type || breakdown.propertyType || 'residential',
+    message:
+      'Thank you! Your inquiry was received and is under review. A qualified installer will reach out once your request is approved.',
+    propertyType: lead.property_type || 'residential',
     solarPotentialLabel: lead.solar_potential_label || null,
     billRange: lead.bill_range || null,
     estimatedSolarKw:
       lead.estimated_solar_kw != null ? Number(lead.estimated_solar_kw) : null,
     estimatedRoofSqft:
       lead.estimated_roof_sqft != null ? Number(lead.estimated_roof_sqft) : null,
-    scoreBreakdown: breakdown,
-    validationChecks,
-    message,
+    opportunityScore: Number(lead.opportunity_score) || 0,
     enrichmentSource: enrichment.googleSolarHit ? 'google_solar' : 'estimated',
     dataSources: enrichment.dataSources || null,
     satelliteImageUrl: lead.lead_code
@@ -486,9 +475,73 @@ export async function createInquiry(payload) {
     );
   }
 
-  const qualified = await qualifyMarketplaceLead(leadId);
+  // Score for admin review — do not open marketplace until admin approves.
+  return qualifyMarketplaceLead(leadId, { listInMarketplace: false });
+}
+
+function isEmailDeliverable(classification) {
+  const lower = String(classification || '').toLowerCase();
+  return lower.includes('deliverable') && !lower.includes('undeliverable');
+}
+
+function isPhoneReal(lineType) {
+  const type = String(lineType || '').toUpperCase();
+  if (!type || type === 'NOT AVAILABLE') return false;
+  if (type.includes('INVALID')) return false;
+  if (/(VOIP|TOLL.?FREE|PREMIUM|SHARED)/i.test(type) && !/MOBILE|LANDLINE|FIXED/i.test(type)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Admin-only: Verifalia email + Twilio phone lookup (no OTP sent to homeowner).
+ */
+export async function verifyMarketplaceLeadContact(leadId) {
+  const [rows] = await db.query(`SELECT * FROM marketplace_leads WHERE id = ?`, [leadId]);
+  const lead = rows[0];
+  if (!lead) throw new Error('Marketplace lead not found');
+
+  const emailStatus = await validateEmailWithVerifalia(String(lead.email || '').trim());
+  const phoneType = await lookupPhoneWithTwilio(String(lead.phone || '').trim());
+
+  const enrichment = safeJson(lead.enrichment_json) || {};
+  const contactCheck = {
+    checkedAt: new Date().toISOString(),
+    emailStatus,
+    phoneType,
+    emailDeliverable: isEmailDeliverable(emailStatus),
+    phoneReal: isPhoneReal(phoneType),
+  };
+
+  await db.query(
+    `UPDATE marketplace_leads SET
+       email_status = ?,
+       phone_type = ?,
+       enrichment_json = ?
+     WHERE id = ?`,
+    [
+      emailStatus,
+      phoneType,
+      JSON.stringify({ ...enrichment, adminContactCheck: contactCheck }),
+      leadId,
+    ],
+  );
+
+  const [updated] = await db.query(`SELECT * FROM marketplace_leads WHERE id = ?`, [leadId]);
+  return { lead: updated[0], contactCheck };
+}
+
+/**
+ * Admin approves lead → verify contact, then list in marketplace (open bidding).
+ */
+export async function approveMarketplaceLead(leadId) {
+  const { contactCheck } = await verifyMarketplaceLeadContact(leadId);
+
+  const qualified = await qualifyMarketplaceLead(leadId, { listInMarketplace: true });
   if (qualified.status === 'bidding' || qualified.status === 'no_bid_expanding') {
     notifyHomeownerListed({ lead: qualified }).catch(() => {});
   }
-  return qualified;
+
+  return { lead: qualified, contactCheck };
 }

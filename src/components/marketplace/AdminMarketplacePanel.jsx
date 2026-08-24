@@ -230,6 +230,52 @@ export default function AdminMarketplacePanel() {
     }
   };
 
+  const verifyLeadContact = async (leadId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/marketplace/admin/leads/${leadId}/verify-contact`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Verification failed');
+      toast.success('Contact verification complete');
+      setSelected(data.lead);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const approveLead = async (leadId) => {
+    if (!window.confirm('Approve this lead for the installer marketplace?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/marketplace/admin/leads/${leadId}/approve`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Approve failed');
+      toast.success(`Approved — status: ${data.lead?.status || 'updated'}`);
+      setSelected(data.lead);
+      load();
+      openLead(leadId);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const contactCheckBadge = (ok, label) => (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+        ok
+          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+          : 'bg-red-500/20 text-red-300 border-red-500/30'
+      }`}
+    >
+      {ok ? '✓' : '✗'} {label}
+    </span>
+  );
+
   const reviewDispute = async (id, decision) => {
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/admin/disputes/${id}/review`, {
@@ -770,6 +816,7 @@ export default function AdminMarketplacePanel() {
                       <option value="proposal">proposal (Proposal Sent)</option>
                       <option value="won">won (Contract Signed)</option>
                       <option value="lost">lost (Lead Declined)</option>
+                      <option value="pending_admin">pending_admin (Awaiting Approval)</option>
                       <option value="ai_qualified">ai_qualified (Needs Review)</option>
                       <option value="invalid_refunded">invalid_refunded (Refunded / Fake)</option>
                     </select>
@@ -790,14 +837,58 @@ export default function AdminMarketplacePanel() {
                     >
                       Close Bidding
                     </button>
-                    {['new', 'ai_qualified'].includes(selected.status) && (
-                      <button
-                        type="button"
-                        className="rounded-lg bg-amber-500/20 text-amber-200 text-xs font-bold px-3 py-1.5 hover:bg-amber-500/30"
-                        onClick={() => reQualifyLead(selected.id)}
-                      >
-                        Re-qualify
-                      </button>
+                    {['new', 'ai_qualified', 'pending_admin'].includes(selected.status) && (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-cyan-500/20 text-cyan-200 text-xs font-bold px-3 py-1.5 hover:bg-cyan-500/30"
+                          onClick={() => verifyLeadContact(selected.id)}
+                        >
+                          Check email & phone
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-emerald-500/20 text-emerald-200 text-xs font-bold px-3 py-1.5 hover:bg-emerald-500/30"
+                          onClick={() => approveLead(selected.id)}
+                        >
+                          Approve → Marketplace
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-amber-500/20 text-amber-200 text-xs font-bold px-3 py-1.5 hover:bg-amber-500/30"
+                          onClick={() => reQualifyLead(selected.id)}
+                        >
+                          Re-qualify
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Admin contact verification (Verifalia + Twilio Lookup — no OTP to homeowner) */}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
+                  <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                    Contact verification (admin)
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-white/45">Email status: </span>
+                      <span className="text-white font-semibold">{selected.emailStatus || selected.email_status || 'Not checked'}</span>
+                    </div>
+                    <div>
+                      <span className="text-white/45">Phone type: </span>
+                      <span className="text-white font-semibold">{selected.phoneType || selected.phone_type || 'Not checked'}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {contactCheckBadge(
+                      /deliverable/i.test(String(selected.emailStatus || selected.email_status || '')) &&
+                        !/undeliverable/i.test(String(selected.emailStatus || selected.email_status || '')),
+                      'Email deliverable',
+                    )}
+                    {contactCheckBadge(
+                      /mobile|landline|fixed/i.test(String(selected.phoneType || selected.phone_type || '')),
+                      'Real phone number',
                     )}
                   </div>
                 </div>
