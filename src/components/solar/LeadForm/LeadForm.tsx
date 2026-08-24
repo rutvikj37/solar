@@ -87,6 +87,9 @@ export function LeadForm() {
     if (!email) return 'Email address is required.';
     if (!phone) return 'Phone number is required.';
     if (!address) return 'Property address is required.';
+    if (formData.propertyType !== 'Residential' && formData.propertyType !== 'Commercial') {
+      return 'Please select Residential or Commercial.';
+    }
     if (!formData.ownership) return 'Please confirm whether you own this home.';
     if (!formData.roofType) return 'Please select your roof type.';
     if (!formData.timeline) return 'Please select when you are considering solar.';

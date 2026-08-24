@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { AddressAutocompleteInput } from './AddressAutocompleteInput';
 import { PropertyLocationMap } from './PropertyLocationMap';
 
 export function Step2Property({ onNext, onBack, data, updateData }: any) {
+  const [stepError, setStepError] = useState('');
+
   const handleLocationChange = useCallback(
     (payload: { address?: string; lat?: number; lng?: number }) => {
       updateData({
@@ -13,6 +15,23 @@ export function Step2Property({ onNext, onBack, data, updateData }: any) {
     },
     [updateData],
   );
+
+  const canContinue =
+    Boolean(String(data.address || '').trim()) &&
+    (data.propertyType === 'Residential' || data.propertyType === 'Commercial');
+
+  const handleContinue = () => {
+    if (!String(data.address || '').trim()) {
+      setStepError('Please enter your property address.');
+      return;
+    }
+    if (data.propertyType !== 'Residential' && data.propertyType !== 'Commercial') {
+      setStepError('Please select Residential or Commercial.');
+      return;
+    }
+    setStepError('');
+    onNext();
+  };
 
   return (
     <div className="space-y-4">
@@ -44,18 +63,30 @@ export function Step2Property({ onNext, onBack, data, updateData }: any) {
         onLocationChange={handleLocationChange}
       />
 
-      <div className="grid grid-cols-2 gap-2 mt-4">
-        {['Residential', 'Commercial'].map((type) => (
-          <button
-            key={type}
-            type="button"
-            className={`form-chip ${data.propertyType === type ? 'form-chip-active' : ''}`}
-            onClick={() => updateData({ propertyType: type })}
-          >
-            {type}
-          </button>
-        ))}
+      <div>
+        <p className="text-sm font-bold text-white/60 uppercase tracking-widest mb-3">
+          Property type *
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {['Residential', 'Commercial'].map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`form-chip ${data.propertyType === type ? 'form-chip-active' : ''}`}
+              onClick={() => {
+                setStepError('');
+                updateData({ propertyType: type });
+              }}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {stepError ? (
+        <p className="text-sm text-red-300">{stepError}</p>
+      ) : null}
 
       <div className="flex gap-4 mt-6">
         <button
@@ -67,8 +98,9 @@ export function Step2Property({ onNext, onBack, data, updateData }: any) {
         </button>
         <button
           type="button"
-          onClick={onNext}
-          className="w-2/3 bg-cyan-500 text-navy-dark font-bold py-4 rounded-xl hover:bg-cyan-400 transition-colors"
+          onClick={handleContinue}
+          disabled={!canContinue}
+          className="w-2/3 bg-cyan-500 text-navy-dark font-bold py-4 rounded-xl hover:bg-cyan-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue →
         </button>
