@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../config.js";
 import { clearToken } from "../lib/auth.js";
 import { formatLeadGeneratedAt } from "../lib/formatDate.js";
-import { buildLeadMarkerIcon } from "../lib/mapMarkers.js";
+import { createMapPinMarker } from "../lib/mapMarkers.js";
 import FullPageLoader from "../components/FullPageLoader.jsx";
 
 export default function Dashboard() {
@@ -99,7 +99,7 @@ export default function Dashboard() {
     if (!script) {
       script = document.createElement("script");
       script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,drawing,geometry&v=weekly&loading=async`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,drawing,geometry,marker&v=weekly&loading=async`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -134,20 +134,20 @@ export default function Dashboard() {
           center,
           zoom: 16,
           mapTypeId: "satellite",
+          mapId: "DEMO_MAP_ID",
           tilt: 0,
           disableDefaultUI: true,
           gestureHandling: "none",
         });
 
         leadsWithCoords.forEach((lead) => {
-          new window.google.maps.Marker({
+          createMapPinMarker(window.google, {
+            map,
             position: {
               lat: parseFloat(lead.latitude),
               lng: parseFloat(lead.longitude),
             },
-            map,
             title: lead.owner_name || "Saved Lead",
-            icon: buildLeadMarkerIcon(window.google),
           });
         });
 

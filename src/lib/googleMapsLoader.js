@@ -32,7 +32,7 @@ function waitForMapsReady() {
 /**
  * Load Google Maps JS API once (shared by targeting map, lead details, homeowner form).
  */
-export function loadGoogleMapsScript(apiKey, { libraries = 'places' } = {}) {
+export function loadGoogleMapsScript(apiKey, { libraries = 'places,marker' } = {}) {
   return new Promise((resolve, reject) => {
     if (isMapsReady()) {
       resolve();
