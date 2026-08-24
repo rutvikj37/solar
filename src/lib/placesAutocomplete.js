@@ -58,7 +58,9 @@ export async function fetchAddressSuggestions(query, sessionTokenRef) {
       const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
         input: q,
         includedRegionCodes: ['us', 'ca'],
-        includedPrimaryTypes: ['street_address', 'premise', 'subpremise'],
+        // Include route/geocode so rural roads (e.g. County Rd JH) still resolve
+        // to the selected place instead of an empty Places list → weak Nominatim hit.
+        includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route', 'geocode'],
         sessionToken: sessionTokenRef.current || undefined,
       });
 
@@ -134,6 +136,24 @@ export async function resolveAddressSuggestion(item, sessionTokenRef) {
     const result = await new Promise((resolve) => {
       geocoder.geocode({ placeId: item.placeId }, (results, status) => {
         if (status === 'OK' && results?.[0]?.geometry?.location) resolve(results[0]);
+        else resolve(null);
+      });
+    });
+    if (result?.geometry?.location) {
+      return {
+        address: result.formatted_address || fullAddress,
+        lat: result.geometry.location.lat(),
+        lng: result.geometry.location.lng(),
+      };
+    }
+  }
+
+  // Last resort: geocode the selected description (not a free-typed partial).
+  if (fullAddress && window.google?.maps?.Geocoder) {
+    const geocoder = new window.google.maps.Geocoder();
+    const result = await new Promise((resolve) => {
+      geocoder.geocode({ address: fullAddress }, (results, status) => {
+        if (status === 'OK' && results?.length) resolve(results[0]);
         else resolve(null);
       });
     });

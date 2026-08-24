@@ -20,12 +20,19 @@ export function Step2Property({ onNext, onBack, data, updateData }: any) {
 
       <AddressAutocompleteInput
         value={String(data.address || '')}
-        onChange={(address) => updateData({ address })}
+        onChange={(address) =>
+          updateData({
+            address,
+            // Clear pin while typing so we don't keep a stale location for a new address.
+            propertyLat: null,
+            propertyLng: null,
+          })
+        }
         onPlaceSelect={({ address, lat, lng }) =>
           updateData({
             address,
-            ...(lat != null ? { propertyLat: lat } : {}),
-            ...(lng != null ? { propertyLng: lng } : {}),
+            propertyLat: lat != null ? lat : null,
+            propertyLng: lng != null ? lng : null,
           })
         }
       />

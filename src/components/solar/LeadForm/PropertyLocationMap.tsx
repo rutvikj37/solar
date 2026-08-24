@@ -174,7 +174,12 @@ export function PropertyLocationMap({
     const q = String(address || '').trim();
     if (q.length < 5) return undefined;
 
+    // Keep Places autocomplete / pin-drag coordinates. Re-geocoding the address
+    // string often snaps rural roads and townships to a different map center.
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return undefined;
+
     const runGeocode = debounce(async () => {
+      if (pinUpdateRef.current) return;
       setGeocoding(true);
       try {
         const result = await geocodeAddress(q);
@@ -192,7 +197,7 @@ export function PropertyLocationMap({
 
     runGeocode();
     return () => runGeocode.cancel?.();
-  }, [address, mapsLoaded, onLocationChange]);
+  }, [address, lat, lng, mapsLoaded, onLocationChange]);
 
   const showPlaceholder = !mapsLoaded && !mapError;
   const hasPin = Number.isFinite(lat) && Number.isFinite(lng);
