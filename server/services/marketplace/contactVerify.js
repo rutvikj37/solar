@@ -166,10 +166,18 @@ export async function sendHomeownerPhoneOtp(phone) {
   });
 
   try {
-    await sendTwilioSms(
+    const sms = await sendTwilioSms(
       e164,
       `Your SolarX.live verification code is ${code}. It expires in 10 minutes.`,
     );
+    if (!sms?.ok || sms.simulated) {
+      phoneOtps.delete(e164);
+      return {
+        ok: false,
+        phone: e164,
+        error: 'SMS could not be sent. Check Twilio configuration on the server.',
+      };
+    }
   } catch (err) {
     phoneOtps.delete(e164);
     console.error('[contactVerify] Twilio SMS failed:', err);
