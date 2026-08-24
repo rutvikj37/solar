@@ -3,6 +3,7 @@ import {
   computeReportSavings,
   enrichSolarWithNrel,
   fetchGoogleSolarBuildingInsights,
+  sizeSolarSystemToBill,
 } from '../googleSolarBuildingInsights.js';
 
 function isValidCoord(lat, lng) {
@@ -50,6 +51,22 @@ export async function enrichHomeownerInquiry({
   }
 
   if (solar.googleSolarHit) {
+    const sized = sizeSolarSystemToBill({
+      maxSystemKw: solar.roofMaxSystemKw || solar.systemKw,
+      maxAnnualProductionKwh: solar.roofMaxAnnualProductionKwh || solar.annualProductionKwh,
+      maxPanelCount: solar.panelCount,
+      solarPanelConfigs: solar.solarPanelConfigs,
+      panelWatts: solar.panelWatts,
+      monthlyBill,
+      ratePerKwh: solar.ratePerKwh || 0.16,
+    });
+    solar = {
+      ...solar,
+      systemKw: sized.systemKw ?? solar.systemKw,
+      annualProductionKwh: sized.annualProductionKwh ?? solar.annualProductionKwh,
+      panelCount: sized.panelCount ?? solar.panelCount,
+      sizedToBill: sized.sizedToBill,
+    };
     solar = await enrichSolarWithNrel(lat, lng, solar);
   }
 
@@ -72,6 +89,9 @@ export async function enrichHomeownerInquiry({
     coordSource,
     panelCount: solar.panelCount ?? null,
     systemKw: solar.systemKw ?? null,
+    roofMaxSystemKw: solar.roofMaxSystemKw ?? solar.systemKw ?? null,
+    roofMaxAnnualProductionKwh: solar.roofMaxAnnualProductionKwh ?? null,
+    sizedToBill: Boolean(solar.sizedToBill),
     usableRoofSqft: solar.usableRoofSqft ?? null,
     totalRoofSqft: solar.totalRoofSqFt ?? null,
     annualProductionKwh: solar.annualProductionKwh ?? null,

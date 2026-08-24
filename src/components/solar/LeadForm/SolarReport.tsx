@@ -271,7 +271,7 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
                     <div className="flex justify-between gap-3 text-xs">
                       <span className="font-bold text-white/80">{row.label}</span>
                       <span className="font-black text-cyan-400 shrink-0">
-                        {Math.min(row.max, row.score)}/{row.max}
+                        {Math.round(Math.min(row.max, row.score))}/{row.max}
                       </span>
                     </div>
                     <div className="h-2 rounded-full bg-white/5 overflow-hidden">

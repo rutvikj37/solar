@@ -1,7 +1,14 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 export function Step4Solar({ onBack, data, updateData, onSubmit, submitting = false }: any) {
   const billValue = data.monthlyBill || 250;
+
+  useEffect(() => {
+    if (data.monthlyBill == null) {
+      updateData({ monthlyBill: 250 });
+    }
+  }, [data.monthlyBill, updateData]);
   
   const timelineOptions = ['As soon as possible', 'Within 3 months', '3–6 months', '6–12 months', 'Just researching'];
 

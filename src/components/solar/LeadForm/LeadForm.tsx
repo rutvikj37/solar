@@ -130,7 +130,7 @@ export function LeadForm() {
             phone: formData.phone,
             email: formData.email,
             address: formData.address,
-            monthlyBill: formData.monthlyBill,
+            monthlyBill: formData.monthlyBill != null ? Number(formData.monthlyBill) : 250,
             propertyLat: formData.propertyLat != null ? Number(formData.propertyLat) : undefined,
             propertyLng: formData.propertyLng != null ? Number(formData.propertyLng) : undefined,
             homeownerStatus: formData.ownership === 'rent' ? 'Renter' : 'Homeowner',

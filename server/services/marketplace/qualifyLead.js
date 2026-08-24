@@ -326,6 +326,7 @@ export function formatInquiryResponse(lead) {
     propertyType: lead.property_type || 'residential',
     solarPotentialLabel: lead.solar_potential_label || null,
     billRange: lead.bill_range || null,
+    monthlyBill: lead.monthly_bill != null ? Number(lead.monthly_bill) : null,
     estimatedSolarKw:
       lead.estimated_solar_kw != null ? Number(lead.estimated_solar_kw) : null,
     estimatedRoofSqft:
@@ -349,15 +350,20 @@ export function formatInquiryResponse(lead) {
           imageryDate: enrichment.imageryDate,
           imageryQuality: enrichment.imageryQuality,
           ratePerKwh: enrichment.ratePerKwh,
-          year1Savings: enrichment.year1Savings,
-          year5Savings: enrichment.year5Savings,
-          year10Savings: enrichment.year10Savings,
-          year25Savings: enrichment.year25Savings,
-          estSolarPayment: enrichment.estSolarPayment,
+          year1Savings: enrichment.year1Savings || null,
+          year5Savings: enrichment.year5Savings || null,
+          year10Savings: enrichment.year10Savings || null,
+          year25Savings: enrichment.year25Savings || null,
+          estSolarPayment:
+            enrichment.estSolarPayment != null && Number(enrichment.year1Savings) > 0
+              ? enrichment.estSolarPayment
+              : null,
           co2Tons25: enrichment.co2Tons25,
           treesEquiv: enrichment.treesEquiv,
           milesOffset: enrichment.milesOffset,
           productionSource: enrichment.productionSource,
+          roofMaxSystemKw: enrichment.roofMaxSystemKw || null,
+          roofMaxAnnualProductionKwh: enrichment.roofMaxAnnualProductionKwh || null,
         }
       : null,
     propertyLat: lead.latitude != null ? Number(lead.latitude) : enrichment.lat,
