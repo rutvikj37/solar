@@ -110,34 +110,69 @@ export function LeadForm() {
       .trim();
 
     try {
-      const res = await fetch(`${API_BASE}/api/marketplace/inquiries`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          phone: formData.phone,
-          email: formData.email,
-          address: formData.address,
-          monthlyBill: formData.monthlyBill,
-          propertyLat: formData.propertyLat != null ? Number(formData.propertyLat) : undefined,
-          propertyLng: formData.propertyLng != null ? Number(formData.propertyLng) : undefined,
-          homeownerStatus: formData.ownership === 'rent' ? 'Renter' : 'Homeowner',
-          installationTimeline: formData.timeline,
-          projectDetails: [
-            formData.roofType ? `Roof: ${formData.roofType}` : null,
-            formData.propertyType ? `Property: ${formData.propertyType}` : null,
-            formData.propertyLat != null && formData.propertyLng != null
-              ? `Pin: ${Number(formData.propertyLat).toFixed(6)},${Number(formData.propertyLng).toFixed(6)}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join('. '),
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 55000);
 
-      const data = (await res.json()) as InquiryResponse & { error?: string };
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE}/api/marketplace/inquiries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            phone: formData.phone,
+            email: formData.email,
+            address: formData.address,
+            monthlyBill: formData.monthlyBill,
+            propertyLat: formData.propertyLat != null ? Number(formData.propertyLat) : undefined,
+            propertyLng: formData.propertyLng != null ? Number(formData.propertyLng) : undefined,
+            homeownerStatus: formData.ownership === 'rent' ? 'Renter' : 'Homeowner',
+            installationTimeline: formData.timeline,
+            projectDetails: [
+              formData.roofType ? `Roof: ${formData.roofType}` : null,
+              formData.propertyType ? `Property: ${formData.propertyType}` : null,
+              formData.propertyLat != null && formData.propertyLng != null
+                ? `Pin: ${Number(formData.propertyLat).toFixed(6)},${Number(formData.propertyLng).toFixed(6)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join('. '),
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+
+      const raw = await res.text();
+      let data: InquiryResponse & { error?: string; code?: string } = {} as InquiryResponse;
+      try {
+        data = raw ? (JSON.parse(raw) as InquiryResponse & { error?: string; code?: string }) : ({} as InquiryResponse);
+      } catch {
+        if (res.status === 429) {
+          setSubmitError('Too many requests. Please wait a minute and try again.');
+          return;
+        }
+        if (res.status >= 500) {
+          setSubmitError('Server is temporarily unavailable. Please try again in a moment.');
+          return;
+        }
+        setSubmitError('Unexpected server response. Please try again.');
+        return;
+      }
 
       if (!res.ok) {
+        if (res.status === 429) {
+          setSubmitError(data.error || 'Too many requests. Please wait a minute and try again.');
+          return;
+        }
+        if (res.status === 409) {
+          setSubmitError(
+            data.error ||
+              'A similar inquiry was already submitted recently. Please use a different email or address.',
+          );
+          return;
+        }
         setSubmitError(data.error || 'Unable to validate your details. Please check the form and try again.');
         return;
       }
@@ -170,7 +205,12 @@ export function LeadForm() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error('[LeadForm] Marketplace inquiry failed:', err);
-      setSubmitError('Network error. Please check your connection and try again.');
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'AbortError' || name === 'TimeoutError') {
+        setSubmitError('Request timed out. Please try again — your connection may be slow.');
+      } else {
+        setSubmitError('Network error. Please check your connection and try again.');
+      }
     } finally {
       setSubmitting(false);
     }

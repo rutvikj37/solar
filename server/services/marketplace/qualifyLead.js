@@ -440,12 +440,25 @@ export async function createInquiry(payload) {
 
   let enrichment = null;
   try {
-    enrichment = await enrichHomeownerInquiry({
+    const enrichPromise = enrichHomeownerInquiry({
       address: String(address).trim(),
       monthlyBill: bill,
       propertyLat,
       propertyLng,
     });
+    // Cap enrichment so nginx/proxy does not return HTML 504 (shows as "Network error" in UI).
+    enrichment = await Promise.race([
+      enrichPromise,
+      new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({
+            enriched: false,
+            timedOut: true,
+            dataSources: { solar: 'timeout', production: 'estimated' },
+          });
+        }, 18000);
+      }),
+    ]);
   } catch (err) {
     console.error('[Marketplace] homeowner enrichment failed:', err);
     enrichment = { enriched: false, dataSources: { solar: 'unavailable', production: 'estimated' } };

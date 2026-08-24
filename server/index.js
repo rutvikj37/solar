@@ -99,6 +99,22 @@ function isAllowedOrigin(origin) {
   if (!origin) return true;
   if (allowedOrigins.length === 0) return !isProd;
   if (allowedOrigins.includes(origin)) return true;
+  // Allow www ↔ apex for configured FRONTEND_URL hosts
+  try {
+    const incoming = new URL(origin);
+    for (const allowed of allowedOrigins) {
+      try {
+        const a = new URL(allowed);
+        const inHost = incoming.hostname.replace(/^www\./, '');
+        const aHost = a.hostname.replace(/^www\./, '');
+        if (incoming.protocol === a.protocol && inHost === aHost) return true;
+      } catch {
+        /* ignore bad FRONTEND_URL entry */
+      }
+    }
+  } catch {
+    return false;
+  }
   // Local Vite ports change often (5173, 5176, 5200, …)
   if (!isProd) {
     try {

@@ -59,15 +59,29 @@ export async function logApiCall(provider, ok, durationMs = 0) {
  * fetch() wrapper that records success/error + latency for the admin APIs tab.
  * @param {string} provider - one of PROVIDERS[].id
  */
-export async function trackedFetch(provider, url, options) {
+export async function trackedFetch(provider, url, options = {}) {
   const started = Date.now();
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 12000;
+  const { timeoutMs: _timeoutMs, signal: userSignal, ...fetchOpts } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const onUserAbort = () => controller.abort();
+  if (userSignal) {
+    if (userSignal.aborted) controller.abort();
+    else userSignal.addEventListener('abort', onUserAbort, { once: true });
+  }
+
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
     await logApiCall(provider, res.ok, Date.now() - started);
     return res;
   } catch (err) {
     await logApiCall(provider, false, Date.now() - started);
     throw err;
+  } finally {
+    clearTimeout(timer);
+    if (userSignal) userSignal.removeEventListener('abort', onUserAbort);
   }
 }
 

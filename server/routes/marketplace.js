@@ -53,7 +53,7 @@ const router = express.Router();
 
 const inquiryLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 80,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many inquiries submitted. Please try again later.' },
