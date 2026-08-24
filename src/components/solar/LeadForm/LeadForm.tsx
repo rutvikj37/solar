@@ -61,6 +61,8 @@ type InquiryResponse = {
   solarReport?: SolarReportPayload | null;
   propertyLat?: number | null;
   propertyLng?: number | null;
+  existingLeadCode?: string;
+  existingStatus?: string;
 };
 
 export function LeadForm() {
@@ -98,6 +100,8 @@ export function LeadForm() {
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
+
     const clientError = validateBeforeSubmit();
     if (clientError) {
       setSubmitError(clientError);
@@ -170,6 +174,50 @@ export function LeadForm() {
           return;
         }
         if (res.status === 409) {
+          const existingLeadCode = String(data.existingLeadCode || '').trim();
+          if (existingLeadCode) {
+            try {
+              const existingRes = await fetch(
+                `${API_BASE}/api/marketplace/report/${encodeURIComponent(existingLeadCode)}`,
+                { cache: 'no-store' },
+              );
+              if (existingRes.ok) {
+                const existingData = (await existingRes.json()) as InquiryResponse;
+                const existingPayload = {
+                  ...formData,
+                  leadCode: existingLeadCode,
+                  opportunityScore: existingData.opportunityScore,
+                  marketplaceStatus: existingData.status || data.existingStatus || 'new',
+                  listedInMarketplace: existingData.listedInMarketplace,
+                  propertyType: existingData.propertyType ?? formData.propertyType,
+                  solarPotentialLabel: existingData.solarPotentialLabel,
+                  billRange: existingData.billRange,
+                  estimatedSolarKw:
+                    existingData.estimatedSolarKw ??
+                    existingData.solarReport?.systemKw ??
+                    formData.estimatedSolarKw,
+                  estimatedRoofSqft:
+                    existingData.estimatedRoofSqft ??
+                    existingData.solarReport?.usableRoofSqft ??
+                    formData.estimatedRoofSqft,
+                  qualificationMessage: existingData.message || data.error,
+                  enrichmentSource: existingData.enrichmentSource ?? 'estimated',
+                  dataSources: existingData.dataSources ?? null,
+                  satelliteImageUrl: existingData.satelliteImageUrl ?? null,
+                  solarReport: existingData.solarReport ?? null,
+                  googleSolarHit: existingData.enrichmentSource === 'google_solar',
+                  propertyLat: existingData.propertyLat ?? formData.propertyLat,
+                  propertyLng: existingData.propertyLng ?? formData.propertyLng,
+                };
+                setFormData(existingPayload);
+                setIsAnalyzing(true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+              }
+            } catch (existingErr) {
+              console.error('[LeadForm] Failed to load existing duplicate inquiry:', existingErr);
+            }
+          }
           setSubmitError(
             data.error ||
               'A similar inquiry was already submitted recently. Please use a different email or address.',
