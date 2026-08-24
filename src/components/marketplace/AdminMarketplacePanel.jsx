@@ -154,8 +154,23 @@ export default function AdminMarketplacePanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSelected(data.lead);
+      let lead = data.lead;
+      setSelected(lead);
       setBids(data.bids || []);
+
+      const alreadyChecked = Boolean(
+        lead?.emailStatus ||
+          lead?.email_status ||
+          lead?.phoneType ||
+          lead?.phone_type ||
+          lead?.contactCheck?.checkedAt,
+      );
+      if (
+        !alreadyChecked &&
+        ['new', 'ai_qualified', 'pending_admin'].includes(lead?.status)
+      ) {
+        await verifyLeadContact(id, { silent: true });
+      }
     } catch (err) {
       toast.error(err.message);
     }
@@ -230,7 +245,7 @@ export default function AdminMarketplacePanel() {
     }
   };
 
-  const verifyLeadContact = async (leadId) => {
+  const verifyLeadContact = async (leadId, { silent = false } = {}) => {
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/admin/leads/${leadId}/verify-contact`, {
         method: 'POST',
@@ -238,11 +253,11 @@ export default function AdminMarketplacePanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Verification failed');
-      toast.success('Contact verification complete');
+      if (!silent) toast.success('Contact verification complete');
       setSelected(data.lead);
       load();
     } catch (err) {
-      toast.error(err.message);
+      if (!silent) toast.error(err.message);
     }
   };
 
@@ -844,7 +859,7 @@ export default function AdminMarketplacePanel() {
                           className="rounded-lg bg-cyan-500/20 text-cyan-200 text-xs font-bold px-3 py-1.5 hover:bg-cyan-500/30"
                           onClick={() => verifyLeadContact(selected.id)}
                         >
-                          Check email & phone
+                          Re-check email & phone
                         </button>
                         <button
                           type="button"
@@ -868,7 +883,7 @@ export default function AdminMarketplacePanel() {
                 {/* Admin contact verification (Verifalia + Twilio Lookup — no OTP to homeowner) */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
                   <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
-                    Contact verification (admin)
+                    Contact verification (auto · Verifalia + Twilio)
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs">
                     <div>

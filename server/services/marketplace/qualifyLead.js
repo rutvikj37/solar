@@ -481,6 +481,13 @@ export async function createInquiry(payload) {
     );
   }
 
+  // Auto Verifalia + Twilio lookup on ingest (no homeowner OTP). Don't fail the inquiry if this errors.
+  try {
+    await verifyMarketplaceLeadContact(leadId);
+  } catch (err) {
+    console.error('[Marketplace] auto contact verify failed:', err);
+  }
+
   // Score for admin review — do not open marketplace until admin approves.
   return qualifyMarketplaceLead(leadId, { listInMarketplace: false });
 }
