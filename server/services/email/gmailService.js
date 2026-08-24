@@ -22,7 +22,7 @@ export function getGmailAuthorizeUrl(state) {
       'https://www.googleapis.com/auth/userinfo.email',
     ].join(' '),
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account consent',
     state,
   });
   return `${AUTH_URL}?${params.toString()}`;

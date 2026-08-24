@@ -18,6 +18,7 @@ export function getOutlookAuthorizeUrl(state) {
     redirect_uri: outlookRedirectUri(),
     response_type: 'code',
     scope: 'offline_access Mail.Send User.Read',
+    prompt: 'select_account',
     state,
   });
   return `${AUTH_URL}?${params.toString()}`;
