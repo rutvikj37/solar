@@ -55,7 +55,7 @@ export function Navbar() {
               <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
             </a>
             <Link
-              to="/login"
+              to="/for-installers"
               className="hidden lg:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
             >
               Installer Login
