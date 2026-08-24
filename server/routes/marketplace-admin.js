@@ -379,6 +379,63 @@ router.post('/leads/:id/verify-contact', ...adminAuth, async (req, res) => {
   }
 });
 
+router.post('/leads/bulk-approve', ...adminAuth, async (req, res) => {
+  try {
+    const ids = [...new Set((req.body?.leadIds || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+    if (!ids.length) {
+      return res.status(400).json({ error: 'Select at least one lead to approve' });
+    }
+    if (ids.length > 50) {
+      return res.status(400).json({ error: 'Approve at most 50 leads at a time' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    const [rows] = await db.query(
+      `SELECT id, lead_code, status FROM marketplace_leads WHERE id IN (${placeholders})`,
+      ids,
+    );
+    const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+    const approved = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const id of ids) {
+      const row = byId[id];
+      if (!row) {
+        skipped.push({ id, reason: 'Not found' });
+        continue;
+      }
+      if (!['new', 'ai_qualified', 'pending_admin'].includes(row.status)) {
+        skipped.push({ id, leadCode: row.lead_code, reason: `Already ${row.status}` });
+        continue;
+      }
+      try {
+        const result = await approveMarketplaceLead(id);
+        approved.push({
+          id,
+          leadCode: result.lead?.lead_code || row.lead_code,
+          status: result.lead?.status,
+        });
+      } catch (err) {
+        failed.push({ id, leadCode: row.lead_code, reason: err.message || 'Approve failed' });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      approvedCount: approved.length,
+      skippedCount: skipped.length,
+      failedCount: failed.length,
+      approved,
+      skipped,
+      failed,
+    });
+  } catch (err) {
+    console.error('[MarketplaceAdmin] bulk-approve failed:', err);
+    return res.status(500).json({ error: err.message || 'Bulk approve failed' });
+  }
+});
+
 router.post('/leads/:id/approve', ...adminAuth, async (req, res) => {
   try {
     const leadId = Number(req.params.id);
