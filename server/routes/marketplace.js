@@ -48,6 +48,12 @@ import {
   getMarketplaceSettings,
   applyResolvedBiddingTimes,
 } from '../services/marketplace/bidWindow.js';
+import {
+  verifyHomeownerEmail,
+  sendHomeownerPhoneOtp,
+  confirmHomeownerPhoneOtp,
+  isHomeownerPhoneVerified,
+} from '../services/marketplace/contactVerify.js';
 
 const router = express.Router();
 
@@ -57,6 +63,22 @@ const inquiryLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many inquiries submitted. Please try again later.' },
+});
+
+const contactVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many verification attempts. Please try again later.' },
+});
+
+const phoneOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many SMS verification requests. Please try again later.' },
 });
 
 const reportImageLimiter = rateLimit({
@@ -90,6 +112,48 @@ function requireInstaller(req, res, next) {
   return res.status(403).json({ error: 'Installer access required' });
 }
 
+/** Public: Verifalia email deliverability check */
+router.post('/verify-email', contactVerifyLimiter, async (req, res) => {
+  try {
+    const result = await verifyHomeownerEmail(req.body?.email);
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('[Marketplace] verify-email failed:', err);
+    return res.status(500).json({ ok: false, error: 'Email verification failed. Please try again.' });
+  }
+});
+
+/** Public: Twilio SMS OTP send (after Lookup) */
+router.post('/verify-phone/send', phoneOtpLimiter, async (req, res) => {
+  try {
+    const result = await sendHomeownerPhoneOtp(req.body?.phone);
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('[Marketplace] verify-phone/send failed:', err);
+    return res.status(500).json({ ok: false, error: 'Could not send verification SMS. Please try again.' });
+  }
+});
+
+/** Public: confirm Twilio SMS OTP */
+router.post('/verify-phone/confirm', contactVerifyLimiter, async (req, res) => {
+  try {
+    const result = confirmHomeownerPhoneOtp(req.body?.phone, req.body?.code);
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('[Marketplace] verify-phone/confirm failed:', err);
+    return res.status(500).json({ ok: false, error: 'Could not confirm verification code.' });
+  }
+});
+
 /** Public homeowner inquiry */
 router.post('/inquiries', inquiryLimiter, async (req, res) => {
   try {
@@ -109,6 +173,14 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
 
     if (!name?.trim() || !phone?.trim() || !email?.trim() || !address?.trim()) {
       return res.status(400).json({ error: 'Name, phone, email, and property address are required' });
+    }
+
+    // Soft gate: prefer verified phone when OTP was completed in the form flow.
+    if (process.env.MARKETPLACE_REQUIRE_PHONE_OTP === 'true' && !isHomeownerPhoneVerified(phone)) {
+      return res.status(400).json({
+        error: 'Please verify your mobile number with the SMS code before submitting.',
+        code: 'PHONE_NOT_VERIFIED',
+      });
     }
 
     const lead = await createInquiry({

@@ -87,6 +87,8 @@ export function LeadForm() {
     if (!email) return 'Email address is required.';
     if (!phone) return 'Phone number is required.';
     if (!address) return 'Property address is required.';
+    if (!formData.emailVerified) return 'Please verify your email address.';
+    if (!formData.phoneVerified) return 'Please verify your mobile number with the SMS code.';
     if (formData.propertyType !== 'Residential' && formData.propertyType !== 'Commercial') {
       return 'Please select Residential or Commercial.';
     }
