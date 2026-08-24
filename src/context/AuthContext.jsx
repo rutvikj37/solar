@@ -89,8 +89,9 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    const role = user?.role;
     resetSession();
-    logoutToLogin();
+    logoutToLogin({ role });
   };
 
   const value = {

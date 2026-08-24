@@ -44,7 +44,7 @@ export default function TopBar({ onMenuToggle, showBanner }) {
       .catch(console.error);
   }, []);
 
-  const handleLogout = () => logoutToLogin();
+  const handleLogout = () => logoutToLogin({ role: userRole });
 
   const userInitial = userName.trim() ? userName.trim().charAt(0).toUpperCase() : '?';
   const topPosition = showBanner ? 'top-9' : 'top-0';
