@@ -39,3 +39,23 @@ export function buildLeadMarkerIcon(google, { fillColor = '#6366f1', scale = 1.5
     labelOrigin: new google.maps.Point(MAP_PIN_LABEL_ORIGIN.x, MAP_PIN_LABEL_ORIGIN.y)
   };
 }
+
+/** Preferred pin API (replaces deprecated google.maps.Marker). Requires mapId on the Map. */
+export async function placeAdvancedLeadMarker(
+  google,
+  { map, position, title, fillColor = '#6366f1' },
+) {
+  const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary('marker');
+  const pin = new PinElement({
+    background: fillColor,
+    borderColor: '#ffffff',
+    glyphColor: '#ffffff',
+  });
+  return new AdvancedMarkerElement({
+    map,
+    position,
+    title: title || 'Lead',
+    content: pin.element,
+  });
+}
+

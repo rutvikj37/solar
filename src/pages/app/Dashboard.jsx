@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../../config.js";
 import { clearToken } from "../../lib/auth.js";
 import { formatLeadGeneratedAt } from "../../lib/formatDate.js";
-import { buildLeadMarkerIcon } from "../../lib/mapMarkers.js";
+import { placeAdvancedLeadMarker } from "../../lib/mapMarkers.js";
 import FullPageLoader from "../../components/layout/FullPageLoader.jsx";
 
 export default function Dashboard() {
@@ -120,41 +120,49 @@ export default function Dashboard() {
       !dashboardMapInstanceRef.current &&
       leads.length > 0
     ) {
-      try {
-        const leadsWithCoords = leads.filter((l) => l.latitude && l.longitude);
-        const center =
-          leadsWithCoords.length > 0
-            ? {
-                lat: parseFloat(leadsWithCoords[0].latitude),
-                lng: parseFloat(leadsWithCoords[0].longitude),
-              }
-            : { lat: 34.0736, lng: -118.4004 };
+      let cancelled = false;
+      (async () => {
+        try {
+          const leadsWithCoords = leads.filter((l) => l.latitude && l.longitude);
+          const center =
+            leadsWithCoords.length > 0
+              ? {
+                  lat: parseFloat(leadsWithCoords[0].latitude),
+                  lng: parseFloat(leadsWithCoords[0].longitude),
+                }
+              : { lat: 34.0736, lng: -118.4004 };
 
-        const map = new window.google.maps.Map(dashboardMapRef.current, {
-          center,
-          zoom: 16,
-          mapTypeId: "satellite",
-          tilt: 0,
-          disableDefaultUI: true,
-          gestureHandling: "none",
-        });
-
-        leadsWithCoords.forEach((lead) => {
-          new window.google.maps.Marker({
-            position: {
-              lat: parseFloat(lead.latitude),
-              lng: parseFloat(lead.longitude),
-            },
-            map,
-            title: lead.owner_name || "Saved Lead",
-            icon: buildLeadMarkerIcon(window.google),
+          const map = new window.google.maps.Map(dashboardMapRef.current, {
+            center,
+            zoom: 16,
+            mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || "DEMO_MAP_ID",
+            mapTypeId: "satellite",
+            tilt: 0,
+            disableDefaultUI: true,
+            gestureHandling: "none",
           });
-        });
 
-        dashboardMapInstanceRef.current = map;
-      } catch (err) {
-        console.error("Dashboard map init error:", err);
-      }
+          await Promise.all(
+            leadsWithCoords.map((lead) =>
+              placeAdvancedLeadMarker(window.google, {
+                map,
+                position: {
+                  lat: parseFloat(lead.latitude),
+                  lng: parseFloat(lead.longitude),
+                },
+                title: lead.owner_name || "Saved Lead",
+              }),
+            ),
+          );
+
+          if (!cancelled) dashboardMapInstanceRef.current = map;
+        } catch (err) {
+          console.error("Dashboard map init error:", err);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
   }, [mapsLoaded, googleMapsKey, leads]);
 

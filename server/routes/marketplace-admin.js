@@ -8,6 +8,11 @@ import { unlockOpportunity, maskOpportunity } from '../services/marketplace/mask
 import { clearMarketplaceDemos } from '../services/marketplace/seedDemo.js';
 import { ensureInstallerProfile } from '../services/marketplace/eligibility.js';
 import { qualifyMarketplaceLead, verifyMarketplaceLeadContact, approveMarketplaceLead } from '../services/marketplace/qualifyLead.js';
+import {
+  ensureLeadBiddingTimes,
+  ensureLeadsBiddingTimes,
+  getMarketplaceSettings,
+} from '../services/marketplace/bidWindow.js';
 
 const router = express.Router();
 
