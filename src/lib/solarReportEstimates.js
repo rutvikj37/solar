@@ -119,7 +119,7 @@ export function buildSolarReportEstimates(data = {}) {
     opportunityScore,
     fitLabel,
     googleSolarHit,
-    productionSource: solar.productionSource || (googleSolarHit ? 'Google Solar API' : 'estimated'),
+    productionSource: solar.productionSource || (googleSolarHit ? 'satellite modeled' : 'estimated'),
     orientation: solar.orientation || null,
     pitch: solar.pitch || null,
     shading: solar.shading || null,

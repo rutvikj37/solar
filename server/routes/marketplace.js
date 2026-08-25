@@ -88,6 +88,14 @@ const reportImageLimiter = rateLimit({
   message: { error: 'Too many report image requests. Please try again later.' },
 });
 
+const reportJsonLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many report requests. Please try again later.' },
+});
+
 const reportPdfLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 25,
@@ -206,7 +214,7 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
 });
 
 /** Public homeowner report JSON by lead code */
-router.get('/report/:leadCode', reportPdfLimiter, async (req, res) => {
+router.get('/report/:leadCode', reportJsonLimiter, async (req, res) => {
   try {
     const leadCode = String(req.params.leadCode || '').trim();
     if (!leadCode) {

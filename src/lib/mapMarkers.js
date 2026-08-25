@@ -43,7 +43,7 @@ export function buildLeadMarkerIcon(google, { fillColor = '#6366f1', scale = 1.5
 /** Preferred pin API (replaces deprecated google.maps.Marker). Requires mapId on the Map. */
 export async function placeAdvancedLeadMarker(
   google,
-  { map, position, title, fillColor = '#6366f1' },
+  { map, position, title, fillColor = '#6366f1', draggable = false },
 ) {
   const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary('marker');
   const pin = new PinElement({
@@ -56,6 +56,7 @@ export async function placeAdvancedLeadMarker(
     position,
     title: title || 'Lead',
     content: pin.element,
+    gmpDraggable: draggable,
   });
 }
 

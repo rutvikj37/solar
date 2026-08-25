@@ -58,7 +58,6 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
     day: 'numeric',
   });
   const enriched = estimates.googleSolarHit || data.enrichmentSource === 'google_solar';
-  const dataSources = (data.dataSources || null) as Record<string, string> | null;
   const satelliteImageUrl = data.satelliteImageUrl
     ? `${API_BASE}${String(data.satelliteImageUrl)}`
     : '/roof-aerial.jpg';
@@ -156,21 +155,6 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
             <span className="hidden md:inline text-white/20">·</span>
             <span className="font-mono text-cyan-400/90 text-xs">Lead ID {leadCode}</span>
           </div>
-          {enriched ? (
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-300">
-                <ShieldCheck className="size-3.5" />
-                Google Solar enriched
-              </span>
-              {dataSources ? (
-                <span className="text-[10px] text-white/40">
-                  {dataSources.solar}
-                  {dataSources.production ? ` · ${dataSources.production}` : ''}
-                  {dataSources.utilityRate ? ` · ${dataSources.utilityRate}` : ''}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
         </motion.div>
 
         {/* Hero stats — system snapshot (reference-inspired layout, our fields) */}
@@ -182,8 +166,8 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
             Estimated system snapshot
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            <StatTile label="Panels" value={String(estimates.panelCount)} sub={enriched ? 'Google Solar' : 'estimated count'} />
-            <StatTile label="System size" value={`${estimates.systemKw} kW`} sub={enriched ? 'API roof model' : 'estimated DC'} />
+            <StatTile label="Panels" value={String(estimates.panelCount)} sub={enriched ? 'roof modeled' : 'estimated count'} />
+            <StatTile label="System size" value={`${estimates.systemKw} kW`} sub={enriched ? 'satellite modeled' : 'estimated DC'} />
             <StatTile
               label="Coverage"
               value={`${estimates.coveragePct}%`}
@@ -192,7 +176,7 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
             <StatTile
               label="Annual output"
               value={`${estimates.annualProduction.toLocaleString()}`}
-              sub={enriched ? estimates.productionSource || 'Google Solar' : 'kWh / year est.'}
+              sub={enriched ? 'kWh / year modeled' : 'kWh / year est.'}
             />
           </div>
 
@@ -207,8 +191,7 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
               <SavingsPill label="Year 25" value={`$${estimates.year25Savings.toLocaleString()}`} />
             </div>
             <p className="mt-3 text-[10px] text-white/30 italic">
-              Based on ${estimates.bill}/mo bill · ~${estimates.ratePerKwh.toFixed(2)}/kWh
-              {enriched && estimates.productionSource ? ` · ${estimates.productionSource}` : ''} ·
+              Based on ${estimates.bill}/mo bill · ~${estimates.ratePerKwh.toFixed(2)}/kWh ·{' '}
               {estimates.systemKw} kW system · Illustrative only.
             </p>
           </div>

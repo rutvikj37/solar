@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MapPin } from 'lucide-react';
-import { buildLeadMarkerIcon } from '@/lib/mapMarkers.js';
+import { placeAdvancedLeadMarker } from '@/lib/mapMarkers.js';
 import { loadGoogleMapsScript } from '@/lib/googleMapsLoader.js';
 import {
   debounce,
@@ -24,6 +24,16 @@ type PropertyLocationMapProps = {
 };
 
 const HOME_PIN_COLOR = '#38bdf8';
+const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+
+function readMarkerLatLng(marker: google.maps.marker.AdvancedMarkerElement) {
+  const pos = marker.position;
+  if (!pos) return null;
+  const lat = typeof pos.lat === 'function' ? pos.lat() : Number(pos.lat);
+  const lng = typeof pos.lng === 'function' ? pos.lng() : Number(pos.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
 
 export function PropertyLocationMap({
   address = '',
@@ -40,8 +50,8 @@ export function PropertyLocationMap({
   const [mapError, setMapError] = useState('');
   const [geocoding, setGeocoding] = useState(false);
 
-  const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const skipGeocodeRef = useRef(false);
   const pinUpdateRef = useRef(false);
 
@@ -55,7 +65,7 @@ export function PropertyLocationMap({
         return;
       }
 
-      loadGoogleMapsScript(key, { libraries: 'places' })
+      loadGoogleMapsScript(key, { libraries: 'places,marker' })
         .then(() => {
           if (!cancelled) setMapsLoaded(true);
         })
@@ -70,30 +80,30 @@ export function PropertyLocationMap({
   }, []);
 
   const placePin = useCallback(
-    (nextLat: number, nextLng: number, opts: { pan?: boolean; zoom?: number } = {}) => {
+    async (nextLat: number, nextLng: number, opts: { pan?: boolean; zoom?: number } = {}) => {
       if (!window.google?.maps || !mapInstanceRef.current) return;
       const position = { lat: nextLat, lng: nextLng };
       const zoom = opts.zoom ?? (looksLikeStreetAddress(address) ? 20 : 18);
 
       if (!markerRef.current) {
-        markerRef.current = new window.google.maps.Marker({
-          position,
+        markerRef.current = await placeAdvancedLeadMarker(window.google, {
           map: mapInstanceRef.current,
-          draggable: true,
+          position,
           title: 'Your home',
-          icon: buildLeadMarkerIcon(window.google, { fillColor: HOME_PIN_COLOR, scale: 1.95 }),
+          fillColor: HOME_PIN_COLOR,
+          draggable: true,
         });
 
         markerRef.current.addListener('dragend', async () => {
-          const pos = markerRef.current?.getPosition();
-          if (!pos) return;
+          const coords = readMarkerLatLng(markerRef.current!);
+          if (!coords) return;
           pinUpdateRef.current = true;
           setGeocoding(true);
           try {
-            const resolved = await reverseGeocodeLatLng(pos.lat(), pos.lng());
+            const resolved = await reverseGeocodeLatLng(coords.lat, coords.lng);
             onLocationChange({
-              lat: pos.lat(),
-              lng: pos.lng(),
+              lat: coords.lat,
+              lng: coords.lng,
               address: resolved?.formattedAddress,
             });
           } finally {
@@ -102,8 +112,8 @@ export function PropertyLocationMap({
           }
         });
       } else {
-        markerRef.current.setPosition(position);
-        markerRef.current.setMap(mapInstanceRef.current);
+        markerRef.current.position = position;
+        markerRef.current.map = mapInstanceRef.current;
       }
 
       if (opts.pan !== false) {
@@ -122,6 +132,7 @@ export function PropertyLocationMap({
       mapInstanceRef.current = new window.google.maps.Map(mapEl, {
         center: hasCoords ? { lat: lat!, lng: lng! } : { lat: 39.8283, lng: -98.5795 },
         zoom: hasCoords ? 20 : 4,
+        mapId: MAP_ID,
         mapTypeId: 'hybrid',
         disableDefaultUI: true,
         zoomControl: true,
@@ -134,13 +145,13 @@ export function PropertyLocationMap({
         scrollwheel: true,
       });
 
-      mapInstanceRef.current.addListener('click', async (e: any) => {
+      mapInstanceRef.current.addListener('click', async (e: google.maps.MapMouseEvent) => {
         const clickLat = e.latLng?.lat();
         const clickLng = e.latLng?.lng();
         if (clickLat == null || clickLng == null) return;
 
         pinUpdateRef.current = true;
-        placePin(clickLat, clickLng);
+        await placePin(clickLat, clickLng);
         setGeocoding(true);
         try {
           const resolved = await reverseGeocodeLatLng(clickLat, clickLng);
@@ -157,7 +168,7 @@ export function PropertyLocationMap({
     }
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      placePin(lat!, lng!, { pan: !skipGeocodeRef.current });
+      void placePin(lat!, lng!, { pan: !skipGeocodeRef.current });
       skipGeocodeRef.current = false;
     }
 

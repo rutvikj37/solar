@@ -187,9 +187,7 @@ function drawReport(doc, data) {
 
   doc.font('Helvetica').fontSize(8).fillColor(C.muted);
   doc.text(
-    `Based on $${estimates.bill}/mo bill · ~$${estimates.ratePerKwh.toFixed(2)}/kWh · ${estimates.systemKw} kW system${
-      estimates.googleSolarHit ? ` · ${estimates.productionSource || 'Google Solar API'}` : ''
-    }`,
+    `Based on $${estimates.bill}/mo bill · ~$${estimates.ratePerKwh.toFixed(2)}/kWh · ${estimates.systemKw} kW system`,
     M,
     y,
     { width: contentW },

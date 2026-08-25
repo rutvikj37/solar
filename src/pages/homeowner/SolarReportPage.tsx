@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SolarReport } from '@/components/homeowner/LeadForm/SolarReport';
 import { getReportData, setReportData } from '@/lib/report-store';
@@ -10,18 +10,25 @@ export default function SolarReportPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(localData);
   const [refreshing, setRefreshing] = useState(Boolean(localData?.leadCode));
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (!localData) {
+    const snapshot = getReportData();
+    if (!snapshot) {
       navigate('/', { replace: true });
       return;
     }
 
-    const leadCode = String(localData.leadCode || '').trim();
+    const leadCode = String(snapshot.leadCode || '').trim();
     if (!leadCode) {
       setRefreshing(false);
       return;
     }
+
+    if (fetchedRef.current) {
+      return;
+    }
+    fetchedRef.current = true;
 
     let cancelled = false;
 
@@ -35,24 +42,24 @@ export default function SolarReportPage() {
         }
         const apiData = await res.json();
         const merged = {
-          ...localData,
+          ...snapshot,
           ...apiData,
-          firstName: localData.firstName ?? apiData.firstName,
-          lastName: localData.lastName ?? apiData.lastName,
-          email: localData.email ?? apiData.email,
-          phone: localData.phone ?? apiData.phone,
-          monthlyBill: localData.monthlyBill ?? apiData.monthlyBill,
-          roofType: localData.roofType ?? apiData.roofType,
-          timeline: localData.timeline ?? apiData.timeline,
-          ownership: localData.ownership,
-          propertyType: localData.propertyType ?? apiData.propertyType,
-          solarReport: apiData.solarReport ?? localData.solarReport ?? null,
-          satelliteImageUrl: apiData.satelliteImageUrl ?? localData.satelliteImageUrl ?? null,
-          enrichmentSource: apiData.enrichmentSource ?? localData.enrichmentSource ?? 'estimated',
-          dataSources: apiData.dataSources ?? localData.dataSources ?? null,
+          firstName: snapshot.firstName ?? apiData.firstName,
+          lastName: snapshot.lastName ?? apiData.lastName,
+          email: snapshot.email ?? apiData.email,
+          phone: snapshot.phone ?? apiData.phone,
+          monthlyBill: snapshot.monthlyBill ?? apiData.monthlyBill,
+          roofType: snapshot.roofType ?? apiData.roofType,
+          timeline: snapshot.timeline ?? apiData.timeline,
+          ownership: snapshot.ownership,
+          propertyType: snapshot.propertyType ?? apiData.propertyType,
+          solarReport: apiData.solarReport ?? snapshot.solarReport ?? null,
+          satelliteImageUrl: apiData.satelliteImageUrl ?? snapshot.satelliteImageUrl ?? null,
+          enrichmentSource: apiData.enrichmentSource ?? snapshot.enrichmentSource ?? 'estimated',
+          dataSources: apiData.dataSources ?? snapshot.dataSources ?? null,
           googleSolarHit:
             apiData.enrichmentSource === 'google_solar' ||
-            localData.googleSolarHit ||
+            snapshot.googleSolarHit ||
             Boolean(apiData.solarReport?.systemKw),
         };
         if (!cancelled) {
@@ -71,7 +78,7 @@ export default function SolarReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [localData, navigate]);
+  }, [navigate]);
 
   if (!localData) return null;
 
