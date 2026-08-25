@@ -9,8 +9,9 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
     if (typeof onClose === 'function') onClose();
   };
 
-  const [leadsCount, setLeadsCount] = useState(null);
   const [userRole, setUserRole] = useState('');
+  // Lead Manager badge count is optional; avoid a second /leads fetch on every shell mount.
+  const leadsCount = null;
   const isAdmin = isAdminRole(userRole);
 
   useEffect(() => {
@@ -29,20 +30,18 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
       })
       .catch(() => {});
 
-    fetch(`${API_BASE}/api/leads`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && Array.isArray(data)) setLeadsCount(data.length);
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
 
   const menuCategories = [
+    {
+      title: 'OVERVIEW',
+      items: [
+        { name: 'Overview', path: '/dashboard', icon: 'dashboard' },
+      ]
+    },
     {
       title: 'DISCOVER',
       items: [

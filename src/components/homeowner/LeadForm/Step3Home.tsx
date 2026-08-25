@@ -1,14 +1,19 @@
+import { useState } from 'react';
+
 export function Step3Home({ onNext, onBack, data, updateData }: any) {
+  const [touched, setTouched] = useState(false);
   const roofTypes = [
-    'Asphalt Shingle', 'Metal', 'Tile', 'Flat', 
+    'Asphalt Shingle', 'Metal', 'Tile', 'Flat',
     'Wood Shake', 'Slate', 'Other', 'Not Sure'
   ];
-  
+
   const ownershipOptions = [
     { label: 'Yes, I own it', value: 'own' },
     { label: 'No, I rent it', value: 'rent' }
   ];
-  
+
+  const canContinue = Boolean(data.ownership && data.roofType);
+
   return (
     <div className="space-y-8">
       <div>
@@ -17,6 +22,7 @@ export function Step3Home({ onNext, onBack, data, updateData }: any) {
           {ownershipOptions.map((opt) => (
             <button
               key={opt.value}
+              type="button"
               className={`form-chip py-4 ${data.ownership === opt.value ? 'form-chip-active' : ''}`}
               onClick={() => updateData({ ownership: opt.value })}
             >
@@ -24,6 +30,9 @@ export function Step3Home({ onNext, onBack, data, updateData }: any) {
             </button>
           ))}
         </div>
+        {touched && !data.ownership && (
+          <p className="text-[11px] text-red-300 mt-2">Please select ownership.</p>
+        )}
       </div>
 
       <div>
@@ -32,6 +41,7 @@ export function Step3Home({ onNext, onBack, data, updateData }: any) {
           {roofTypes.map((type) => (
             <button
               key={type}
+              type="button"
               className={`form-chip min-h-[60px] flex flex-col items-center justify-center p-3 text-xs sm:text-sm ${
                 data.roofType === type ? 'form-chip-active' : ''
               }`}
@@ -41,14 +51,21 @@ export function Step3Home({ onNext, onBack, data, updateData }: any) {
             </button>
           ))}
         </div>
+        {touched && !data.roofType && (
+          <p className="text-[11px] text-red-300 mt-2">Please select a roof type.</p>
+        )}
       </div>
 
       <div className="flex gap-4 pt-4 border-t border-white/5">
-        <button onClick={onBack} className="w-1/3 bg-white/5 text-white font-bold py-4 rounded-xl hover:bg-white/10 transition-colors">← Back</button>
-        <button 
-          onClick={onNext} 
-          disabled={!data.ownership || !data.roofType}
+        <button type="button" onClick={onBack} className="w-1/3 bg-white/5 text-white font-bold py-4 rounded-xl hover:bg-white/10 transition-colors">← Back</button>
+        <button
+          type="button"
+          onClick={() => {
+            setTouched(true);
+            if (canContinue) onNext();
+          }}
           className="w-2/3 bg-cyan-500 text-navy-dark font-bold py-4 rounded-xl hover:bg-cyan-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={touched && !canContinue}
         >
           Continue →
         </button>

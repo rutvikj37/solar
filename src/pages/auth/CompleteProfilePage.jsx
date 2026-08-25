@@ -40,23 +40,34 @@ export default function CompleteProfilePage() {
       return;
     }
 
-    fetchMe().then((data) => {
-      if (!data?.user) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      if (!data.needsOnboarding && data.user.company) {
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-      setForm((prev) => ({
-        ...prev,
-        company: data.user.company || "",
-        leadVolume: data.user.leadVolume || prev.leadVolume,
-        jobTitle: data.user.jobTitle || prev.jobTitle,
-      }));
-      setChecking(false);
-    });
+    let cancelled = false;
+    fetchMe()
+      .then((data) => {
+        if (cancelled) return;
+        if (!data?.user) {
+          navigate("/login", { replace: true });
+          return;
+        }
+        if (!data.needsOnboarding && data.user.company) {
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+        setForm((prev) => ({
+          ...prev,
+          company: data.user.company || "",
+          leadVolume: data.user.leadVolume || prev.leadVolume,
+          jobTitle: data.user.jobTitle || prev.jobTitle,
+        }));
+        setChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError("Could not load your profile. Check your connection and try again.");
+        setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   const handleChange = (field, value) => {
@@ -91,6 +102,28 @@ export default function CompleteProfilePage() {
 
   if (checking) {
     return <FullPageLoader />;
+  }
+
+  if (error && !form.company && !loading) {
+    return (
+      <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4">
+        <div className="glass-card max-w-md w-full p-8 rounded-2xl text-center space-y-4">
+          <p className="text-sm text-red-300">{error}</p>
+          <button
+            type="button"
+            className="rounded-lg bg-primary text-on-primary text-xs font-bold px-4 py-2"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+          <div>
+            <Link to="/login" className="text-xs text-primary hover:underline">
+              Back to sign in
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

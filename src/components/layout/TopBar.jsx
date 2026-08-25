@@ -74,42 +74,26 @@ export default function TopBar({ onMenuToggle, showBanner }) {
         </Link>
       </div>
 
-      {/* Middle side: Live Telemetry Badges */}
+      {/* Middle: compact status */}
       <div className="hidden xl:flex items-center gap-2.5">
-        {/* LIVE SAT badge */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-glass border border-glass-stroke rounded-lg text-[10px] font-bold tracking-wider text-on-surface-variant">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-          <span>LIVE SAT</span>
-        </div>
-
-        {/* REGION USA badge */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold tracking-wider">
-          <span className="text-slate-300">REGION</span>
-          <span className="text-white font-mono">USA</span>
-        </div>
-
-        {/* LEADS badge */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold tracking-wider">
           <span className="text-slate-300">LEADS</span>
           <span className="text-white font-mono tabular-nums">{leadsCount}</span>
         </div>
 
-        {/* SCANS badge */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold tracking-wider">
-          <span className="text-slate-300">SCANS</span>
+          <span className="text-slate-300">SCANS TODAY</span>
           <span className="text-white font-mono tabular-nums">
             {isAdmin ? '∞' : `${scanUsedToday}/${Math.max(scanTotal, scanRemaining + scanUsedToday) || scanRemaining}`}
           </span>
         </div>
 
-        {/* Plan / credits badge — remaining credits are source of truth (not hardcoded /5) */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-[10px] font-bold tracking-wider text-primary">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
           <span className="uppercase">
             {isAdmin ? 'ADMIN' : hasSubscription ? activePackage : activePackage === 'Free' ? 'FREE' : activePackage}
           </span>
           <span className="text-on-surface font-mono tabular-nums ml-0.5">
-            | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} LEAD CREDITS`}
+            | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} CREDITS`}
           </span>
         </div>
       </div>

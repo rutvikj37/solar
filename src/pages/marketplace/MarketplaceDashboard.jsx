@@ -46,6 +46,7 @@ function describeRazorpayFailure(resp) {
   const code = String(resp?.error?.code || '').trim();
   const status = Number(resp?.error?.statusCode || resp?.statusCode || 0);
   const combined = `${desc} ${code} ${status}`.toLowerCase();
+  const isDev = import.meta.env.DEV || import.meta.env.MODE !== 'production';
 
   if (
     status === 429 ||
@@ -54,8 +55,9 @@ function describeRazorpayFailure(resp) {
     )
   ) {
     return {
-      message:
-        'Razorpay blocked OTP after too many wrong attempts. Wait 30–60 minutes, then retry in incognito. In test mode enter OTP exactly 123456 (not random digits).',
+      message: isDev
+        ? 'Razorpay blocked OTP after too many wrong attempts. Wait 30–60 minutes, then retry in incognito. In test mode enter OTP exactly 123456.'
+        : 'Payment OTP was locked after too many attempts. Wait 30–60 minutes, then try again.',
       isOtpLockout: true,
     };
   }
@@ -63,7 +65,9 @@ function describeRazorpayFailure(resp) {
     return {
       message:
         desc ||
-        'OTP verification failed. In Razorpay test mode, enter exactly 123456 (not random digits).',
+        (isDev
+          ? 'OTP verification failed. In Razorpay test mode, enter exactly 123456.'
+          : 'OTP verification failed. Please try again.'),
       isOtpLockout: false,
     };
   }
@@ -102,7 +106,16 @@ export default function MarketplaceDashboard() {
   const [disputeForm, setDisputeForm] = useState({ claimType: 'wrong_number', details: '' });
   const [walletAmount, setWalletAmount] = useState('');
   const [walletPaying, setWalletPaying] = useState(false);
+  const [biddingLeadId, setBiddingLeadId] = useState(null);
   const walletCheckoutLock = useRef(false);
+  const isDevBuild = import.meta.env.DEV || import.meta.env.MODE !== 'production';
+  const verificationStatus = String(
+    oppFilter?.verificationStatus || profile?.verification_status || 'pending',
+  ).toLowerCase();
+  const accountBlocked =
+    verificationStatus === 'rejected' || verificationStatus === 'suspended';
+  const needsVerification =
+    Boolean(oppFilter?.requireVerified) && verificationStatus !== 'verified' && !accountBlocked;
 
   const mergeWalletFromApi = (prev, data) => {
     const balance = data.walletBalance ?? data.balance ?? prev.balance;
@@ -211,7 +224,7 @@ export default function MarketplaceDashboard() {
     if (sessionId) {
       confirmStripe(sessionId);
     } else if (walletReturnFlag === '1') {
-      toast.success('Returned from checkout — wallet balance updated');
+      toast.message('Returned from checkout — refreshing wallet…');
     } else if (walletReturnFlag === 'canceled') {
       toast.message('Wallet top-up canceled');
     }
@@ -229,6 +242,14 @@ export default function MarketplaceDashboard() {
       toast.error('Enter a valid bid amount');
       return;
     }
+    if (!wallet.canBid) {
+      toast.error(
+        `Add at least ${formatMoney(wallet.minBalanceToBid || 25)} to your bid wallet to place bids`,
+      );
+      setTab('wallet');
+      return;
+    }
+    setBiddingLeadId(leadId);
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/opportunities/${leadId}/bids`, {
         method: 'POST',
@@ -251,6 +272,8 @@ export default function MarketplaceDashboard() {
       load('opportunities');
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setBiddingLeadId(null);
     }
   };
 
@@ -486,9 +509,30 @@ export default function MarketplaceDashboard() {
                 </p>
               </div>
               {profile && (
-                <span className="text-xs text-white/50">
-                  Verification: {profile.verification_status || 'pending'}
-                </span>
+                <div className="text-right space-y-1">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                      accountBlocked
+                        ? 'border-red-400/40 bg-red-500/10 text-red-200'
+                        : verificationStatus === 'verified'
+                          ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
+                          : 'border-amber-400/40 bg-amber-500/10 text-amber-100'
+                    }`}
+                  >
+                    {accountBlocked
+                      ? `Account ${verificationStatus}`
+                      : verificationStatus === 'verified'
+                        ? 'Verified installer'
+                        : `Verification: ${verificationStatus || 'pending'}`}
+                  </span>
+                  {(needsVerification || accountBlocked) && (
+                    <p className="text-[10px] text-white/45 max-w-[220px]">
+                      {accountBlocked
+                        ? 'Contact support or an admin to restore marketplace access.'
+                        : 'Ask an admin to verify your installer account to see all opportunities.'}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -568,6 +612,24 @@ export default function MarketplaceDashboard() {
           )}
 
           <div className="grid gap-3">
+            {oppFilter &&
+              oppFilter.openLeadCount > 0 &&
+              oppFilter.visibleCount < oppFilter.openLeadCount && (
+                <p className="text-xs text-white/50">
+                  Showing{' '}
+                  <span className="text-white/80 font-semibold">{oppFilter.visibleCount}</span> of{' '}
+                  <span className="text-white/80 font-semibold">{oppFilter.openLeadCount}</span> open
+                  opportunities
+                  {oppFilter.hiddenByAccountStatus
+                    ? ' (account restricted)'
+                    : oppFilter.hiddenByVerification
+                      ? ' (verification required)'
+                      : oppFilter.hiddenByCoverage
+                        ? ' (coverage filter)'
+                        : ''}
+                  .
+                </p>
+              )}
             {opportunities.map((o) => (
               <article
                 key={o.id}
@@ -626,7 +688,7 @@ export default function MarketplaceDashboard() {
                     placeholder={`Min ${o.minBid}`}
                     className={`${inputCls} max-w-[140px] disabled:opacity-50`}
                     value={bidDrafts[o.id] ?? ''}
-                    disabled={!wallet.canBid}
+                    disabled={!wallet.canBid || biddingLeadId === o.id}
                     onChange={(e) =>
                       setBidDrafts((d) => ({ ...d, [o.id]: e.target.value }))
                     }
@@ -634,29 +696,54 @@ export default function MarketplaceDashboard() {
                   <button
                     type="button"
                     onClick={() => placeBid(o.id)}
-                    disabled={!wallet.canBid}
+                    disabled={!wallet.canBid || biddingLeadId != null}
                     className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Place bid
+                    {biddingLeadId === o.id
+                      ? 'Placing…'
+                      : wallet.canBid
+                        ? 'Place bid'
+                        : `Need ${formatMoney(wallet.minBalanceToBid || 25)} wallet`}
                   </button>
+                  {!wallet.canBid && (
+                    <button
+                      type="button"
+                      onClick={() => setTab('wallet')}
+                      className="text-[11px] text-amber-200/90 underline-offset-2 hover:underline"
+                    >
+                      Top up wallet
+                    </button>
+                  )}
                 </div>
               </article>
             ))}
             {!loading && !opportunities.length && (
               <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/55 space-y-2">
-                {oppFilter?.hiddenByVerification > 0 ? (
+                {accountBlocked && (oppFilter?.openLeadCount > 0 || oppFilter?.hiddenByAccountStatus > 0) ? (
                   <>
                     <p>
-                      There {oppFilter.openLeadCount === 1 ? 'is' : 'are'}{' '}
-                      <span className="text-white/80 font-semibold">{oppFilter.openLeadCount}</span>{' '}
-                      open lead{oppFilter.openLeadCount === 1 ? '' : 's'}, but your installer
-                      account is <span className="text-amber-300">{oppFilter.verificationStatus || 'pending'}</span>.
+                      Your installer account is{' '}
+                      <span className="text-red-300 font-semibold">{verificationStatus}</span>, so
+                      marketplace opportunities are hidden.
                     </p>
                     <p className="text-xs text-white/40">
-                      Ask an admin to set your verification status to <strong>verified</strong> in
-                      Admin → Marketplace → Installers, or remove{' '}
-                      <code className="text-white/50">MARKETPLACE_REQUIRE_VERIFIED=true</code> from
-                      server/.env.
+                      Contact an admin or support to restore access.
+                    </p>
+                  </>
+                ) : oppFilter?.hiddenByVerification > 0 || needsVerification ? (
+                  <>
+                    <p>
+                      There {oppFilter?.openLeadCount === 1 ? 'is' : 'are'}{' '}
+                      <span className="text-white/80 font-semibold">
+                        {oppFilter?.openLeadCount || 0}
+                      </span>{' '}
+                      open lead{(oppFilter?.openLeadCount || 0) === 1 ? '' : 's'}, but your account
+                      still needs verification (
+                      <span className="text-amber-300">{verificationStatus || 'pending'}</span>).
+                    </p>
+                    <p className="text-xs text-white/40">
+                      Ask an admin to verify your installer account under Admin → Marketplace →
+                      Installers.
                     </p>
                   </>
                 ) : oppFilter?.hiddenByCoverage > 0 ? (
@@ -729,6 +816,13 @@ export default function MarketplaceDashboard() {
           loading={loading}
           onSelect={setSelectedLead}
           showActions={tab !== 'closed'}
+          emptyHint={
+            tab === 'won'
+              ? 'Leads you win will appear here with full contact details.'
+              : tab === 'active'
+                ? 'Won leads you are still working appear here.'
+                : 'Completed or closed marketplace leads appear here (view only).'
+          }
         />
       )}
 
@@ -787,15 +881,18 @@ export default function MarketplaceDashboard() {
                 {walletPaying ? 'Opening checkout…' : 'Pay & top up'}
               </button>
             </form>
-            <p className="text-[11px] text-white/45 leading-relaxed">
-              Razorpay test mode (USD): card <span className="font-mono">4111 1111 1111 1111</span>, any
-              future expiry, any CVV. If OTP appears, enter exactly{' '}
-              <span className="font-mono">123456</span> — not random digits.
-            </p>
-            <p className="text-[11px] text-amber-200/70 leading-relaxed">
-              OTP locked out (429)? Razorpay rate-limits after wrong OTP attempts. Wait 30–60 minutes,
-              then retry in a fresh incognito window. Console localhost warnings from Razorpay are normal.
-            </p>
+            {isDevBuild && (
+              <>
+                <p className="text-[11px] text-white/45 leading-relaxed">
+                  Razorpay test mode (USD): card{' '}
+                  <span className="font-mono">4111 1111 1111 1111</span>, any future expiry, any CVV.
+                  If OTP appears, enter exactly <span className="font-mono">123456</span>.
+                </p>
+                <p className="text-[11px] text-amber-200/70 leading-relaxed">
+                  OTP locked out (429)? Wait 30–60 minutes, then retry in a fresh incognito window.
+                </p>
+              </>
+            )}
           </section>
           <div className="rounded-xl border border-white/10 overflow-hidden">
             <div className="px-3 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
@@ -863,52 +960,62 @@ export default function MarketplaceDashboard() {
                 {selectedLead.projectDetails}
               </p>
             )}
-            <div>
-              <div className="text-xs text-white/50 mb-2">Update outcome</div>
-              <div className="flex flex-wrap gap-2">
-                {OUTCOME_OPTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => updateOutcome(selectedLead.id, s)}
-                    className="rounded-lg border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
+            {selectedLead.showActions !== false && (
+              <>
+                <div>
+                  <div className="text-xs text-white/50 mb-2">Update outcome</div>
+                  <div className="flex flex-wrap gap-2">
+                    {OUTCOME_OPTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => updateOutcome(selectedLead.id, s)}
+                        className="rounded-lg border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t border-white/10 pt-3 space-y-2">
+                  <div className="text-xs font-semibold text-amber-200">Report invalid lead</div>
+                  <select
+                    className={inputCls}
+                    value={disputeForm.claimType}
+                    onChange={(e) =>
+                      setDisputeForm((f) => ({ ...f, claimType: e.target.value }))
+                    }
                   >
-                    {s}
+                    {DISPUTE_TYPES.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    className={`${inputCls} min-h-[70px]`}
+                    placeholder="Details…"
+                    value={disputeForm.details}
+                    onChange={(e) =>
+                      setDisputeForm((f) => ({ ...f, details: e.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileDispute(selectedLead.id)}
+                    className="rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold px-3 py-2"
+                  >
+                    Submit claim
                   </button>
-                ))}
-              </div>
-            </div>
-            <div className="border-t border-white/10 pt-3 space-y-2">
-              <div className="text-xs font-semibold text-amber-200">Report invalid lead</div>
-              <select
-                className={inputCls}
-                value={disputeForm.claimType}
-                onChange={(e) =>
-                  setDisputeForm((f) => ({ ...f, claimType: e.target.value }))
-                }
-              >
-                {DISPUTE_TYPES.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-              <textarea
-                className={`${inputCls} min-h-[70px]`}
-                placeholder="Details…"
-                value={disputeForm.details}
-                onChange={(e) =>
-                  setDisputeForm((f) => ({ ...f, details: e.target.value }))
-                }
-              />
-              <button
-                type="button"
-                onClick={() => fileDispute(selectedLead.id)}
-                className="rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold px-3 py-2"
-              >
-                Submit claim
-              </button>
-            </div>
+                </div>
+              </>
+            )}
+            {selectedLead.showActions === false && (
+              <p className="text-xs text-white/45 border border-white/10 rounded-lg p-3">
+                This lead is closed. Contact and outcome updates are available from Active / Won tabs
+                while the lead is still in progress.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -916,14 +1023,14 @@ export default function MarketplaceDashboard() {
   );
 }
 
-function LeadList({ leads, loading, onSelect, showActions }) {
+function LeadList({ leads, loading, onSelect, showActions, emptyHint }) {
   return (
     <div className="grid gap-2">
       {leads.map((lead) => (
         <button
           key={lead.id}
           type="button"
-          onClick={() => onSelect(lead)}
+          onClick={() => onSelect({ ...lead, showActions: Boolean(showActions) })}
           className="text-left rounded-xl border border-white/10 bg-white/[0.04] p-4 hover:border-primary/40 transition"
         >
           <div className="flex justify-between gap-2">
@@ -939,13 +1046,18 @@ function LeadList({ leads, loading, onSelect, showActions }) {
             </div>
             <div className="text-xs text-primary font-semibold">{lead.status}</div>
           </div>
-          {showActions && (
+          {showActions ? (
             <div className="text-[11px] text-white/40 mt-2">Click to view contact & update status</div>
+          ) : (
+            <div className="text-[11px] text-white/40 mt-2">Click to view details (read only)</div>
           )}
         </button>
       ))}
       {!loading && !leads.length && (
-        <p className="text-sm text-white/50">No leads in this tab.</p>
+        <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/55 space-y-1">
+          <p>No leads in this tab.</p>
+          {emptyHint && <p className="text-xs text-white/40">{emptyHint}</p>}
+        </div>
       )}
     </div>
   );

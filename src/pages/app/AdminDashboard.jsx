@@ -29,19 +29,41 @@ function ActionBanner({ type, message }) {
   );
 }
 
-const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { id: 'marketplace', label: 'Marketplace', icon: 'storefront' },
-  { id: 'team', label: 'Team Workspace', icon: 'groups' },
-  { id: 'territory', label: 'Territory Analytics', icon: 'analytics' },
-  { id: 'users', label: 'Users', icon: 'group' },
-  { id: 'subscriptions', label: 'Subscriptions', icon: 'card_membership' },
-  { id: 'plans', label: 'Plans', icon: 'sell' },
-  { id: 'apis', label: 'APIs', icon: 'api' },
-  { id: 'integrations', label: 'Integrations', icon: 'extension' },
-  { id: 'inquiries', label: 'Inquiries', icon: 'mail' },
-  { id: 'tickets', label: 'Tickets', icon: 'support_agent' }
+const TAB_GROUPS = [
+  {
+    label: 'Overview',
+    tabs: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { id: 'marketplace', label: 'Marketplace', icon: 'storefront' },
+      { id: 'team', label: 'Team', icon: 'groups' },
+      { id: 'territory', label: 'Territory', icon: 'analytics' },
+    ],
+  },
+  {
+    label: 'Users & Billing',
+    tabs: [
+      { id: 'users', label: 'Users', icon: 'group' },
+      { id: 'subscriptions', label: 'Subscriptions', icon: 'card_membership' },
+      { id: 'plans', label: 'Plans', icon: 'sell' },
+    ],
+  },
+  {
+    label: 'Platform',
+    tabs: [
+      { id: 'apis', label: 'APIs', icon: 'api' },
+      { id: 'integrations', label: 'Integrations', icon: 'extension' },
+    ],
+  },
+  {
+    label: 'Support',
+    tabs: [
+      { id: 'inquiries', label: 'Inquiries', icon: 'mail' },
+      { id: 'tickets', label: 'Tickets', icon: 'support_agent' },
+    ],
+  },
 ];
+
+const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState('dashboard');
@@ -54,6 +76,7 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState([]);
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [userDetail, setUserDetail] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [creditAdjustAmount, setCreditAdjustAmount] = useState(10);
@@ -82,7 +105,7 @@ export default function AdminDashboard() {
     lead_limit: 25,
     price: 299,
     description: '',
-    features: '["Lead unlocks/month","CSV export"]',
+    features: 'Lead unlocks/month\nCSV export',
     is_active: true,
     stripe_price_id: '',
     razorpay_plan_id: '',
@@ -99,6 +122,14 @@ export default function AdminDashboard() {
     'Content-Type': 'application/json'
   });
 
+  const featuresToJson = (text) => {
+    const items = String(text || '')
+      .split(/\n|,/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return JSON.stringify(items.length ? items : ['Lead unlocks']);
+  };
+
   const loadTab = useCallback(async (active) => {
     const token = localStorage.getItem('solar_token');
     if (!token) {
@@ -106,6 +137,7 @@ export default function AdminDashboard() {
       return;
     }
     setError('');
+    setLoading(true);
     try {
       if (active === 'dashboard') {
         const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
@@ -121,38 +153,65 @@ export default function AdminDashboard() {
           fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}`, { headers: authHeaders() }),
           fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() })
         ]);
+        if (usersRes.status === 403 || plansRes.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
         if (!usersRes.ok) throw new Error('Failed to load users');
         setUsers(await usersRes.json());
         if (plansRes.ok) setPlans(await plansRes.json());
       }
       if (active === 'subscriptions') {
         const res = await fetch(`${API_BASE}/api/admin/subscriptions`, { headers: authHeaders() });
+        if (res.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load subscriptions');
         setSubs(await res.json());
       }
       if (active === 'plans') {
         const res = await fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() });
+        if (res.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load plans');
         setPlans(await res.json());
       }
       if (active === 'apis') {
         const res = await fetch(`${API_BASE}/api/admin/apis?days=7`, { headers: authHeaders() });
+        if (res.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load APIs');
         const data = await res.json();
         setApis(data.providers || []);
       }
       if (active === 'inquiries') {
         const res = await fetch(`${API_BASE}/api/admin/inquiries`, { headers: authHeaders() });
+        if (res.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load inquiries');
         setInquiries(await res.json());
       }
       if (active === 'tickets') {
         const res = await fetch(`${API_BASE}/api/tickets`, { headers: authHeaders() });
+        if (res.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
         if (!res.ok) throw new Error('Failed to load tickets');
         setTickets(await res.json());
       }
     } catch (err) {
       setError(err.message);
+      toast.error(err.message || 'Failed to load admin data');
+    } finally {
+      setLoading(false);
     }
   }, [navigate, q]);
 
@@ -179,13 +238,14 @@ export default function AdminDashboard() {
       method: 'POST',
       headers: authHeaders()
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      alert(data.error || 'Bootstrap failed');
+      toast.error(data.error || 'Bootstrap failed');
       return;
     }
     if (data.token) setToken(data.token);
-    alert('You are now an admin');
+    toast.success('You are now an admin');
+    setError('');
     loadTab(tab);
   };
 
@@ -435,24 +495,33 @@ export default function AdminDashboard() {
 
   const createPlan = async (e) => {
     e.preventDefault();
+    const payload = {
+      ...planForm,
+      features: featuresToJson(planForm.features),
+    };
     const res = await fetch(`${API_BASE}/api/admin/plans`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify(planForm)
+      body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      alert(data.error || 'Create failed');
+      toast.error(data.error || 'Create failed');
       return;
     }
+    toast.success('Plan created');
     setPlanForm({
       id: '',
       name: '',
       lead_limit: 25,
       price: 299,
       description: '',
-      features: '["Lead unlocks"]',
-      is_active: true
+      features: 'Lead unlocks/month\nCSV export',
+      is_active: true,
+      stripe_price_id: '',
+      razorpay_plan_id: '',
+      billing_interval: 'month',
+      is_subscription: true,
     });
     loadTab('plans');
   };
@@ -508,28 +577,52 @@ export default function AdminDashboard() {
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => switchTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
-              tab === t.id ? 'bg-primary text-on-primary' : 'bg-white/5 text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            <span className="material-symbols-outlined text-sm">{t.icon}</span>
-            {t.label}
-          </button>
+      <div className="mb-6 space-y-3">
+        {TAB_GROUPS.map((group) => (
+          <div key={group.label} className="flex flex-wrap items-center gap-2">
+            <span className="text-[9px] font-label-mono uppercase tracking-wider text-on-surface-variant w-full sm:w-28 shrink-0">
+              {group.label}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {group.tabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => switchTab(t.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                    tab === t.id ? 'bg-primary text-on-primary' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">{t.icon}</span>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
       {error && (
         <div className="mb-4 p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 text-xs flex flex-wrap gap-3 items-center justify-between">
           <span>{error}</span>
-          <button onClick={bootstrapAdmin} className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold">
-            Become First Admin
-          </button>
+          {error === 'Admin access required.' && (
+            <button
+              type="button"
+              onClick={bootstrapAdmin}
+              className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold"
+            >
+              Become First Admin
+            </button>
+          )}
         </div>
+      )}
+
+      {loading && !['marketplace', 'integrations', 'team', 'territory'].includes(tab) && (
+        <div className="mb-4 text-xs text-on-surface-variant animate-pulse">Loading…</div>
+      )}
+
+      {tab === 'dashboard' && !loading && !stats && !error && (
+        <p className="text-xs text-on-surface-variant">No stats yet.</p>
       )}
 
       {tab === 'dashboard' && stats && (
@@ -1026,14 +1119,24 @@ export default function AdminDashboard() {
             <textarea placeholder="Description" value={planForm.description}
               onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" rows={2} />
-            <textarea placeholder='Features JSON array' value={planForm.features}
+            <textarea
+              placeholder="Features (one per line)"
+              value={planForm.features}
               onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white font-mono" rows={3} />
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+              rows={3}
+            />
             <button type="submit" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg">
               Create Plan
             </button>
           </form>
           <div className="space-y-3">
+            {loading && plans.length === 0 && (
+              <p className="text-xs text-on-surface-variant animate-pulse">Loading plans…</p>
+            )}
+            {!loading && plans.length === 0 && (
+              <p className="text-xs text-on-surface-variant">No plans yet. Create one on the left.</p>
+            )}
             {plans.map((p) => (
               <div key={p.id} className="glass-card p-4 rounded-xl text-xs flex justify-between gap-3">
                 <div>

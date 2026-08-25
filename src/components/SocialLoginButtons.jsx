@@ -120,7 +120,11 @@ export default function SocialLoginButtons({
         className="flex items-center justify-center gap-2 w-full border border-glass-stroke bg-surface-container-low/60 hover:bg-white/5 text-on-surface font-semibold py-2.5 rounded-lg text-xs transition-colors disabled:opacity-60"
       >
         <GoogleIcon />
-        {busy ? "Connecting…" : "Continue with Google"}
+        {busy
+          ? "Connecting…"
+          : available === null
+            ? "Checking Google…"
+            : "Continue with Google"}
       </button>
     </div>
   );

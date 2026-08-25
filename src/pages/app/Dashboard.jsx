@@ -8,9 +8,9 @@ import FullPageLoader from "../../components/layout/FullPageLoader.jsx";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
-  const [credits, setCredits] = useState(26);
+  const [credits, setCredits] = useState(null);
   const [creditsUsedToday, setCreditsUsedToday] = useState(0);
-  const [activePackage, setActivePackage] = useState("Growth");
+  const [activePackage, setActivePackage] = useState(null);
   const [leads, setLeads] = useState([]);
   const [territorySummary, setTerritorySummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -192,18 +192,20 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-stack-sm text-xs">
-          <button className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-glass-stroke rounded-lg text-on-surface hover:bg-white/5 transition-all font-button">
-            <span className="material-symbols-outlined text-[16px]">
-              filter_list
-            </span>
-            Filter
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-glass-stroke rounded-lg text-on-surface hover:bg-white/5 transition-all font-button">
-            <span className="material-symbols-outlined text-[16px]">
-              calendar_today
-            </span>
-            Last 30 Days
-          </button>
+          <Link
+            to="/map"
+            className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-glass-stroke rounded-lg text-on-surface hover:bg-white/5 transition-all font-button"
+          >
+            <span className="material-symbols-outlined text-[16px]">map</span>
+            Open map
+          </Link>
+          <Link
+            to="/my-leads"
+            className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-glass-stroke rounded-lg text-on-surface hover:bg-white/5 transition-all font-button"
+          >
+            <span className="material-symbols-outlined text-[16px]">assignment</span>
+            Lead manager
+          </Link>
         </div>
       </div>
 
@@ -234,7 +236,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-end gap-2">
             <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-secondary font-mono tabular-nums">
-              {credits}
+              {credits == null ? '—' : credits}
             </p>
             <p className="font-label-mono text-[9px] text-slate-300 pb-1">
               Lead credits left
@@ -271,7 +273,7 @@ export default function Dashboard() {
             </span>
           </div>
           <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-primary">
-            {activePackage}
+            {activePackage || '—'}
           </p>
         </div>
 
@@ -303,56 +305,44 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-stack-lg mb-stack-lg">
         {/* Map Preview Card */}
         <div className="lg:col-span-2 glass-card rounded-xl overflow-hidden relative group min-h-[350px] flex flex-col justify-between">
-          {mapsLoaded && googleMapsKey ? (
+          {mapsLoaded && googleMapsKey && leads.some((l) => l.latitude && l.longitude) ? (
             <div ref={dashboardMapRef} className="absolute inset-0 z-0" />
           ) : (
-            <div className="absolute inset-0 z-0">
-              <div
-                className="w-full h-full bg-cover bg-center transition-transform duration-1000 group-hover:scale-105"
-                style={{
-                  backgroundImage:
-                    "url('https://lh3.googleusercontent.com/aida-public/AB6AXuC6SxotVK31H5sRJLQQky2ZiNzqNsCQ8OzLUtGevw4L_ezbHqgVDRuVAZiZZiCALSqOBd5QAicshgQpfeGrwp3Xhx_23Z6om0mGBKXqyO9-KjD8moECGzkcF1LbOLf-FjTa5sSeMW7gMHzko6OO_5vK2VNrFobFhv8rYOlSFQBwasKYlGNxHaCyrkPxSzhoK-pLpLb-41NLv8tww1PFYKnGCMjd6RpnA9gejmTa9i_VA2vYgSpbzBn7')",
-                }}
-              />
-              {/* Overlay Fallback Lead Markers */}
-              {leads.slice(0, 5).map((lead, idx) => {
-                const topOffset = 25 + ((idx * 14) % 55);
-                const leftOffset = 20 + ((idx * 19) % 65);
-                return (
-                  <div
-                    key={lead.id}
-                    style={{ top: `${topOffset}%`, left: `${leftOffset}%` }}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center group cursor-pointer"
-                  >
-                    <div className="absolute inset-0 rounded-full border border-primary scale-150 animate-ping border-secondary" />
-                    <span
-                      className="material-symbols-outlined text-[24px] text-secondary drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      location_on
-                    </span>
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-surface-elevated/90 text-white border border-glass-stroke text-[9px] font-bold py-1 px-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
-                      {lead.owner_name || "Lead"} • {lead.lead_score}/100
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#0a1224] via-[#0d1a2e] to-[#081018] flex items-center justify-center p-6">
+              <div className="text-center max-w-sm space-y-3">
+                <span className="material-symbols-outlined text-4xl text-primary/80">map</span>
+                <h3 className="text-sm font-semibold text-white">
+                  {leads.length === 0 ? 'No saved leads on the map yet' : 'Map preview unavailable'}
+                </h3>
+                <p className="text-xs text-white/50 leading-relaxed">
+                  {leads.length === 0
+                    ? 'Unlock leads from Targeting to see them here. Open the map to scan neighborhoods.'
+                    : 'Add a Google Maps API key or open Targeting to explore your territory.'}
+                </p>
+                <Link
+                  to="/map"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary text-on-primary text-xs font-bold px-4 py-2"
+                >
+                  Open Targeting map
+                </Link>
+              </div>
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-surface-elevated via-transparent to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-surface-elevated via-transparent to-transparent pointer-events-none" />
 
-          <div className="relative z-10 p-6 flex justify-between items-start">
-            <div className="bg-surface-elevated/80 backdrop-blur-md px-4 py-2 rounded-lg border border-glass-stroke">
+          <div className="relative z-10 p-6 flex justify-between items-start pointer-events-none">
+            <div className="bg-surface-elevated/80 backdrop-blur-md px-4 py-2 rounded-lg border border-glass-stroke pointer-events-auto">
               <h3 className="font-button text-xs text-on-surface font-semibold">
-                Live Heatmap
+                Your lead map
               </h3>
               <p className="text-[9px] font-label-mono text-primary">
-                SCANNING CALIFORNIA SECTORS
+                {leads.filter((l) => l.latitude && l.longitude).length} pinned lead
+                {leads.filter((l) => l.latitude && l.longitude).length === 1 ? '' : 's'}
               </p>
             </div>
             <Link
               to="/map"
-              className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+              className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg active:scale-90 transition-transform pointer-events-auto"
             >
               <span className="material-symbols-outlined text-[20px]">
                 fullscreen
@@ -360,15 +350,15 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          <div className="relative z-10 p-6 flex gap-4">
+          <div className="relative z-10 p-6 flex gap-4 pointer-events-none">
             <div className="glass-card bg-surface-elevated/90 px-4 py-3 rounded-lg border border-glass-stroke flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-secondary animate-pulse"></div>
+              <div className="w-2 h-2 rounded-full bg-secondary" />
               <div>
                 <p className="font-label-mono text-[9px] text-on-surface-variant leading-none mb-1">
-                  REAL-TIME FEED
+                  PREVIEW
                 </p>
                 <p className="text-xs text-on-surface">
-                  Satellite overlay active. Open Map to scan.
+                  Open Map to scan new areas and unlock leads.
                 </p>
               </div>
             </div>

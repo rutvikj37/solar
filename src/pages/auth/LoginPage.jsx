@@ -7,8 +7,9 @@ import SatelliteUplinkLoader from "../../components/layout/SatelliteUplinkLoader
 import SocialLoginButtons from "../../components/SocialLoginButtons.jsx";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => localStorage.getItem("solar_remember_email") || "");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(() => Boolean(localStorage.getItem("solar_remember_email")));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showAuthLoader, setShowAuthLoader] = useState(false);
@@ -18,6 +19,11 @@ export default function LoginPage() {
   const completeLogin = (token, { needsOnboarding = false } = {}) => {
     setShowAuthLoader(true);
     setToken(token);
+    if (remember && email) {
+      localStorage.setItem("solar_remember_email", email.trim());
+    } else {
+      localStorage.removeItem("solar_remember_email");
+    }
     if (needsOnboarding) {
       navigate("/complete-profile", { replace: true });
       return;
@@ -138,13 +144,15 @@ export default function LoginPage() {
               <input
                 type="checkbox"
                 id="remember"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
                 className="rounded bg-surface-container-low border-glass-stroke text-primary focus:ring-primary w-4 h-4"
               />
               <label
                 htmlFor="remember"
                 className="text-on-surface-variant select-none"
               >
-                Remember this device
+                Remember email on this device
               </label>
             </div>
 

@@ -363,15 +363,24 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
     const eligible = [];
     let hiddenByVerification = 0;
     let hiddenByCoverage = 0;
+    let hiddenByAccountStatus = 0;
+    const accountBlocked =
+      verificationStatus === 'rejected' || verificationStatus === 'suspended';
     for (const lead of leads) {
       if (await isInstallerEligible(userId, lead, { requireVerified })) {
         eligible.push(lead);
         continue;
       }
-      if (requireVerified && verificationStatus !== 'verified') {
+      if (accountBlocked) {
+        hiddenByAccountStatus += 1;
+      } else if (requireVerified && verificationStatus !== 'verified') {
         hiddenByVerification += 1;
       } else if (serviceAreaCount > 0) {
         hiddenByCoverage += 1;
+      } else {
+        // Fallback: treat unknown blocks as account/verification related when status isn't verified
+        if (verificationStatus !== 'verified') hiddenByVerification += 1;
+        else hiddenByCoverage += 1;
       }
     }
 
@@ -416,6 +425,7 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
         serviceAreaCount,
         hiddenByVerification,
         hiddenByCoverage,
+        hiddenByAccountStatus,
       },
     });
   } catch (err) {

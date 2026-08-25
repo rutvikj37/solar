@@ -46,7 +46,8 @@ export default function AdminMarketplacePanel() {
     lowPriceMinBid: '10',
   });
   const [savingSettings, setSavingSettings] = useState(false);
-
+  const [loading, setLoading] = useState(false);
+  const [statusDraft, setStatusDraft] = useState('bidding');
   const [clearingDemos, setClearingDemos] = useState(false);
 
   const clearDemoData = async () => {
@@ -75,6 +76,7 @@ export default function AdminMarketplacePanel() {
   };
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       if (sub === 'overview') {
         const res = await fetch(`${API_BASE}/api/marketplace/admin/metrics`, {
@@ -140,6 +142,8 @@ export default function AdminMarketplacePanel() {
       }
     } catch (err) {
       toast.error(err.message || 'Failed to load');
+    } finally {
+      setLoading(false);
     }
   }, [sub]);
 
@@ -156,6 +160,7 @@ export default function AdminMarketplacePanel() {
       if (!res.ok) throw new Error(data.error);
       setSelected(data.lead);
       setBids(data.bids || []);
+      setStatusDraft(data.lead?.status || 'bidding');
     } catch (err) {
       toast.error(err.message);
     }
@@ -436,24 +441,8 @@ export default function AdminMarketplacePanel() {
             </button>
           ))}
         </div>
+        {loading && <span className="text-xs text-white/45">Loading…</span>}
       </div>
-
-      {sub === 'overview' && (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/60 space-y-3">
-          <p>
-            Marketplace uses real homeowner inquiries from the landing form only. Demo seed data is
-            disabled.
-          </p>
-          <button
-            type="button"
-            onClick={clearDemoData}
-            disabled={clearingDemos}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-50"
-          >
-            {clearingDemos ? 'Removing demo leads…' : 'Purge demo marketplace leads'}
-          </button>
-        </div>
-      )}
 
       {sub === 'overview' && metrics && (
         <div className="space-y-4">
@@ -485,7 +474,26 @@ export default function AdminMarketplacePanel() {
               ))}
             </ul>
           </div>
+          <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-xs text-white/60 space-y-2">
+            <p className="font-semibold text-red-200/90">Danger zone</p>
+            <p>
+              Marketplace uses real homeowner inquiries. Only use this if old demo seed rows are still
+              in the database.
+            </p>
+            <button
+              type="button"
+              onClick={clearDemoData}
+              disabled={clearingDemos}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-50"
+            >
+              {clearingDemos ? 'Removing demo leads…' : 'Purge demo marketplace leads'}
+            </button>
+          </div>
         </div>
+      )}
+
+      {sub === 'overview' && !metrics && loading && (
+        <p className="text-sm text-white/50">Loading overview…</p>
       )}
 
       {sub === 'settings' && (
@@ -617,6 +625,9 @@ export default function AdminMarketplacePanel() {
                 onChange={(e) => setLeadFilter(e.target.value)}
               >
                 <option value="all">All Statuses ({leads.length})</option>
+                <option value="pending_admin">Awaiting approval</option>
+                <option value="new">New</option>
+                <option value="ai_qualified">AI Qualified (review)</option>
                 <option value="bidding">Bidding Active</option>
                 <option value="no_bid_expanding">Expanding Radius</option>
                 <option value="lead_unlocked">Lead Unlocked (Won)</option>
@@ -627,9 +638,20 @@ export default function AdminMarketplacePanel() {
                 <option value="interested">Interested</option>
                 <option value="appointment">Appointment</option>
                 <option value="proposal">Proposal</option>
-                <option value="ai_qualified">AI Qualified (review)</option>
                 <option value="invalid_refunded">Invalid / Refunded</option>
               </select>
+              {(leadFilter !== 'all' || leadSearch.trim()) && (
+                <button
+                  type="button"
+                  className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-white/70 hover:bg-white/10"
+                  onClick={() => {
+                    setLeadFilter('all');
+                    setLeadSearch('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
             <div className="text-xs text-white/50">
               Showing {leads.filter((l) => {
@@ -708,8 +730,40 @@ export default function AdminMarketplacePanel() {
                     </div>
                   </button>
                 ))}
-              {leads.length === 0 && (
+              {leads.length === 0 && !loading && (
                 <div className="text-center py-8 text-white/40 text-xs">No marketplace leads found.</div>
+              )}
+              {leads.length > 0 &&
+                leads.filter((l) => {
+                  if (leadFilter !== 'all' && l.status !== leadFilter) return false;
+                  if (leadSearch.trim()) {
+                    const q = leadSearch.toLowerCase();
+                    return (
+                      (l.leadCode || '').toLowerCase().includes(q) ||
+                      (l.homeownerName || '').toLowerCase().includes(q) ||
+                      (l.phone || '').toLowerCase().includes(q) ||
+                      (l.zip || '').toLowerCase().includes(q) ||
+                      (l.address || '').toLowerCase().includes(q)
+                    );
+                  }
+                  return true;
+                }).length === 0 && (
+                  <div className="text-center py-8 text-white/40 text-xs space-y-2">
+                    <p>No leads match this filter.</p>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] text-white/70 hover:bg-white/10"
+                      onClick={() => {
+                        setLeadFilter('all');
+                        setLeadSearch('');
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                )}
+              {loading && leads.length === 0 && (
+                <div className="text-center py-8 text-white/40 text-xs">Loading leads…</div>
               )}
             </div>
 
@@ -798,13 +852,38 @@ export default function AdminMarketplacePanel() {
                 {/* Admin Status Override Form */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
                   <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
-                    Admin Workflow Override
+                    Admin actions
                   </div>
+                  {['new', 'ai_qualified', 'pending_admin'].includes(selected.status) && (
+                    <div className="flex flex-wrap gap-2 items-center pb-2 border-b border-white/10">
+                      <button
+                        type="button"
+                        className="rounded-lg bg-emerald-500 text-black text-xs font-bold px-3 py-1.5 hover:bg-emerald-400"
+                        onClick={() => approveLead(selected.id)}
+                      >
+                        Approve → Marketplace
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-cyan-500/20 text-cyan-200 text-xs font-semibold px-3 py-1.5 hover:bg-cyan-500/30"
+                        onClick={() => verifyLeadContact(selected.id)}
+                      >
+                        Re-check email & phone
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-white/10 text-white/80 text-xs font-semibold px-3 py-1.5 hover:bg-white/15"
+                        onClick={() => reQualifyLead(selected.id)}
+                      >
+                        Re-qualify
+                      </button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2 items-center">
                     <select
-                      id="adminLeadStatusSelect"
                       className="bg-black/40 border border-white/15 rounded-lg px-2.5 py-1.5 text-xs text-white flex-1 outline-none"
-                      defaultValue={selected.status}
+                      value={statusDraft}
+                      onChange={(e) => setStatusDraft(e.target.value)}
                     >
                       <option value="bidding">bidding (Open for Bids)</option>
                       <option value="no_bid_expanding">no_bid_expanding (Expanding Radius)</option>
@@ -817,51 +896,24 @@ export default function AdminMarketplacePanel() {
                       <option value="won">won (Contract Signed)</option>
                       <option value="lost">lost (Lead Declined)</option>
                       <option value="pending_admin">pending_admin (Awaiting Approval)</option>
+                      <option value="new">new</option>
                       <option value="ai_qualified">ai_qualified (Needs Review)</option>
                       <option value="invalid_refunded">invalid_refunded (Refunded / Fake)</option>
                     </select>
                     <button
                       type="button"
-                      className="rounded-lg bg-primary text-black text-xs font-bold px-3 py-1.5 hover:bg-primary/90"
-                      onClick={() => {
-                        const el = document.getElementById('adminLeadStatusSelect');
-                        if (el) updateLeadStatus(selected.id, el.value);
-                      }}
+                      className="rounded-lg bg-white/15 text-white text-xs font-semibold px-3 py-1.5 hover:bg-white/25"
+                      onClick={() => updateLeadStatus(selected.id, statusDraft)}
                     >
                       Update Status
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg bg-white/10 text-white text-xs font-bold px-3 py-1.5 hover:bg-white/20"
+                      className="rounded-lg bg-white/10 text-white text-xs font-semibold px-3 py-1.5 hover:bg-white/20"
                       onClick={() => closeBidding(selected.id)}
                     >
                       Close Bidding
                     </button>
-                    {['new', 'ai_qualified', 'pending_admin'].includes(selected.status) && (
-                      <>
-                        <button
-                          type="button"
-                          className="rounded-lg bg-cyan-500/20 text-cyan-200 text-xs font-bold px-3 py-1.5 hover:bg-cyan-500/30"
-                          onClick={() => verifyLeadContact(selected.id)}
-                        >
-                          Check email & phone
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg bg-emerald-500/20 text-emerald-200 text-xs font-bold px-3 py-1.5 hover:bg-emerald-500/30"
-                          onClick={() => approveLead(selected.id)}
-                        >
-                          Approve → Marketplace
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg bg-amber-500/20 text-amber-200 text-xs font-bold px-3 py-1.5 hover:bg-amber-500/30"
-                          onClick={() => reQualifyLead(selected.id)}
-                        >
-                          Re-qualify
-                        </button>
-                      </>
-                    )}
                   </div>
                 </div>
 
@@ -1111,7 +1163,12 @@ export default function AdminMarketplacePanel() {
           {areaUserId && (
             <div className="rounded-xl border border-white/10 p-4 space-y-3 bg-white/5">
               <div className="flex justify-between items-center">
-                <h4 className="text-xs font-bold text-white">Service Areas for User #{areaUserId}</h4>
+                <h4 className="text-xs font-bold text-white">
+                  Service Areas for{' '}
+                  {installers.find((u) => Number(u.id) === Number(areaUserId))?.name ||
+                    installers.find((u) => Number(u.id) === Number(areaUserId))?.email ||
+                    `User #${areaUserId}`}
+                </h4>
                 <button
                   type="button"
                   onClick={() => setAreaUserId(null)}
@@ -1186,13 +1243,20 @@ export default function AdminMarketplacePanel() {
             className="rounded-xl border border-white/10 p-4 flex flex-wrap gap-2 items-end"
           >
             <label className="text-xs">
-              User ID
-              <input
+              Installer
+              <select
                 className={inputCls}
                 value={walletForm.userId}
                 onChange={(e) => setWalletForm((f) => ({ ...f, userId: e.target.value }))}
                 required
-              />
+              >
+                <option value="">Select installer…</option>
+                {wallets.map((w) => (
+                  <option key={w.user_id} value={w.user_id}>
+                    #{w.user_id} {w.name || '—'} ({w.email || 'no email'}) — {formatMoney(w.balance)}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="text-xs">
               Amount

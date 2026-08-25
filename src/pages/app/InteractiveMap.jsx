@@ -953,6 +953,59 @@ export default function InteractiveMap() {
       <div className="relative h-full w-full overflow-hidden bg-surface-container-lowest">
         <div ref={mapRef} className="w-full h-full z-10" />
 
+        {mapError && (
+          <div className="absolute top-4 left-4 right-4 z-50 max-w-xl mx-auto pointer-events-auto">
+            <div className="rounded-xl border border-amber-400/40 bg-amber-500/15 backdrop-blur-md px-4 py-3 text-xs text-amber-50 flex flex-wrap items-start justify-between gap-2 shadow-xl">
+              <div>
+                <p className="font-semibold text-amber-100">Map unavailable</p>
+                <p className="text-amber-100/80 mt-1 leading-relaxed">{mapError}</p>
+                {configStatus === 'fallback' && (
+                  <p className="text-[11px] text-amber-100/60 mt-1">
+                    Set GOOGLE_MAPS_API_KEY or VITE_GOOGLE_MAPS_API_KEY and restart the API / rebuild.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="text-amber-100/70 hover:text-white text-sm"
+                onClick={() => setMapError('')}
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        <MapStatusBar
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20"
+          feedLive={configStatus === 'ready' && !mapError}
+          zoom={15}
+        />
+
+        <button
+          type="button"
+          onClick={() => setShowLeadManager((v) => !v)}
+          className="absolute top-4 right-4 z-40 rounded-xl border border-glass-stroke bg-deep/90 backdrop-blur-md px-3 py-2 text-[11px] font-bold text-white hover:bg-white/10 flex items-center gap-1.5"
+        >
+          <span className="material-symbols-outlined text-sm">assignment</span>
+          {showLeadManager ? 'Hide leads' : 'Lead manager'}
+        </button>
+
+        {showLeadManager && (
+          <div className="absolute top-16 right-4 z-40 w-[min(100%,380px)] max-h-[calc(100%-5rem)] overflow-hidden">
+            <LeadManagerPanel
+              visible={showLeadManager}
+              onClose={() => {
+                setShowLeadManager(false);
+                const next = new URLSearchParams(searchParams);
+                next.delete('leads');
+                setSearchParams(next, { replace: true });
+              }}
+            />
+          </div>
+        )}
+
         {/* Top Floating Control Bar */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2.5 max-w-4xl w-full px-4 pointer-events-none">
           <div className="pointer-events-auto flex items-center justify-between w-full gap-3">
