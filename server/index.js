@@ -151,6 +151,8 @@ app.use(
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
     permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    // same-origin breaks Firebase/Google signInWithPopup (window.closed / COOP).
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     crossOriginEmbedderPolicy: false,
   })
 );

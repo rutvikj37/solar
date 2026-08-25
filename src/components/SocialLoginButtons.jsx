@@ -1,5 +1,8 @@
 import React, { useState } from "react";
-import { signInWithGoogle } from "../lib/socialAuth.js";
+import {
+  completeGoogleRedirectIfPresent,
+  signInWithGoogle,
+} from "../lib/socialAuth.js";
 import { API_BASE } from "../config.js";
 
 function GoogleIcon() {
@@ -56,6 +59,24 @@ export default function SocialLoginButtons({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Finish Google redirect sign-in when returning from accounts.google.com
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await completeGoogleRedirectIfPresent();
+        if (!cancelled && data) onSuccess?.(data);
+      } catch (err) {
+        if (!cancelled) onError?.(err?.message || "Google sign-in failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // intentionally once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleGoogle = async () => {

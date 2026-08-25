@@ -12,6 +12,8 @@ const securityHeaders = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-XSS-Protection': '0',
+  // Required for Firebase Google popup auth (avoids COOP blocking window.closed).
+  'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=*, usb=()',
   'Content-Security-Policy': [
     "default-src 'self'",
