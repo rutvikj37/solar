@@ -5,7 +5,7 @@ export function solarReportPdfFilename(leadCode, address = '') {
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 32);
-  return `SolarXAI-Report-${leadCode || 'estimate'}-${slug || 'property'}.pdf`;
+  return `SpaceToRoof-Report-${leadCode || 'estimate'}-${slug || 'property'}.pdf`;
 }
 
 /**

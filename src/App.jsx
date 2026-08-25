@@ -7,39 +7,39 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
-import ProtectedRoute from "./components/ProtectedRoute";
-import AppLayout from "./components/AppLayout";
-import FullPageLoader from "./components/FullPageLoader";
-import PageTransitionLoader from "./components/PageTransitionLoader";
+import ProtectedRoute from "./components/layout/ProtectedRoute";
+import AppLayout from "./components/layout/AppLayout";
+import FullPageLoader from "./components/layout/FullPageLoader";
+import PageTransitionLoader from "./components/layout/PageTransitionLoader";
 
 const LandingPage = lazy(() => import("./pages/homeowner/HomeownerLandingPage"));
-const InstallerLandingPage = lazy(() => import("./pages/InstallerLandingPage"));
+const InstallerLandingPage = lazy(() => import("./pages/marketing/InstallerLandingPage"));
 const HomeownerAboutPage = lazy(() => import("./pages/homeowner/HomeownerAboutPage"));
 const HomeownerContactPage = lazy(() => import("./pages/homeowner/HomeownerContactPage"));
 const SolarReportPage = lazy(() => import("./pages/homeowner/SolarReportPage"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const InteractiveMap = lazy(() => import("./pages/InteractiveMap"));
-const PropertyAnalysis = lazy(() => import("./pages/PropertyAnalysis"));
-const GeneratingLead = lazy(() => import("./pages/GeneratingLead"));
-const LeadDetails = lazy(() => import("./pages/LeadDetails"));
-const Billing = lazy(() => import("./pages/Billing"));
-const Profile = lazy(() => import("./pages/Profile"));
-const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
-const MyLeads = lazy(() => import("./pages/MyLeads"));
-const Downloads = lazy(() => import("./pages/Downloads"));
-const LoginPage = lazy(() => import("./pages/LoginPage"));
-const RegisterPage = lazy(() => import("./pages/RegisterPage"));
-const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
-const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
-const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
-const CompleteProfilePage = lazy(() => import("./pages/CompleteProfilePage"));
-const BulkAreaScan = lazy(() => import("./pages/BulkAreaScan"));
+const Dashboard = lazy(() => import("./pages/app/Dashboard"));
+const InteractiveMap = lazy(() => import("./pages/app/InteractiveMap"));
+const PropertyAnalysis = lazy(() => import("./pages/app/PropertyAnalysis"));
+const GeneratingLead = lazy(() => import("./pages/app/GeneratingLead"));
+const LeadDetails = lazy(() => import("./pages/app/LeadDetails"));
+const Billing = lazy(() => import("./pages/app/Billing"));
+const Profile = lazy(() => import("./pages/app/Profile"));
+const IntegrationsPage = lazy(() => import("./pages/app/IntegrationsPage"));
+const MyLeads = lazy(() => import("./pages/app/MyLeads"));
+const Downloads = lazy(() => import("./pages/app/Downloads"));
+const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
+const RegisterPage = lazy(() => import("./pages/auth/RegisterPage"));
+const VerifyEmailPage = lazy(() => import("./pages/auth/VerifyEmailPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
+const CompleteProfilePage = lazy(() => import("./pages/auth/CompleteProfilePage"));
+const BulkAreaScan = lazy(() => import("./pages/app/BulkAreaScan"));
 
-const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
-const Appointments = lazy(() => import("./pages/Appointments"));
-const Support = lazy(() => import("./pages/Support"));
-const SupportTicket = lazy(() => import("./pages/SupportTicket"));
-const DripCampaigns = lazy(() => import("./pages/DripCampaigns"));
+const AdminDashboard = lazy(() => import("./pages/app/AdminDashboard"));
+const Appointments = lazy(() => import("./pages/app/Appointments"));
+const Support = lazy(() => import("./pages/app/Support"));
+const SupportTicket = lazy(() => import("./pages/app/SupportTicket"));
+const DripCampaigns = lazy(() => import("./pages/app/DripCampaigns"));
 
 const AiCallingDashboard = lazy(
   () => import("./pages/ai-calling/AiCallingDashboard"),
@@ -66,9 +66,9 @@ const AiCallingCallDetail = lazy(
   () => import("./pages/ai-calling/AiCallingCallDetail"),
 );
 
-const PublicProposalView = lazy(() => import("./pages/PublicProposalView"));
-const GetSolarQuote = lazy(() => import("./pages/GetSolarQuote"));
-const Reports = lazy(() => import("./pages/Reports"));
+const PublicProposalView = lazy(() => import("./pages/app/PublicProposalView"));
+const GetSolarQuote = lazy(() => import("./pages/app/GetSolarQuote"));
+const Reports = lazy(() => import("./pages/app/Reports"));
 const MarketplaceDashboard = lazy(
   () => import("./pages/marketplace/MarketplaceDashboard"),
 );

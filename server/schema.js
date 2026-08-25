@@ -740,7 +740,7 @@ export async function migrateSchema() {
       slug VARCHAR(64) NOT NULL UNIQUE,
       lead_id INT UNSIGNED NOT NULL,
       user_id INT UNSIGNED NOT NULL,
-      company_name VARCHAR(255) NULL DEFAULT 'SolarX Energy Solutions',
+      company_name VARCHAR(255) NULL DEFAULT 'SpaceToRoof Energy Solutions',
       system_size_kw DECIMAL(6,2) NOT NULL DEFAULT 8.50,
       panel_count INT NOT NULL DEFAULT 20,
       gross_cost DECIMAL(10,2) NOT NULL DEFAULT 25500.00,
@@ -862,7 +862,7 @@ export async function migrateSchema() {
     "razorpay_payment_id",
   );
 
-  // ── SolarXAI Marketplace ──────────────────────────────────────────
+  // ── SpaceToRoof Marketplace ──────────────────────────────────────────
   await db.query(`
     CREATE TABLE IF NOT EXISTS marketplace_settings (
       id INT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,

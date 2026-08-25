@@ -1,7 +1,7 @@
 {
-  "name": "server",
+  "name": "spacetoroof-api",
   "version": "1.0.0",
-  "description": "Solar Velocity backend server",
+  "description": "SpaceToRoof API server",
   "main": "index.js",
   "type": "module",
   "scripts": {

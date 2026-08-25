@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { sendPlatformEmail } from './outreachDelivery.js';
 import { logger } from '../utils/logger.js';
+import { BRAND_DISPLAY } from '../config/brand.js';
 
 function frontendBase() {
   const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
@@ -22,8 +23,8 @@ export async function issueEmailVerification(userId, email, name) {
     [token, expires, userId],
   );
   const link = `${frontendBase()}/verify-email?token=${encodeURIComponent(token)}`;
-  const body = `Hi ${name || 'there'},\n\nVerify your SolarX.live account:\n${link}\n\nThis link expires in 48 hours.`;
-  const result = await sendPlatformEmail(email, 'Verify your SolarX.live account', body);
+  const body = `Hi ${name || 'there'},\n\nVerify your ${BRAND_DISPLAY} account:\n${link}\n\nThis link expires in 48 hours.`;
+  const result = await sendPlatformEmail(email, `Verify your ${BRAND_DISPLAY} account`, body);
   if (result.simulated) {
     logger.info('Email verification link (simulated — configure RESEND_API_KEY or SENDGRID_API_KEY)', {
       userId,
@@ -60,8 +61,8 @@ export async function issuePasswordReset(email) {
     [token, expires, user.id],
   );
   const link = `${frontendBase()}/reset-password?token=${encodeURIComponent(token)}`;
-  const body = `Hi ${user.name || 'there'},\n\nReset your SolarX.live password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
-  const result = await sendPlatformEmail(email, 'Reset your SolarX.live password', body);
+  const body = `Hi ${user.name || 'there'},\n\nReset your ${BRAND_DISPLAY} password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
+  const result = await sendPlatformEmail(email, `Reset your ${BRAND_DISPLAY} password`, body);
   if (result.simulated) {
     logger.info('Password reset link (simulated — configure RESEND_API_KEY or SENDGRID_API_KEY)', {
       userId: user.id,

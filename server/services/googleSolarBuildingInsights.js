@@ -120,10 +120,6 @@ export async function fetchGoogleSolarBuildingInsights(lat, lng) {
       googleSolarHit: true,
       center: solarData.center || null,
       panelCount,
-      panelWatts,
-      solarPanelConfigs: pot.solarPanelConfigs || [],
-      roofMaxSystemKw: systemKw,
-      roofMaxAnnualProductionKwh: annualProductionKwh,
       systemKw,
       annualProductionKwh,
       totalRoofSqFt,
@@ -176,85 +172,12 @@ export async function enrichSolarWithNrel(lat, lng, googleResult) {
   }
 }
 
-/**
- * Scale Google Solar max-roof array down to the homeowner's bill/usage.
- * Max array on a large building otherwise shows $0 remaining bill and 100%+ coverage.
- */
-export function sizeSolarSystemToBill({
-  maxSystemKw,
-  maxAnnualProductionKwh,
-  maxPanelCount,
-  solarPanelConfigs,
-  panelWatts = 400,
-  monthlyBill,
-  ratePerKwh = 0.16,
-} = {}) {
-  const bill = Math.max(50, Number(monthlyBill) || 250);
-  const rate = Number(ratePerKwh) || 0.16;
-  const annualUsageKwh = Math.round(((bill * 12) / rate) * 0.95);
-  const targetKwh = Math.round(annualUsageKwh * 0.9);
-  const maxKw = Number(maxSystemKw) || 0;
-  const maxProd = Number(maxAnnualProductionKwh) || 0;
-  const maxPanels = Number(maxPanelCount) || Math.max(8, Math.round(maxKw / 0.4));
-  const configs = Array.isArray(solarPanelConfigs) ? solarPanelConfigs : [];
-
-  if (configs.length && annualUsageKwh > 0) {
-    const sorted = [...configs].sort(
-      (a, b) => Number(a.yearlyEnergyDcKwh || 0) - Number(b.yearlyEnergyDcKwh || 0),
-    );
-    const fit =
-      sorted.find((c) => Number(c.yearlyEnergyDcKwh || 0) >= targetKwh) ||
-      sorted[sorted.length - 1];
-    const panels = Number(fit.panelsCount) || maxPanels;
-    const kwh = Math.round(Number(fit.yearlyEnergyDcKwh) || 0);
-    const kw = Number(((panels * (Number(panelWatts) || 400)) / 1000).toFixed(1));
-    return {
-      bill,
-      rate,
-      annualUsageKwh,
-      systemKw: kw,
-      annualProductionKwh: kwh,
-      panelCount: panels,
-      roofMaxSystemKw: maxKw || kw,
-      roofMaxAnnualProductionKwh: maxProd || kwh,
-      sizedToBill: true,
-    };
-  }
-
-  if (!(maxKw > 0 && maxProd > 0 && annualUsageKwh > 0)) {
-    return {
-      bill,
-      rate,
-      annualUsageKwh,
-      systemKw: maxKw || null,
-      annualProductionKwh: maxProd || null,
-      panelCount: maxPanels || null,
-      sizedToBill: false,
-    };
-  }
-
-  const kwhPerKw = maxProd / maxKw;
-  const systemKw = Number(Math.min(maxKw, Math.max(3.5, targetKwh / kwhPerKw)).toFixed(1));
-  const ratio = systemKw / maxKw;
-  return {
-    bill,
-    rate,
-    annualUsageKwh,
-    systemKw,
-    annualProductionKwh: Math.round(systemKw * kwhPerKw),
-    panelCount: Math.max(8, Math.round(maxPanels * ratio)),
-    roofMaxSystemKw: maxKw,
-    roofMaxAnnualProductionKwh: maxProd,
-    sizedToBill: systemKw < maxKw * 0.98,
-  };
-}
-
 export function computeReportSavings({
   monthlyBill,
   annualProductionKwh,
   ratePerKwh = 0.16,
 }) {
-  const bill = Math.max(50, Number(monthlyBill) || 250);
+  const bill = Math.max(0, Number(monthlyBill) || 0);
   const annualBill = bill * 12;
   const rate = Number(ratePerKwh) || 0.16;
   const annualUsageKwh = bill > 0 ? Math.round((annualBill / rate) * 0.95) : 0;
@@ -263,7 +186,7 @@ export function computeReportSavings({
     annualUsageKwh > 0
       ? Math.min(98, Math.max(0, Math.round((production / annualUsageKwh) * 100)))
       : null;
-  const year1Offset = Math.min(annualBill * 0.92, production * rate);
+  const year1Offset = Math.min(annualBill, production * rate);
   const year1Savings = Math.round(year1Offset);
   const year5Savings = Math.round(year1Savings * 4.6);
   const year10Savings = Math.round(year1Savings * 9.2);

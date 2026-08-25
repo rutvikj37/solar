@@ -15,6 +15,10 @@ dist-ssr
 server/.env
 server/uploads/tickets/*
 !server/uploads/tickets/.gitkeep
+server/uploads/voicemail-cache/*
+
+# Local dumps / old project copies (not part of the product tree)
+_archive/
 
 # Editor directories and files
 .vscode/*

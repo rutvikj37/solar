@@ -1,3 +1,4 @@
+import { BRAND_DISPLAY } from '../../config/brand.js';
 import nodemailer from 'nodemailer';
 import { encryptSecret, decryptSecret } from '../../utils/secretCrypto.js';
 import { getUserEmailConnection, upsertUserEmailConnection } from './userEmailConnections.js';
@@ -81,7 +82,7 @@ export async function sendTestViaConnection(userId, conn, toEmail) {
   if (conn.provider === 'smtp') {
     return sendViaSmtp(userId, {
       to: toEmail,
-      subject: 'SolarX.live — email test',
+      subject: `${BRAND_DISPLAY} — email test`,
       body: 'Your email integration is working. You can now send emails to leads from your own address.',
     });
   }
@@ -89,7 +90,7 @@ export async function sendTestViaConnection(userId, conn, toEmail) {
   const { sendViaOutlook } = await import('./outlookService.js');
   const payload = {
     to: toEmail,
-    subject: 'SolarX.live — email test',
+    subject: `${BRAND_DISPLAY} — email test`,
     body: 'Your email integration is working. You can now send emails to leads from your own address.',
   };
   if (conn.provider === 'gmail') return sendViaGmail(userId, payload);

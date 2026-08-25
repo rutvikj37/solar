@@ -1,3 +1,4 @@
+import { BRAND_COMPANY_DEFAULT } from '../config/brand.js';
 import express from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
@@ -147,7 +148,7 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
            updated_at = NOW()
          WHERE id = ?`,
         [
-          companyName || 'SolarX Energy Solutions',
+          companyName || BRAND_COMPANY_DEFAULT,
           systemSizeKw || 8.50,
           panelCount || 20,
           roi.grossCost,
@@ -179,7 +180,7 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
           slug,
           leadId,
           userId,
-          companyName || 'SolarX Energy Solutions',
+          companyName || BRAND_COMPANY_DEFAULT,
           systemSizeKw || 8.50,
           panelCount || 20,
           roi.grossCost,

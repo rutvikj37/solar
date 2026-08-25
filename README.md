@@ -1,16 +1,71 @@
-# React + Vite
+# SpaceToRoof
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+AI solar intelligence platform for residential installers and homeowners.  
+Live product domain: **[spacetoroof.com](https://spacetoroof.com)**
 
-Currently, two official plugins are available:
+## Repository map
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```text
+src/                  Frontend (Vite + React)
+  config/             API base URL + brand constants
+  pages/
+    auth/             Login, register, password flows
+    homeowner/        Consumer marketing pages
+    marketing/        Installer landing route wrapper
+    app/              Authenticated SaaS app pages
+    marketplace/      Marketplace UI
+    ai-calling/       AI dialer operator UI
+  components/
+    layout/           App shell (sidebar, top bar, guards)
+    homeowner/        Consumer site UI
+    marketing/        Installer landing UI
+    map|admin|…       Feature UI
+  lib/ services/ context/ utils/
+server/               Express API (port 5002 by default)
+public/               Static assets
+DEPLOY.md             Production deployment notes
+```
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 20+
+- MySQL 8+
 
-## Expanding the Oxlint configuration
+## Local development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```bash
+# API
+cd server
+cp .env.example .env   # fill secrets
+npm install
+npm run dev            # http://localhost:5002
+
+# Frontend (repo root)
+cp .env.example .env   # set VITE_API_URL if needed
+npm install
+npm run dev            # Vite default port
+```
+
+Brand / CORS domains for production are documented in `server/.env.example` (`FRONTEND_URL`, `PUBLIC_URL`).
+
+## Scripts
+
+| Location | Command | Purpose |
+|----------|---------|---------|
+| Root | `npm run dev` | Vite frontend |
+| Root | `npm run build` | Production frontend build → `dist/` |
+| Root | `npm run lint` | Oxlint |
+| `server/` | `npm run dev` | API with nodemon |
+| `server/` | `npm start` | API |
+| `server/` | `npm test` | Node test runner |
+
+## Branding
+
+Frontend: [`src/config/brand.js`](src/config/brand.js)  
+Backend: [`server/config/brand.js`](server/config/brand.js)
+
+Change product name / domain / emails there — UI wordmarks, PDFs, and transactional mail read from these modules.
+
+## Deploy
+
+See [`DEPLOY.md`](DEPLOY.md) and [`server/README.md`](server/README.md).

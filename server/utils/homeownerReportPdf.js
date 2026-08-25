@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { BRAND_MONOGRAM, BRAND_NAME } from '../config/brand.js';
 import {
   buildSolarReportEstimates,
   mapValidationToFitRows,
@@ -40,7 +41,7 @@ export function homeownerReportPdfFilename(leadCode, address = '') {
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 32);
-  return `SolarXAI-Report-${leadCode || 'estimate'}-${slug || 'property'}.pdf`;
+  return `${BRAND_NAME}-Report-${leadCode || 'estimate'}-${slug || 'property'}.pdf`;
 }
 
 export function buildReportDataFromLead(lead, formatted) {
@@ -70,9 +71,9 @@ export function buildReportDataFromLead(lead, formatted) {
 function drawBrand(doc, x, y) {
   doc.roundedRect(x, y, 22, 22, 5).fill(C.accent);
   doc.font('Helvetica-Bold').fontSize(9).fillColor(C.white);
-  doc.text('SX', x, y + 6, { width: 22, align: 'center', lineBreak: false });
+  doc.text(BRAND_MONOGRAM, x, y + 6, { width: 22, align: 'center', lineBreak: false });
   doc.font('Helvetica-Bold').fontSize(13).fillColor(C.white);
-  doc.text('SolarXAI', x + 30, y + 5, { lineBreak: false });
+  doc.text(BRAND_NAME, x + 30, y + 5, { lineBreak: false });
 }
 
 function sectionTitle(doc, title, y) {
@@ -281,9 +282,9 @@ export function renderHomeownerReportPdf(data) {
       bufferPages: true,
       info: {
         Title: `Solar Report — ${fmt(data.leadCode)}`,
-        Author: 'SolarXAI',
+        Author: BRAND_NAME,
         Subject: 'Homeowner solar estimate',
-        Creator: 'SolarXAI',
+        Creator: BRAND_NAME,
       },
     });
     const chunks = [];

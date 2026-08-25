@@ -1,4 +1,11 @@
 import PDFDocument from 'pdfkit';
+import {
+  BRAND_DISPLAY,
+  BRAND_DOMAIN,
+  BRAND_MONOGRAM,
+  BRAND_NAME,
+  BRAND_TAGLINE,
+} from '../config/brand.js';
 
 /** A4 points */
 const PAGE = { width: 595.28, height: 841.89 };
@@ -6,7 +13,7 @@ const MARGIN = 50;
 
 /**
  * Stripe / Cursor-style invoice: white page, black type, sparse rules.
- * Brand accent only on the wordmark (SolarX.live).
+ * Brand accent only on the wordmark (brand).
  */
 const C = {
   ink: '#0A0A0A',
@@ -73,7 +80,7 @@ function isCreditAdjustment(invoice) {
 }
 
 function lineItem(invoice) {
-  const pkg = invoice.package_name || invoice.package_id || 'SolarX.live';
+  const pkg = invoice.package_name || invoice.package_id || BRAND_DISPLAY;
   const credits = Number(invoice.credits || 0);
   const reason = String(invoice.billing_reason || 'initial');
   const issued = invoice.created_at ? new Date(invoice.created_at) : new Date();
@@ -135,24 +142,24 @@ function memoText(invoice) {
   const reason = String(invoice.billing_reason || '');
   const amount = Number(invoice.amount_cents || 0);
   if (reason === 'admin_plan_grant' && amount === 0) {
-    return 'This invoice was issued complimentary by SolarX.live.';
+    return `This invoice was issued complimentary by ${BRAND_DISPLAY}.`;
   }
   if (reason === 'admin_plan_grant' || reason === 'admin_plan_change') {
     const how =
       invoice.description && /paid offline/i.test(invoice.description)
-        ? 'Paid offline. Recorded by SolarX.live.'
+        ? `Paid offline. Recorded by ${BRAND_DISPLAY}.`
         : invoice.admin_name
-          ? `Issued by ${invoice.admin_name} on behalf of SolarX.live.`
-          : 'Issued by SolarX.live.';
+          ? `Issued by ${invoice.admin_name} on behalf of ${BRAND_DISPLAY}.`
+          : `Issued by ${BRAND_DISPLAY}.`;
     return how;
   }
   if (reason === 'admin_credit_adjustment') {
     return invoice.admin_name
       ? `Credit balance updated by ${invoice.admin_name}.`
-      : 'Credit balance updated by SolarX.live.';
+      : `Credit balance updated by ${BRAND_DISPLAY}.`;
   }
   if (reason === 'renewal') {
-    return 'Thank you for your business. This invoice is for your SolarX.live subscription.';
+    return `Thank you for your business. This invoice is for your ${BRAND_DISPLAY} subscription.`;
   }
   if (reason === 'marketplace_wallet') {
     return 'Thank you for your business. This payment adds USD to your marketplace bid wallet for installer bidding.';
@@ -170,9 +177,9 @@ export function renderInvoicePdf(invoice, billTo = {}) {
       autoFirstPage: true,
       info: {
         Title: `Invoice ${formatInvoiceNumber(invoice.id)}`,
-        Author: 'SolarX.live',
+        Author: BRAND_DISPLAY,
         Subject: 'Invoice',
-        Creator: 'SolarX.live'
+        Creator: BRAND_DISPLAY
       }
     });
     const chunks = [];
@@ -225,13 +232,13 @@ function drawStripeStyleInvoice(doc, invoice, billTo) {
   /* Wordmark — left */
   doc.roundedRect(MARGIN, y, 22, 22, 5).fill(C.accent);
   doc.font('Helvetica-Bold').fontSize(9).fillColor(C.white);
-  doc.text('SX', MARGIN, y + 6, { width: 22, align: 'center', lineBreak: false });
+  doc.text(BRAND_MONOGRAM, MARGIN, y + 6, { width: 22, align: 'center', lineBreak: false });
 
   doc.font('Helvetica-Bold').fontSize(14);
   const brandX = MARGIN + 30;
-  const solarW = doc.widthOfString('SolarX');
-  doc.fillColor(C.ink).text('SolarX', brandX, y + 4, { lineBreak: false });
-  doc.fillColor(C.glow).text('.live', brandX + solarW, y + 4, { lineBreak: false });
+  const brandW = doc.widthOfString(BRAND_NAME);
+  doc.fillColor(C.ink).text(BRAND_NAME, brandX, y + 4, { lineBreak: false });
+  doc.fillColor(C.glow).text('.com', brandX + brandW, y + 4, { lineBreak: false });
 
   /* Title — right, Stripe/Cursor style */
   doc.font('Helvetica').fontSize(28).fillColor(C.ink);
@@ -261,12 +268,12 @@ function drawStripeStyleInvoice(doc, invoice, billTo) {
   /* From / Bill to */
   let leftY = 42 + 40;
   doc.font('Helvetica-Bold').fontSize(10).fillColor(C.ink);
-  doc.text('SolarX.live', MARGIN, leftY);
+  doc.text(BRAND_DISPLAY, MARGIN, leftY);
   leftY += 14;
   doc.font('Helvetica').fontSize(9).fillColor(C.secondary);
-  doc.text('solarx.live', MARGIN, leftY);
+  doc.text(BRAND_DOMAIN, MARGIN, leftY);
   leftY += 12;
-  doc.text('AI Solar Intelligence', MARGIN, leftY);
+  doc.text(BRAND_TAGLINE, MARGIN, leftY);
   leftY += 12;
   doc.text('Lead generation for solar installers', MARGIN, leftY);
 
@@ -407,7 +414,7 @@ function drawStripeStyleInvoice(doc, invoice, billTo) {
     .lineWidth(0.6)
     .stroke();
   doc.font('Helvetica').fontSize(8).fillColor(C.muted);
-  doc.text('SolarX.live  ·  solarx.live', MARGIN, footerY + 10, {
+  doc.text(`${BRAND_DISPLAY}  ·  ${BRAND_DOMAIN}`, MARGIN, footerY + 10, {
     width: 280,
     lineBreak: false
   });

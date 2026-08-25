@@ -1,7 +1,7 @@
-import { Navbar } from '@/components/solar/Navbar';
-import { AboutPage } from '@/components/solar/AboutPage';
-import { Footer } from '@/components/solar/Footer';
-import { HomeownerShell } from '@/homeowner/HomeownerShell';
+import { Navbar } from '@/components/homeowner/Navbar';
+import { AboutPage } from '@/components/homeowner/AboutPage';
+import { Footer } from '@/components/homeowner/Footer';
+import { HomeownerShell } from '@/components/homeowner/HomeownerShell';
 
 export default function HomeownerAboutPage() {
   return (

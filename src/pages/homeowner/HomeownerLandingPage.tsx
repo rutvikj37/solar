@@ -1,9 +1,9 @@
-import { SolarHero } from '@/components/solar/SolarHero';
-import { HowItWorks } from '@/components/solar/HowItWorks';
-import { FAQ } from '@/components/solar/FAQ';
-import { LeadForm } from '@/components/solar/LeadForm/LeadForm';
-import { Footer } from '@/components/solar/Footer';
-import { HomeownerShell } from '@/homeowner/HomeownerShell';
+import { SolarHero } from '@/components/homeowner/SolarHero';
+import { HowItWorks } from '@/components/homeowner/HowItWorks';
+import { FAQ } from '@/components/homeowner/FAQ';
+import { LeadForm } from '@/components/homeowner/LeadForm/LeadForm';
+import { Footer } from '@/components/homeowner/Footer';
+import { HomeownerShell } from '@/components/homeowner/HomeownerShell';
 
 export default function HomeownerLandingPage() {
   return (

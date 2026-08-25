@@ -282,7 +282,7 @@ export async function createMarketplaceWalletCheckout({ userId, userEmail, userN
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `SolarXAI marketplace credits (${pack.credits})`,
+              name: `SpaceToRoof marketplace credits (${pack.credits})`,
               description: 'Adds bid balance to your marketplace wallet (not map unlock credits).',
             },
             unit_amount: amountCents,

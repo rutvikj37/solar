@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SolarReport } from '@/components/solar/LeadForm/SolarReport';
+import { SolarReport } from '@/components/homeowner/LeadForm/SolarReport';
 import { getReportData, setReportData } from '@/lib/report-store';
-import { HomeownerShell } from '@/homeowner/HomeownerShell';
+import { HomeownerShell } from '@/components/homeowner/HomeownerShell';
 import { API_BASE } from '@/config.js';
 
 export default function SolarReportPage() {

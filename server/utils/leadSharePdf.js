@@ -1,4 +1,10 @@
 import PDFDocument from 'pdfkit';
+import {
+  BRAND_DISPLAY,
+  BRAND_DOMAIN,
+  BRAND_MONOGRAM,
+  BRAND_NAME,
+} from '../config/brand.js';
 
 const PAGE = { width: 595.28, height: 841.89 };
 const M = 40;
@@ -47,7 +53,7 @@ export function leadSharePdfFilename(lead) {
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 40);
-  return `SolarX-Lead-${id}-${slug || 'sheet'}.pdf`;
+  return `${BRAND_NAME}-Lead-${id}-${slug || 'sheet'}.pdf`;
 }
 
 export function buildLeadShareWhatsAppText(lead) {
@@ -61,7 +67,7 @@ export function buildLeadShareWhatsAppText(lead) {
   const email = fmt(lead.email);
 
   return [
-    `*SolarX.live — Lead Sheet*`,
+    `*${BRAND_DISPLAY} — Lead Sheet*`,
     ``,
     `*${owner}*`,
     address,
@@ -72,14 +78,14 @@ export function buildLeadShareWhatsAppText(lead) {
     phone !== '—' ? `Phone: ${phone}` : null,
     email !== '—' ? `Email: ${email}` : null,
     ``,
-    `Lead sheet PDF attached / downloaded from SolarX.live.`,
+    `Lead sheet PDF attached / downloaded from ${BRAND_DISPLAY}.`,
   ]
     .filter(Boolean)
     .join('\n');
 }
 
 /**
- * Branded one-page SolarX.live lead detail PDF for sharing.
+ * Branded one-page brand lead detail PDF for sharing.
  */
 export function renderLeadSharePdf(lead) {
   return new Promise((resolve, reject) => {
@@ -89,9 +95,9 @@ export function renderLeadSharePdf(lead) {
       bufferPages: true,
       info: {
         Title: `Lead Sheet — ${fmt(lead.address, 'Property')}`,
-        Author: 'SolarX.live',
+        Author: BRAND_DISPLAY,
         Subject: 'Solar lead details',
-        Creator: 'SolarX.live',
+        Creator: BRAND_DISPLAY,
       },
     });
     const chunks = [];
@@ -111,13 +117,13 @@ export function renderLeadSharePdf(lead) {
 function drawBrand(doc, x, y) {
   doc.roundedRect(x, y, 22, 22, 5).fill(C.accent);
   doc.font('Helvetica-Bold').fontSize(9).fillColor(C.white);
-  doc.text('SX', x, y + 6, { width: 22, align: 'center', lineBreak: false });
+  doc.text(BRAND_MONOGRAM, x, y + 6, { width: 22, align: 'center', lineBreak: false });
 
   const brandX = x + 30;
   doc.font('Helvetica-Bold').fontSize(14);
-  const solarW = doc.widthOfString('SolarX');
-  doc.fillColor(C.white).text('SolarX', brandX, y + 4, { lineBreak: false });
-  doc.fillColor(C.glow).text('.live', brandX + solarW, y + 4, { lineBreak: false });
+  const brandW = doc.widthOfString(BRAND_NAME);
+  doc.fillColor(C.white).text(BRAND_NAME, brandX, y + 4, { lineBreak: false });
+  doc.fillColor(C.glow).text('.com', brandX + brandW, y + 4, { lineBreak: false });
 }
 
 function sectionTitle(doc, title, y, x = M) {
@@ -284,8 +290,8 @@ function drawLeadSheet(doc, lead) {
   const footerY = PAGE.height - 48;
   doc.rect(0, footerY - 8, PAGE.width, 56).fill(C.deep);
   doc.font('Helvetica').fontSize(8).fillColor('#94A3B8');
-  doc.text('Confidential — for authorized SolarX.live users only', M, footerY + 4, { lineBreak: false });
-  doc.text(`Generated ${new Date().toLocaleString('en-US')}  ·  solarx.live`, M, footerY + 18, {
+  doc.text(`Confidential — for authorized ${BRAND_DISPLAY} users only`, M, footerY + 4, { lineBreak: false });
+  doc.text(`Generated ${new Date().toLocaleString('en-US')}  ·  ${BRAND_DOMAIN}`, M, footerY + 18, {
     width: contentW,
     align: 'left',
     lineBreak: false,

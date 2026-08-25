@@ -389,7 +389,7 @@ export default function MarketplaceDashboard() {
           key: data.keyId,
           amount: data.amount,
           currency,
-          name: 'SolarXAI Marketplace',
+          name: 'SpaceToRoof Marketplace',
           description: `${data.pack?.credits || ''} bid wallet (USD)`,
           order_id: data.orderId,
           prefill: data.prefill || {},

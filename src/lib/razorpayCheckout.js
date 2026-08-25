@@ -1,5 +1,7 @@
 /** Shared Razorpay Checkout.js helpers (subscriptions + one-time orders). */
 
+import { BRAND_DISPLAY } from '../config/brand.js';
+
 export function loadRazorpayScript() {
   return new Promise((resolve) => {
     if (window.Razorpay) {
@@ -49,7 +51,7 @@ export async function openRazorpayOrderCheckout({
   orderId,
   amount,
   currency = 'USD',
-  name = 'SolarX.live',
+  name = BRAND_DISPLAY,
   description = 'Payment',
   prefill = {},
   onSuccess,
@@ -100,7 +102,7 @@ export async function openRazorpayOrderCheckout({
 export async function openRazorpaySubscriptionCheckout({
   keyId,
   subscriptionId,
-  name = 'SolarX.live',
+  name = BRAND_DISPLAY,
   description = 'Monthly plan',
   prefill = {},
   onSuccess,

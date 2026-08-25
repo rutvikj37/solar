@@ -4,6 +4,7 @@
 import { trackedFetch } from './apiUsage.js';
 import { sendUserEmail } from './email/sendUserEmail.js';
 import { getUserEmailConnection } from './email/userEmailConnections.js';
+import { BRAND_NOREPLY } from '../config/brand.js';
 
 function isKeyValid(key) {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -39,7 +40,7 @@ export async function sendTwilioSms(to, body) {
 /** Platform transactional mail (auth verify, password reset). */
 export async function sendPlatformEmail(to, subject, body) {
   const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
-  const from = process.env.OUTREACH_FROM_EMAIL || 'noreply@solarx.live';
+  const from = process.env.OUTREACH_FROM_EMAIL || BRAND_NOREPLY;
 
   if (!isKeyValid(apiKey)) {
     return { ok: false, simulated: true, id: `sim_email_${Date.now()}` };

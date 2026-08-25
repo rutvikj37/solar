@@ -1,9 +1,0 @@
-{
-    "extends": "./tsconfig.base.json",
-    "compilerOptions": {
-      "outDir": "./dist/amd",
-      "target": "ES5",
-      "module": "ESNext",
-      "esModuleInterop": true,
-    }
-}

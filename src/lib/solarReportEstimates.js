@@ -12,22 +12,6 @@ function isGoogleSolarEnriched(data = {}) {
   );
 }
 
-function sizeSystemToBill(maxKw, maxProd, maxPanels, annualUsageKwh) {
-  const kw = Number(maxKw) || 0;
-  const prod = Number(maxProd) || 0;
-  if (!(kw > 0 && prod > 0 && annualUsageKwh > 0)) {
-    return { systemKw: kw, annualProduction: prod, panelCount: maxPanels };
-  }
-  const kwhPerKw = prod / kw;
-  const systemKw = Number(Math.min(kw, Math.max(3.5, annualUsageKwh / kwhPerKw)).toFixed(1));
-  const ratio = systemKw / kw;
-  return {
-    systemKw,
-    annualProduction: Math.round(systemKw * kwhPerKw),
-    panelCount: Math.max(8, Math.round((Number(maxPanels) || Math.round(kw / 0.4)) * ratio)),
-  };
-}
-
 export function buildSolarReportEstimates(data = {}) {
   const bill = Math.max(50, Number(data.monthlyBill) || 250);
   const annualBill = bill * 12;
@@ -54,21 +38,21 @@ export function buildSolarReportEstimates(data = {}) {
   if (googleSolarHit && solar.systemKw != null) {
     ratePerKwh = Number(solar.ratePerKwh) || 0.16;
     annualUsageKwh = bill > 0 ? Math.round((annualBill / ratePerKwh) * 0.95) : 0;
-    const maxKw = Number(solar.roofMaxSystemKw || solar.systemKw);
-    const maxProd = Number(solar.roofMaxAnnualProductionKwh || solar.annualProductionKwh) || 0;
-    const sized = sizeSystemToBill(maxKw, maxProd, solar.panelCount, annualUsageKwh);
-    systemKw = sized.systemKw;
-    panelCount = sized.panelCount ?? Math.max(8, Math.round(systemKw / 0.42));
-    annualProduction = sized.annualProduction || Math.round(systemKw * sunHours * 0.85);
-    coveragePct = Math.min(
-      98,
-      Math.max(35, Math.round((annualProduction / Math.max(annualUsageKwh, 1)) * 100)),
-    );
-    year1Savings = Math.round(Math.min(annualBill * 0.92, annualProduction * ratePerKwh));
-    year5Savings = Math.round(year1Savings * 4.6);
-    year10Savings = Math.round(year1Savings * 9.2);
-    year25Savings = Math.round(annualProduction * ratePerKwh * 25);
-    estSolarPayment = Math.round(Math.max(0, bill - year1Savings / 12));
+    systemKw = Number(solar.systemKw);
+    panelCount = solar.panelCount ?? Math.max(8, Math.round(systemKw / 0.42));
+    annualProduction =
+      solar.annualProductionKwh ?? Math.round(systemKw * sunHours * 0.85);
+    coveragePct =
+      solar.coveragePct ??
+      Math.min(
+        98,
+        Math.max(35, Math.round((annualProduction / Math.max(annualUsageKwh, 1)) * 100)),
+      );
+    year1Savings = solar.year1Savings ?? Math.round(Math.min(annualBill, annualProduction * ratePerKwh));
+    year5Savings = solar.year5Savings ?? Math.round(year1Savings * 4.6);
+    year10Savings = solar.year10Savings ?? Math.round(year1Savings * 9.2);
+    year25Savings = solar.year25Savings ?? Math.round(annualProduction * ratePerKwh * 25);
+    estSolarPayment = solar.estSolarPayment ?? Math.round(Math.max(0, bill - year1Savings / 12));
     co2TonsYear = Math.round(((annualProduction * 0.92) / 1000) * 10) / 10;
     co2Tons25 = solar.co2Tons25 ?? Math.round(co2TonsYear * 23 * 10) / 10;
     treesEquiv = solar.treesEquiv ?? Math.round(co2TonsYear * 16);
@@ -150,7 +134,7 @@ export function mapValidationToFitRows(validationChecks = [], estimates) {
   const rows = [
     {
       label: 'Monthly electricity bill',
-      score: Math.round(byKey.solarPotential?.score ?? estimates.opportunityScore * 0.15),
+      score: byKey.solarPotential?.score ?? estimates.opportunityScore * 0.15,
       max: 15,
       detail: `$${estimates.bill}/mo · Higher usage improves solar economics.`,
     },

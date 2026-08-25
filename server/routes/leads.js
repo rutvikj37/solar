@@ -731,7 +731,7 @@ router.post('/:id/refresh-coordinates', authenticateToken, asyncHandler(async (r
   });
 }));
 
-// Branded SolarX.live lead sheet PDF (share / download)
+// Branded SpaceToRoof.com lead sheet PDF (share / download)
 router.get('/:id/share-pdf', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
   const lead = await fetchLeadForUser(id, req.user.id, req.user.role);

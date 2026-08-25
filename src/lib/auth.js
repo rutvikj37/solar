@@ -22,16 +22,6 @@ export function isAdminRole(role) {
   return ADMIN_ROLES.includes(role);
 }
 
-export function isInstallerRole(role) {
-  return role === 'solar_company' || role === 'installer';
-}
-
-/** Where to send users after logout. Installers land on the installer marketing page. */
-export function getLogoutRedirectPath(role) {
-  if (isInstallerRole(role)) return '/for-installers';
-  return '/login';
-}
-
 export function isPublicPath(pathname = window.location.pathname) {
   if (PUBLIC_EXACT.has(pathname)) return true;
   if (pathname.startsWith('/proposal/')) return true;
@@ -156,22 +146,13 @@ async function signOutFirebase() {
 }
 
 /**
- * Wipe client auth and redirect.
- * Installers (`solar_company` / `installer`) go to `/for-installers`;
- * everyone else goes to `/login`.
- *
- * @param {{ role?: string, redirectTo?: string }} [options]
+ * Wipe client auth and replace the current history entry with /login so Back
+ * cannot restore an authenticated document as the current entry.
  */
-export function logoutToLogin(options = {}) {
-  const role =
-    options.role ||
-    peekAuthSessionCache()?.role ||
-    parseJwtPayload(getToken())?.role ||
-    null;
-  const redirectTo = options.redirectTo || getLogoutRedirectPath(role);
+export function logoutToLogin() {
   clearToken();
   void signOutFirebase();
-  window.location.replace(redirectTo);
+  window.location.replace('/login');
 }
 
 /** Returns profile payload or null when token is missing/invalid (clears stale token). */

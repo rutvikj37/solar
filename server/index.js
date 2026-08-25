@@ -38,6 +38,7 @@ import {
   startMarketplaceWorker,
   stopMarketplaceWorker,
 } from './services/marketplace/marketplaceWorker.js';
+import { BRAND_LOG_PREFIX } from './config/brand.js';
 import { loadFirebaseWebConfig } from './services/firebaseWebConfig.js';
 import { isFirebaseAdminConfigured } from './firebase.js';
 import { validateProductionSecurityConfig } from './utils/productionGuard.js';
@@ -287,7 +288,7 @@ function startBackgroundWorkers() {
   startDripWorker({ intervalMs: 60000 });
   startMarketplaceWorker({ intervalMs: 30000 });
   console.log(
-    '[SolarX.live] Background workers started: drip (60s), AI dialer (15s), marketplace (30s), appointment reminders (5m)',
+    BRAND_LOG_PREFIX + ' Background workers started: drip (60s), AI dialer (15s), marketplace (30s), appointment reminders (5m)',
   );
 }
 
@@ -317,15 +318,15 @@ async function startServer() {
   }
 
   server.on('error', (err) => {
-    console.error('[SolarX.live] Failed to bind HTTP server:', err.message);
+    console.error(`${BRAND_LOG_PREFIX} Failed to bind HTTP server:`, err.message);
     process.exit(1);
   });
 
   server.listen(PORT, BIND_HOST, () => {
     if (isProd) {
-      console.log(`[SolarX.live] API listening on port ${PORT}`);
+      console.log(`${BRAND_LOG_PREFIX} API listening on port ${PORT}`);
     } else {
-      console.log(`[SolarX.live] API running on http://localhost:${PORT}`);
+      console.log(`${BRAND_LOG_PREFIX} API running on http://localhost:${PORT}`);
       console.log(`[WebSocket] Media Stream endpoint ready at ws://localhost:${PORT}/media-stream`);
     }
     startBackgroundWorkers();
@@ -333,7 +334,7 @@ async function startServer() {
 }
 
 function shutdown(signal) {
-  console.log(`[SolarX.live] ${signal} received, stopping workers`);
+  console.log(`${BRAND_LOG_PREFIX} ${signal} received, stopping workers`);
   stopBackgroundWorkers();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();

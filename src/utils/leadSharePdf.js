@@ -1,3 +1,4 @@
+import { BRAND_DISPLAY, BRAND_NAME } from '../config/brand.js';
 import { API_BASE } from '../config.js';
 
 function fmt(v, fallback = '—') {
@@ -29,7 +30,7 @@ export function leadSharePdfFilename(lead) {
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 40);
-  return `SolarX-Lead-${id}-${slug || 'sheet'}.pdf`;
+  return `${BRAND_NAME}-Lead-${id}-${slug || 'sheet'}.pdf`;
 }
 
 export function buildLeadShareWhatsAppText(lead) {
@@ -47,7 +48,7 @@ export function buildLeadShareWhatsAppText(lead) {
   const email = fmt(lead.email);
 
   return [
-    `*SolarX.live — Lead Sheet*`,
+    `*${BRAND_DISPLAY} — Lead Sheet*`,
     ``,
     `*${owner}*`,
     address,
@@ -58,7 +59,7 @@ export function buildLeadShareWhatsAppText(lead) {
     phone !== '—' ? `Phone: ${phone}` : null,
     email !== '—' ? `Email: ${email}` : null,
     ``,
-    `Lead sheet PDF from SolarX.live.`,
+    `Lead sheet PDF from ${BRAND_DISPLAY}.`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -85,7 +86,7 @@ export async function fetchLeadSharePdf(leadId) {
   const waEncoded = res.headers.get('X-WhatsApp-Text');
   const waText = waEncoded ? decodeURIComponent(waEncoded) : null;
 
-  return { blob, filename: headerName || `SolarX-Lead-${leadId}.pdf`, waText };
+  return { blob, filename: headerName || `${BRAND_NAME}-Lead-${leadId}.pdf`, waText };
 }
 
 function triggerDownload(blob, filename) {
@@ -105,7 +106,7 @@ function openWhatsApp(text) {
 }
 
 /**
- * Download SolarX.live branded lead PDF.
+ * Download branded lead PDF.
  */
 export async function downloadLeadSharePdf(lead) {
   const { blob, filename } = await fetchLeadSharePdf(lead.id);
@@ -126,7 +127,7 @@ export async function shareLeadToWhatsApp(lead) {
     try {
       await navigator.share({
         files: [file],
-        title: 'SolarX.live Lead Sheet',
+        title: `${BRAND_DISPLAY} Lead Sheet`,
         text,
       });
       return { method: 'native' };

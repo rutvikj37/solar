@@ -12,7 +12,7 @@ export async function notifyInstallerWonBid({ installerUserId, lead }) {
     if (!user?.email) return { sent: false, reason: 'no_email' };
 
     const subject = `You won marketplace lead ${lead.lead_code}`;
-    const body = `Hi ${user.name || 'Installer'},\n\nYou won the bid for marketplace lead ${lead.lead_code}.\nAmount: $${Number(lead.winning_amount || lead.min_bid || 0).toFixed(2)}\n\nView the lead in your SolarX Marketplace dashboard.\n`;
+    const body = `Hi ${user.name || 'Installer'},\n\nYou won the bid for marketplace lead ${lead.lead_code}.\nAmount: $${Number(lead.winning_amount || lead.min_bid || 0).toFixed(2)}\n\nView the lead in your SpaceToRoof Marketplace dashboard.\n`;
 
     const result = await sendPlatformEmail(user.email, subject, body);
     return { sent: Boolean(result?.ok || result?.simulated), simulated: Boolean(result?.simulated) };

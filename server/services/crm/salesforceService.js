@@ -1,3 +1,4 @@
+import { BRAND_DISPLAY, BRAND_NAME } from '../../config/brand.js';
 import {
   getConnection,
   upsertOAuthConnection,
@@ -103,9 +104,9 @@ export async function pushLeadToSalesforce(userId, lead, payload) {
     City: addr.city || undefined,
     State: addr.state || undefined,
     PostalCode: addr.zip || undefined,
-    LeadSource: 'SolarX.live',
+    LeadSource: BRAND_DISPLAY,
     Description: [
-      `SolarX Lead #${lead.id}`,
+      `${BRAND_NAME} Lead #${lead.id}`,
       payload.lead.estimatedSavings ? `Est. savings: ${payload.lead.estimatedSavings}` : null,
       lead.notes ? `Notes: ${lead.notes}` : null,
     ].filter(Boolean).join('\n'),
