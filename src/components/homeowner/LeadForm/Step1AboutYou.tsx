@@ -1,3 +1,5 @@
+import { CountryCodeSelect } from './CountryCodeSelect';
+
 type Step1Props = {
   onNext: () => void;
   data: Record<string, unknown>;
@@ -9,6 +11,9 @@ export function Step1AboutYou({ onNext, data, updateData }: Step1Props) {
   const lastName = String(data.lastName || '').trim();
   const email = String(data.email || '').trim();
   const phone = String(data.phone || '').trim();
+  const countryCode = String(data.countryCode || '+1').trim();
+
+  const digitsOnly = phone.replace(/\D/g, '');
 
   const handleContinue = () => {
     if (!firstName || !lastName) {
@@ -17,8 +22,11 @@ export function Step1AboutYou({ onNext, data, updateData }: Step1Props) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return;
     }
-    if (!phone || phone.replace(/\D/g, '').length < 10) {
+    if (!phone || digitsOnly.length < 7) {
       return;
+    }
+    if (!data.countryCode) {
+      updateData({ countryCode: '+1' });
     }
     onNext();
   };
@@ -28,7 +36,7 @@ export function Step1AboutYou({ onNext, data, updateData }: Step1Props) {
     lastName &&
     email &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
-    phone.replace(/\D/g, '').length >= 10;
+    digitsOnly.length >= 7;
 
   return (
     <div className="space-y-4">
@@ -58,13 +66,20 @@ export function Step1AboutYou({ onNext, data, updateData }: Step1Props) {
         value={String(data.email || '')}
         onChange={(e) => updateData({ email: e.target.value })}
       />
-      <input
-        className="form-input-base"
-        placeholder="Mobile Number (+1) *"
-        type="tel"
-        value={String(data.phone || '')}
-        onChange={(e) => updateData({ phone: e.target.value })}
-      />
+      <div className="flex gap-2.5 items-center">
+        <CountryCodeSelect
+          value={countryCode}
+          onChange={(code) => updateData({ countryCode: code })}
+          className="w-[145px] shrink-0"
+        />
+        <input
+          className="form-input-base flex-1"
+          placeholder="Mobile Number *"
+          type="tel"
+          value={String(data.phone || '')}
+          onChange={(e) => updateData({ phone: e.target.value })}
+        />
+      </div>
 
       <button
         type="button"
@@ -77,3 +92,4 @@ export function Step1AboutYou({ onNext, data, updateData }: Step1Props) {
     </div>
   );
 }
+

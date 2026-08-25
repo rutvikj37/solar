@@ -112,6 +112,10 @@ export function LeadForm() {
       .join(' ')
       .trim();
 
+    const rawPhone = String(formData.phone || '').trim();
+    const countryCode = String(formData.countryCode || '+1').trim();
+    const phone = rawPhone.startsWith('+') ? rawPhone : `${countryCode} ${rawPhone}`;
+
     try {
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), 55000);
@@ -123,7 +127,7 @@ export function LeadForm() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name,
-            phone: formData.phone,
+            phone,
             email: formData.email,
             address: formData.address,
             monthlyBill: formData.monthlyBill,
