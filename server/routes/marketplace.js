@@ -99,8 +99,9 @@ const reportPdfLimiter = rateLimit({
 const auth = [authenticateToken];
 
 function marketplaceRequireVerified() {
-  return process.env.MARKETPLACE_REQUIRE_VERIFIED === 'true'
-    || process.env.NODE_ENV === 'production';
+  // Opt-in only. Do NOT force this in production — new installers are created as
+  // "pending" and would otherwise see an empty marketplace until an admin verifies them.
+  return process.env.MARKETPLACE_REQUIRE_VERIFIED === 'true';
 }
 
 function requireInstaller(req, res, next) {
@@ -346,11 +347,31 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
 
     await ensureLeadsBiddingTimes(leads);
     const settings = await getMarketplaceSettings();
+    const requireVerified = marketplaceRequireVerified();
+
+    const [profiles] = await db.query(
+      `SELECT verification_status FROM installer_profiles WHERE user_id = ?`,
+      [userId],
+    );
+    const verificationStatus = profiles[0]?.verification_status || 'pending';
+    const [areaRows] = await db.query(
+      `SELECT COUNT(*) AS c FROM installer_service_areas WHERE user_id = ?`,
+      [userId],
+    );
+    const serviceAreaCount = Number(areaRows[0]?.c || 0);
 
     const eligible = [];
+    let hiddenByVerification = 0;
+    let hiddenByCoverage = 0;
     for (const lead of leads) {
-      if (await isInstallerEligible(userId, lead, { requireVerified: marketplaceRequireVerified() })) {
+      if (await isInstallerEligible(userId, lead, { requireVerified })) {
         eligible.push(lead);
+        continue;
+      }
+      if (requireVerified && verificationStatus !== 'verified') {
+        hiddenByVerification += 1;
+      } else if (serviceAreaCount > 0) {
+        hiddenByCoverage += 1;
       }
     }
 
@@ -387,6 +408,15 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
       walletBalance,
       minBalanceToBid: MIN_WALLET_BALANCE_TO_BID,
       canBid: walletBalance >= MIN_WALLET_BALANCE_TO_BID,
+      filter: {
+        openLeadCount: leads.length,
+        visibleCount: items.length,
+        requireVerified,
+        verificationStatus,
+        serviceAreaCount,
+        hiddenByVerification,
+        hiddenByCoverage,
+      },
     });
   } catch (err) {
     console.error('[Marketplace] opportunities failed:', err);

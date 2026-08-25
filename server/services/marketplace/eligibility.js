@@ -68,19 +68,21 @@ export function areaMatchesLead(area, lead) {
 
 /**
  * Returns true if installer may see/bid on this lead based on service areas.
+ * - rejected / suspended profiles are always blocked
+ * - when requireVerified=true, only verification_status=verified may see leads
+ * - no service-area rows → all open leads (coverage is an optional filter)
+ * - with service-area rows → lead ZIP/state must match
  */
 export async function isInstallerEligible(userId, lead, { requireVerified = true } = {}) {
   if (!userId || !lead) return false;
 
-  if (requireVerified) {
-    const [profiles] = await db.query(
-      `SELECT verification_status FROM installer_profiles WHERE user_id = ?`,
-      [userId],
-    );
-    const status = profiles[0]?.verification_status;
-    if (status === 'rejected' || status === 'suspended') return false;
-    if (status !== 'verified') return false;
-  }
+  const [profiles] = await db.query(
+    `SELECT verification_status FROM installer_profiles WHERE user_id = ?`,
+    [userId],
+  );
+  const status = profiles[0]?.verification_status || 'pending';
+  if (status === 'rejected' || status === 'suspended') return false;
+  if (requireVerified && status !== 'verified') return false;
 
   const [areas] = await db.query(
     `SELECT zip, state, radius_miles FROM installer_service_areas WHERE user_id = ?`,

@@ -95,6 +95,7 @@ export default function MarketplaceDashboard() {
   });
   const [areas, setAreas] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [oppFilter, setOppFilter] = useState(null);
   const [bidDrafts, setBidDrafts] = useState({});
   const [areaForm, setAreaForm] = useState({ zip: '', state: '', radiusMiles: '25' });
   const [selectedLead, setSelectedLead] = useState(null);
@@ -131,6 +132,7 @@ export default function MarketplaceDashboard() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to load');
         setOpportunities(data.opportunities || []);
+        setOppFilter(data.filter || null);
         setWallet((w) => mergeWalletFromApi(w, data));
         const areasRes = await fetch(`${API_BASE}/api/marketplace/service-areas`, {
           headers: authHeaders(),
@@ -642,11 +644,43 @@ export default function MarketplaceDashboard() {
             ))}
             {!loading && !opportunities.length && (
               <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/55 space-y-2">
-                <p>No open homeowner inquiries yet.</p>
-                <p className="text-xs text-white/40">
-                  New opportunities appear here when homeowners submit the marketplace form. Each
-                  lead is matched by the ZIP and state from their submission.
-                </p>
+                {oppFilter?.hiddenByVerification > 0 ? (
+                  <>
+                    <p>
+                      There {oppFilter.openLeadCount === 1 ? 'is' : 'are'}{' '}
+                      <span className="text-white/80 font-semibold">{oppFilter.openLeadCount}</span>{' '}
+                      open lead{oppFilter.openLeadCount === 1 ? '' : 's'}, but your installer
+                      account is <span className="text-amber-300">{oppFilter.verificationStatus || 'pending'}</span>.
+                    </p>
+                    <p className="text-xs text-white/40">
+                      Ask an admin to set your verification status to <strong>verified</strong> in
+                      Admin → Marketplace → Installers, or remove{' '}
+                      <code className="text-white/50">MARKETPLACE_REQUIRE_VERIFIED=true</code> from
+                      server/.env.
+                    </p>
+                  </>
+                ) : oppFilter?.hiddenByCoverage > 0 ? (
+                  <>
+                    <p>
+                      There {oppFilter.openLeadCount === 1 ? 'is' : 'are'}{' '}
+                      <span className="text-white/80 font-semibold">{oppFilter.openLeadCount}</span>{' '}
+                      open lead{oppFilter.openLeadCount === 1 ? '' : 's'}, but none match your
+                      coverage filter ({oppFilter.serviceAreaCount} area
+                      {oppFilter.serviceAreaCount === 1 ? '' : 's'}).
+                    </p>
+                    <p className="text-xs text-white/40">
+                      Delete mismatched ZIP/state rows above, or add the lead&apos;s ZIP/state, to
+                      see them.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>No open homeowner inquiries yet.</p>
+                    <p className="text-xs text-white/40">
+                      New opportunities appear here after admin approves homeowner submissions.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
