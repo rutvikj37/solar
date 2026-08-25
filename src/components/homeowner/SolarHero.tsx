@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/homeowner/Navbar";
 import { HouseVisual } from "@/components/homeowner/HouseVisual";
 import { DataCard } from "@/components/homeowner/DataCard";
 import { Sun, Zap, Layout, ArrowRight, TrendingUp, DollarSign, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { scrollToLeadForm } from "@/lib/scrollToLeadForm.js";
 
 export function SolarHero() {
   const [stage, setStage] = useState(0);
@@ -76,7 +77,8 @@ export function SolarHero() {
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                   <button 
-                    onClick={() => document.getElementById('lead-form')?.scrollIntoView({ behavior: 'smooth' })}
+                    type="button"
+                    onClick={scrollToLeadForm}
                     className="cta-hover-effect group relative flex items-center justify-center gap-2 rounded-full bg-cyan-500 px-6 py-3 lg:px-10 lg:py-5 text-[10px] lg:text-xs font-bold uppercase tracking-widest text-navy-dark whitespace-nowrap"
                   >
                     Calculate My Solar Savings

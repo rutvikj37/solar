@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { BRAND_MONOGRAM } from "../../config/brand.js";
+import { scrollToLeadForm } from "../../lib/scrollToLeadForm.js";
 
 export function Navbar() {
   const [isVisible, setIsVisible] = useState(false);
@@ -48,18 +49,25 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            <a
-              href="#lead-form"
+            <button
+              type="button"
+              onClick={scrollToLeadForm}
               className="group flex items-center gap-3 rounded-full bg-cyan-500 px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-navy-dark transition-all hover:bg-cyan-400 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
             >
               Get My Free Report
               <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
-            </a>
+            </button>
             <Link
-              to="/login"
+              to="/for-installers"
               className="hidden lg:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
             >
-              Installer Login
+              For Solar Installers
+            </Link>
+            <Link
+              to="/login"
+              className="hidden xl:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
+            >
+              Log In
             </Link>
           </div>
         </div>

@@ -5,6 +5,7 @@ import {
   FileText, Sun, Mountain, Zap, ArrowRight, ShieldCheck, DollarSign,
   Lock, Gauge, BadgeCheck, Search, Star, CheckCircle2, Orbit
 } from 'lucide-react';
+import { scrollToLeadForm } from '@/lib/scrollToLeadForm.js';
 
 export function HowItWorks() {
   return (
@@ -104,7 +105,11 @@ export function HowItWorks() {
           </div>
 
           <div className="space-y-5">
-            <button className="group w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-sky-500 px-8 py-5 text-sm md:text-base font-extrabold text-navy-dark tracking-tight transition-all hover:brightness-110 active:scale-[0.99] shadow-[0_20px_40px_-14px_oklch(0.75_0.18_190_/_0.5)]">
+            <button
+              type="button"
+              onClick={scrollToLeadForm}
+              className="group w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-sky-500 px-8 py-5 text-sm md:text-base font-extrabold text-navy-dark tracking-tight transition-all hover:brightness-110 active:scale-[0.99] shadow-[0_20px_40px_-14px_oklch(0.75_0.18_190_/_0.5)]"
+            >
               <span className="flex items-center justify-center gap-3">
                 Get My Free Solar Report
                 <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />

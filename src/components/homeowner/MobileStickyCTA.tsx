@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { scrollToLeadForm } from '@/lib/scrollToLeadForm.js';
 
 export function MobileStickyCTA() {
   const [isVisible, setIsVisible] = useState(false);
@@ -27,7 +28,11 @@ export function MobileStickyCTA() {
         >
           <div className="max-w-[500px] mx-auto flex items-center gap-3">
             <div className="flex-1">
-              <button className="w-full relative group flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-sky-500 px-5 py-3.5 text-[11px] font-black uppercase tracking-wider text-navy-dark shadow-[0_8px_25px_-5px_oklch(0.75_0.18_190_/_0.5)] active:scale-[0.98] transition-transform">
+              <button
+                type="button"
+                onClick={scrollToLeadForm}
+                className="w-full relative group flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-sky-500 px-5 py-3.5 text-[11px] font-black uppercase tracking-wider text-navy-dark shadow-[0_8px_25px_-5px_oklch(0.75_0.18_190_/_0.5)] active:scale-[0.98] transition-transform"
+              >
                 Calculate My Savings
                 <ArrowRight className="size-4" />
               </button>
