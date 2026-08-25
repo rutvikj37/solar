@@ -70,6 +70,9 @@ const AiCallingCallDetail = lazy(
 const PublicProposalView = lazy(() => import("./pages/app/PublicProposalView"));
 const GetSolarQuote = lazy(() => import("./pages/app/GetSolarQuote"));
 const Reports = lazy(() => import("./pages/app/Reports"));
+const MarketplaceDashboard = lazy(
+  () => import("./pages/marketplace/MarketplaceDashboard"),
+);
 const PrivacyPolicyPage = lazy(() => import("./pages/legal/PrivacyPolicyPage"));
 const TermsPage = lazy(() => import("./pages/legal/TermsPage"));
 
