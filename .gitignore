@@ -30,3 +30,6 @@ _archive/
 *.njsproj
 *.sln
 *.sw?
+
+# Local DB dumps
+*.sql
