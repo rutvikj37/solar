@@ -32,6 +32,7 @@ const RegisterPage = lazy(() => import("./pages/auth/RegisterPage"));
 const VerifyEmailPage = lazy(() => import("./pages/auth/VerifyEmailPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
+const FirebaseAuthActionPage = lazy(() => import("./pages/auth/FirebaseAuthActionPage"));
 const CompleteProfilePage = lazy(() => import("./pages/auth/CompleteProfilePage"));
 const BulkAreaScan = lazy(() => import("./pages/app/BulkAreaScan"));
 
@@ -104,6 +105,7 @@ export default function App() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/auth/action" element={<FirebaseAuthActionPage />} />
             <Route
               path="/complete-profile"
               element={
