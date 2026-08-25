@@ -3,6 +3,7 @@ import { ArrowRight, Mail, Phone, MapPin, Clock, Send, CheckCircle2 } from "luci
 import { useState } from "react";
 import { API_BASE } from "../../config.js";
 import { BRAND_EMAIL, BRAND_NAME } from "../../config/brand.js";
+import { scrollToLeadForm } from "../../lib/scrollToLeadForm.js";
 
 export function ContactPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -119,8 +120,8 @@ export function ContactPage() {
                   {
                     icon: MapPin,
                     label: "Address",
-                    value: "[Add company address here]",
-                    href: "#"
+                    value: "United States",
+                    href: null
                   },
                   {
                     icon: Clock,
@@ -295,13 +296,14 @@ export function ContactPage() {
               Ready to Discover Your Home's Solar Potential?
             </h2>
             
-            <a
-              href="/#lead-form"
+            <button
+              type="button"
+              onClick={scrollToLeadForm}
               className="group inline-flex items-center gap-3 rounded-full bg-cyan-500 px-8 py-4 text-sm font-bold uppercase tracking-widest text-navy-dark transition-all hover:bg-cyan-400 hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(6,182,212,0.3)]"
             >
               Get My Free Solar Report
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-            </a>
+            </button>
           </motion.section>
         </motion.div>
       </div>

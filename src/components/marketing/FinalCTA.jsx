@@ -1,5 +1,6 @@
 import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowRight, Satellite as SatIcon } from 'lucide-react';
 import earth from '@/components/marketing/assets/earth.png';
@@ -7,6 +8,37 @@ import satellite from '@/components/marketing/assets/satellite.png';
 import { Starfield } from './Starfield';
 import { API_BASE } from '../../config.js';
 import { BRAND_DISPLAY, BRAND_NAME } from '@/config/brand.js';
+import { handleMarketingHashClick } from '@/lib/marketingScroll.js';
+
+const FOOTER_COLUMNS = [
+  {
+    h: 'Platform',
+    items: [
+      { label: 'Roof Analysis', href: '/for-installers#how-it-works' },
+      { label: 'Opportunity Score', href: '/for-installers#how-it-works' },
+      { label: 'Territory Maps', href: '/for-installers#pricing' },
+      { label: 'Book a Demo', href: '/for-installers#contact' },
+    ],
+  },
+  {
+    h: 'Company',
+    items: [
+      { label: 'For Homeowners', href: '/' },
+      { label: 'About', href: '/about' },
+      { label: 'Partner Program', href: '/for-installers#partner' },
+      { label: 'Contact', href: '/for-installers#contact' },
+    ],
+  },
+  {
+    h: 'Legal',
+    items: [
+      { label: 'Privacy', href: '/privacy' },
+      { label: 'Terms', href: '/terms' },
+      { label: 'Data Ethics', href: '/privacy#data-ethics' },
+      { label: 'Security', href: '/privacy#security' },
+    ],
+  },
+];
 
 const FIELDS = [
   { name: 'name', label: 'Name', type: 'text', placeholder: 'Michael Johnson' },
@@ -187,31 +219,46 @@ export function Footer() {
     <footer className="relative border-t border-border bg-deep">
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-5 py-14 sm:gap-10 sm:px-6 sm:py-16 lg:grid-cols-4">
         <div className="col-span-2 lg:col-span-1">
-          <div className="flex items-center gap-2.5">
+          <Link to="/for-installers" className="flex items-center gap-2.5 w-fit">
             <span className="flex size-9 items-center justify-center rounded-xl border border-glass-border bg-glass">
               <SatIcon className="size-4 text-primary-glow" />
             </span>
             <span className="font-display text-sm font-semibold">
               {BRAND_NAME}<span className="text-primary-glow">.com</span>
             </span>
-          </div>
+          </Link>
           <p className="mt-5 max-w-xs text-sm text-muted-foreground">
             Orbital solar intelligence for residential installers.
           </p>
+          <Link
+            to="/"
+            className="mt-4 inline-flex text-sm text-primary-glow hover:underline"
+          >
+            Homeowner solar reports →
+          </Link>
         </div>
-        {[
-          { h: 'Platform', items: ['Roof Analysis', 'Opportunity Score', 'Territory Maps', 'API'] },
-          { h: 'Company', items: ['About', 'Careers', 'Press', 'Contact'] },
-          { h: 'Legal', items: ['Privacy', 'Terms', 'Data Ethics', 'Security'] }
-        ].map((col) => (
+        {FOOTER_COLUMNS.map((col) => (
           <div key={col.h}>
             <div className="text-[10px] tracking-[0.22em] text-muted-foreground uppercase">{col.h}</div>
             <ul className="mt-5 space-y-3 text-sm">
               {col.items.map((it) => (
-                <li key={it}>
-                  <a href="#contact" className="text-muted-foreground transition-colors hover:text-foreground">
-                    {it}
-                  </a>
+                <li key={it.label}>
+                  {it.href.includes('#') ? (
+                    <a
+                      href={it.href}
+                      onClick={(e) => handleMarketingHashClick(e, it.href)}
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {it.label}
+                    </a>
+                  ) : (
+                    <Link
+                      to={it.href}
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {it.label}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
@@ -219,9 +266,17 @@ export function Footer() {
         ))}
       </div>
       <div className="border-t border-border">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>© {new Date().getFullYear()} {BRAND_DISPLAY} Solar Intelligence. All rights reserved.</span>
-          <span className="font-mono">33.4484° N · 112.0740° W</span>
+          <div className="flex flex-wrap gap-4">
+            <Link to="/privacy" className="hover:text-foreground">
+              Privacy
+            </Link>
+            <Link to="/terms" className="hover:text-foreground">
+              Terms
+            </Link>
+            <span className="font-mono">Estimates are illustrative · Not legal or financial advice</span>
+          </div>
         </div>
       </div>
     </footer>

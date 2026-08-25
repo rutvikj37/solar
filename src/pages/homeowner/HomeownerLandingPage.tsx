@@ -9,11 +9,16 @@ import { scrollToLeadForm } from '@/lib/scrollToLeadForm.js';
 
 export default function HomeownerLandingPage() {
   useEffect(() => {
-    if (window.location.hash.replace(/^#/, '') === 'lead-form') {
-      const timer = window.setTimeout(() => scrollToLeadForm(), 120);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
+    const hash = window.location.hash.replace(/^#/, '');
+    if (!hash) return undefined;
+    const timer = window.setTimeout(() => {
+      if (hash === 'lead-form') {
+        scrollToLeadForm();
+        return;
+      }
+      document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => window.clearTimeout(timer);
   }, []);
   return (
     <HomeownerShell>

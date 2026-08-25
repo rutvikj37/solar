@@ -64,6 +64,9 @@ export function Nav() {
         </a>
 
         <div className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
+          <Link to="/" className="transition-colors hover:text-foreground">
+            For Homeowners
+          </Link>
           {LINKS.map((l) => (
             <a
               key={l.href}
@@ -124,6 +127,13 @@ export function Nav() {
             className="relative border-b border-border bg-background/95 backdrop-blur-xl md:hidden"
           >
             <div className="flex flex-col gap-1 px-4 pt-2 pb-5">
+              <Link
+                to="/"
+                onClick={() => setOpen(false)}
+                className="rounded-xl px-3 py-3 text-sm text-muted-foreground transition-colors hover:bg-glass hover:text-foreground"
+              >
+                For Homeowners
+              </Link>
               {LINKS.map((l) => (
                 <a
                   key={l.href}

@@ -13,6 +13,8 @@ const PUBLIC_EXACT = new Set([
   '/contact',
   '/solar-report',
   '/for-installers',
+  '/privacy',
+  '/terms',
   '/login',
   '/register',
   '/get-solar-quote',

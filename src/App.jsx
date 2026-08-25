@@ -70,9 +70,8 @@ const AiCallingCallDetail = lazy(
 const PublicProposalView = lazy(() => import("./pages/app/PublicProposalView"));
 const GetSolarQuote = lazy(() => import("./pages/app/GetSolarQuote"));
 const Reports = lazy(() => import("./pages/app/Reports"));
-const MarketplaceDashboard = lazy(
-  () => import("./pages/marketplace/MarketplaceDashboard"),
-);
+const PrivacyPolicyPage = lazy(() => import("./pages/legal/PrivacyPolicyPage"));
+const TermsPage = lazy(() => import("./pages/legal/TermsPage"));
 
 function PackagesRedirect() {
   const { search } = useLocation();
@@ -119,6 +118,8 @@ export default function App() {
             <Route path="/contact" element={<HomeownerContactPage />} />
             <Route path="/solar-report" element={<SolarReportPage />} />
             <Route path="/for-installers" element={<InstallerLandingPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
             <Route path="/get-solar-quote" element={<GetSolarQuote />} />
             <Route path="/proposal/:slug" element={<PublicProposalView />} />
 
