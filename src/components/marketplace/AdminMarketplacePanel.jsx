@@ -724,7 +724,12 @@ export default function AdminMarketplacePanel() {
                     <div className="text-white/60 text-[11px] mt-1 flex flex-wrap gap-2">
                       <span>ZIP: {l.zip || '—'}</span>
                       <span>·</span>
-                      <span>Score: {l.opportunityScore}</span>
+                      <span>
+                        Lead: {l.leadScore ?? l.opportunityScore}
+                        {l.solarPotentialScore != null && l.solarPotentialScore > 0
+                          ? ` · Solar: ${l.solarPotentialScore}`
+                          : ''}
+                      </span>
                       <span>·</span>
                       <span>Min Bid: {formatMoney(l.minBid ?? l.winningAmount)}</span>
                     </div>

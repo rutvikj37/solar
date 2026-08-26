@@ -236,10 +236,12 @@ export default function SolarProposalModal({ show, onClose, lead }) {
   const [financingType, setFinancingType] = useState('cash');
   const [includeItc30, setIncludeItc30] = useState(true);
   const [batteryType, setBatteryType] = useState('none');
+  const [includeEvCharger, setIncludeEvCharger] = useState(false);
   const [shareableUrl, setShareableUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [proposalStatus, setProposalStatus] = useState('');
+  const [showAddons, setShowAddons] = useState(true);
 
   useEffect(() => {
     if (!show || !lead?.id || !getToken()) return;
@@ -309,6 +311,28 @@ export default function SolarProposalModal({ show, onClose, lead }) {
     printProposalNode(proposalDocRef.current);
   };
 
+  const proposalShareText = shareableUrl
+    ? `Hi ${displayName}, here is your solar proposal for ${lead.address || 'your property'}: ${shareableUrl}`
+    : '';
+
+  const handleSendEmail = () => {
+    if (!shareableUrl) return;
+    const to = encodeURIComponent(lead.email || '');
+    const subject = encodeURIComponent(`Solar proposal — ${lead.address || 'your property'}`);
+    const body = encodeURIComponent(proposalShareText);
+    window.open(`mailto:${to}?subject=${subject}&body=${body}`, '_blank');
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!shareableUrl) return;
+    const digits = String(lead.phone || '').replace(/\D/g, '');
+    const text = encodeURIComponent(proposalShareText);
+    const url = digits
+      ? `https://wa.me/${digits}?text=${text}`
+      : `https://wa.me/?text=${text}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
       <div
@@ -332,6 +356,14 @@ export default function SolarProposalModal({ show, onClose, lead }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
+              type="button"
+              onClick={() => setShowAddons((v) => !v)}
+              className="bg-white/10 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 hover:bg-white/15"
+            >
+              <span className="material-symbols-outlined text-sm">add_box</span>
+              Add-ons
+            </button>
+            <button
               onClick={handleGenerateShareableLink}
               disabled={generatingLink}
               className="bg-primary text-on-primary font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
@@ -339,6 +371,27 @@ export default function SolarProposalModal({ show, onClose, lead }) {
               <span className="material-symbols-outlined text-sm">{copied ? 'check' : 'link'}</span>
               {copied ? 'Link Copied!' : generatingLink ? 'Creating...' : 'Copy Public Web Link'}
             </button>
+
+            {shareableUrl && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSendEmail}
+                  className="bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 hover:bg-sky-500/30"
+                >
+                  <span className="material-symbols-outlined text-sm">mail</span>
+                  Email
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendWhatsApp}
+                  className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 hover:bg-emerald-500/30"
+                >
+                  <span className="material-symbols-outlined text-sm">chat</span>
+                  WhatsApp
+                </button>
+              </>
+            )}
 
             <button
               onClick={handlePrint}
@@ -353,6 +406,53 @@ export default function SolarProposalModal({ show, onClose, lead }) {
             </button>
           </div>
         </div>
+
+        {showAddons && (
+          <div data-print-hide className="px-4 py-3 border-b border-white/10 bg-[#0A0E1C] grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <label className="space-y-1">
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Financing</span>
+              <select
+                value={financingType}
+                onChange={(e) => setFinancingType(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white"
+              >
+                <option value="cash">Cash</option>
+                <option value="loan">Loan</option>
+                <option value="lease">Lease</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Battery</span>
+              <select
+                value={batteryType}
+                onChange={(e) => setBatteryType(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white"
+              >
+                <option value="none">None</option>
+                <option value="tesla_pw3">Tesla Powerwall 3</option>
+                <option value="enphase_iq5p">Enphase IQ 5P</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 mt-5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeItc30}
+                onChange={(e) => setIncludeItc30(e.target.checked)}
+                className="accent-primary"
+              />
+              <span className="text-slate-200">Include 30% ITC</span>
+            </label>
+            <label className="flex items-center gap-2 mt-5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeEvCharger}
+                onChange={(e) => setIncludeEvCharger(e.target.checked)}
+                className="accent-primary"
+              />
+              <span className="text-slate-200">EV charger add-on</span>
+            </label>
+          </div>
+        )}
 
         {/* Printable Proposal Document Body */}
         <div className="p-8 space-y-6 text-xs bg-[#080B1A] text-white">

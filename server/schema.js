@@ -906,6 +906,7 @@ export async function migrateSchema() {
       project_details TEXT NULL,
       property_type VARCHAR(64) NULL DEFAULT 'residential',
       opportunity_score INT UNSIGNED NOT NULL DEFAULT 0,
+      solar_potential_score INT UNSIGNED NOT NULL DEFAULT 0,
       score_breakdown JSON NULL,
       enrichment_json LONGTEXT NULL,
       estimated_roof_sqft DECIMAL(12,2) NULL,
@@ -1138,4 +1139,13 @@ export async function migrateSchema() {
   await ensureColumn("marketplace_leads", "longitude", "DECIMAL(10,7) NULL");
   await ensureColumn("marketplace_leads", "email_status", "VARCHAR(128) NULL");
   await ensureColumn("marketplace_leads", "phone_type", "VARCHAR(64) NULL");
+  await ensureColumn(
+    "marketplace_leads",
+    "solar_potential_score",
+    "INT UNSIGNED NOT NULL DEFAULT 0",
+  );
+  await ensureColumn("marketplace_leads", "payment_due_at", "DATETIME NULL");
+  await ensureColumn("leads", "follow_up_at", "DATETIME NULL");
+  await ensureColumn("leads", "next_action", "VARCHAR(255) NULL");
+  await ensureColumn("leads", "conversation_notes", "TEXT NULL");
 }

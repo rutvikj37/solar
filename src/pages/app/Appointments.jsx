@@ -67,6 +67,10 @@ export default function Appointments() {
         const err = await res.json();
         throw new Error(err.error || 'Failed');
       }
+      const created = await res.json();
+      if (created.emailSent) {
+        alert('Appointment booked. Confirmation email sent to the lead.');
+      }
       setForm({ title: 'Site Survey', leadId: '', scheduledAt: '', durationMinutes: 60, location: '', notes: '' });
       await load();
     } catch (err) {
@@ -100,6 +104,33 @@ export default function Appointments() {
         <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Appointments</h2>
         <p className="text-on-surface-variant text-sm mt-1">Book site surveys and track visits from unlocked leads.</p>
       </div>
+
+      {(() => {
+        const now = Date.now();
+        const upcoming = appointments.filter(
+          (a) => a.status === 'scheduled' && new Date(a.scheduled_at).getTime() >= now,
+        ).length;
+        const scheduled = appointments.filter((a) => a.status === 'scheduled').length;
+        const past = appointments.filter(
+          (a) => a.status !== 'scheduled' || new Date(a.scheduled_at).getTime() < now,
+        ).length;
+        return (
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="glass-card rounded-xl p-4 text-center">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Upcoming</p>
+              <p className="text-2xl font-black text-primary mt-1">{upcoming}</p>
+            </div>
+            <div className="glass-card rounded-xl p-4 text-center">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Scheduled</p>
+              <p className="text-2xl font-black text-white mt-1">{scheduled}</p>
+            </div>
+            <div className="glass-card rounded-xl p-4 text-center">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Past / other</p>
+              <p className="text-2xl font-black text-slate-300 mt-1">{past}</p>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
         <form onSubmit={handleCreate} className="glass-card rounded-xl p-6 space-y-4 text-xs lg:col-span-1">

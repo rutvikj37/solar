@@ -141,6 +141,22 @@ export function buildHomeownerReportPayload(lead) {
     propertyLng: lead.longitude != null ? Number(lead.longitude) : enrichment?.lng,
     leadCode: lead.lead_code,
     opportunityScore: Number(lead.opportunity_score) || 0,
+    leadScore: Number(lead.opportunity_score) || 0,
+    leadScoreTier: (() => {
+      try {
+        const b =
+          typeof lead.score_breakdown === 'object'
+            ? lead.score_breakdown
+            : lead.score_breakdown
+              ? JSON.parse(lead.score_breakdown)
+              : null;
+        return b?.leadScoreTier || null;
+      } catch {
+        return null;
+      }
+    })(),
+    solarPotentialScore:
+      lead.solar_potential_score != null ? Number(lead.solar_potential_score) : 0,
     listedInMarketplace: lead.status === 'bidding' || lead.status === 'no_bid_expanding',
     marketplaceStatus: lead.status,
     billRange: lead.bill_range,

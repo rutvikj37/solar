@@ -12,90 +12,13 @@ import {
   validateEmailWithVerifalia,
   lookupPhoneWithTwilio,
 } from '../contactEnrichmentService.js';
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /\d{7,}/;
-
-function clamp(n, min = 0, max = 100) {
-  return Math.max(min, Math.min(max, Math.round(n)));
-}
-
-function scoreContact(email, phone) {
-  let score = 0;
-  const emailOk = EMAIL_RE.test(String(email || '').trim());
-  const phoneDigits = String(phone || '').replace(/\D/g, '');
-  const phoneOk = phoneDigits.length >= 10 && PHONE_RE.test(phoneDigits);
-  if (emailOk) score += 50;
-  if (phoneOk) score += 50;
-  return {
-    score,
-    emailValid: emailOk,
-    phoneValid: phoneOk,
-    valid: emailOk && phoneOk,
-  };
-}
-
-function scoreProperty(address, zip) {
-  const addr = String(address || '').trim();
-  const z = extractZip(addr, zip);
-  let score = 0;
-  if (addr.length >= 8) score += 40;
-  if (/\d/.test(addr)) score += 20;
-  if (z) score += 40;
-  return { score: clamp(score), zip: z, valid: Boolean(z) && addr.length >= 5 };
-}
-
-function scorePropertyType(homeownerStatus, projectDetails = '') {
-  const text = `${homeownerStatus || ''} ${projectDetails || ''}`.toLowerCase();
-  if (/commercial|business|warehouse|office/.test(text)) {
-    return { type: 'commercial', score: 55 };
-  }
-  return { type: 'residential', score: 85 };
-}
-
-function scoreExistingSolar(projectDetails = '') {
-  const text = String(projectDetails || '').toLowerCase();
-  if (/already have solar|existing solar|has solar|panels already|currently have solar/.test(text)) {
-    return { likely: true, score: 15 };
-  }
-  if (/no solar|never had|interested in getting|want solar/.test(text)) {
-    return { likely: false, score: 90 };
-  }
-  return { likely: false, score: 70 };
-}
-
-function scoreSolarPotential(monthlyBill, propertyType) {
-  const bill = Number(monthlyBill) || 0;
-  let score = 40;
-  if (bill >= 300) score = 95;
-  else if (bill >= 200) score = 85;
-  else if (bill >= 150) score = 75;
-  else if (bill >= 100) score = 65;
-  else if (bill > 0) score = 50;
-  if (propertyType === 'commercial') score = Math.min(100, score + 5);
-  const label =
-    score >= 85 ? 'High' : score >= 65 ? 'Moderate' : score >= 45 ? 'Fair' : 'Low';
-  // Rough system size estimate from bill
-  const estimatedSolarKw = bill > 0 ? Math.round((bill / 120) * 10) / 10 : null;
-  const estimatedRoofSqft = estimatedSolarKw ? Math.round(estimatedSolarKw * 80) : null;
-  return { score, label, estimatedSolarKw, estimatedRoofSqft };
-}
-
-function scoreBuyingIntent(timeline, projectDetails = '') {
-  const t = String(timeline || '').toLowerCase();
-  const d = String(projectDetails || '').toLowerCase();
-  let score = 40;
-  if (/asap|as soon as possible|immediately|this month|0-1|ready now/.test(t)) score = 95;
-  else if (/1-3|1–3|within 3|soon|next 3/.test(t)) score = 80;
-  else if (/3-6|3–6|this year|6 months/.test(t)) score = 65;
-  else if (/6-12|6–12|next year|just research|exploring|not sure/.test(t)) score = 45;
-  else if (t) score = 50;
-  if (/quote|ready to buy|financing|install/.test(d)) score = Math.min(100, score + 10);
-  return { score };
-}
+import { buildScorePackage, computeStartingBid } from './leadScoring.js';
 
 /**
  * Validate + score inquiry. Opens bidding only when listInMarketplace is true (admin approve).
+ * Scores follow lead scoring.docx:
+ * - opportunity_score = Homeowner Lead Score (0–100)
+ * - solar_potential_score = Solar Potential Score (0–100)
  */
 export async function qualifyMarketplaceLead(leadId, options = {}) {
   const { listInMarketplace = true } = options;
@@ -106,77 +29,52 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
     return lead;
   }
 
-  const contact = scoreContact(lead.email, lead.phone);
-  const property = scoreProperty(lead.address, lead.zip);
-  const propType = scorePropertyType(lead.homeowner_status, lead.project_details);
-  const existing = scoreExistingSolar(lead.project_details);
-  const solar = scoreSolarPotential(lead.monthly_bill, propType.type);
-  const intent = scoreBuyingIntent(lead.installation_timeline, lead.project_details);
-
   const enrichment = safeJson(lead.enrichment_json) || {};
-  if (enrichment.googleSolarHit) {
-    if (enrichment.systemKw != null) {
-      solar.estimatedSolarKw = enrichment.systemKw;
-      solar.estimatedRoofSqft = enrichment.usableRoofSqft ?? solar.estimatedRoofSqft;
-      if (enrichment.coveragePct >= 70) solar.label = 'High';
-      else if (enrichment.coveragePct >= 50) solar.label = 'Moderate';
-    }
-    if (enrichment.existingSolarLikely) {
-      existing.likely = true;
-      existing.score = 15;
-    } else if (enrichment.existingSolarStatus) {
-      existing.likely = false;
-      existing.score = Math.max(existing.score, 85);
-    }
-  }
-
-  const overall = clamp(
-    contact.score * 0.2 +
-      property.score * 0.2 +
-      propType.score * 0.1 +
-      existing.score * 0.15 +
-      solar.score * 0.2 +
-      intent.score * 0.15,
+  const scored = buildScorePackage(
+    {
+      name: lead.homeowner_name,
+      email: lead.email,
+      phone: lead.phone,
+      address: lead.address,
+      monthlyBill: lead.monthly_bill,
+      homeownerStatus: lead.homeowner_status,
+      installationTimeline: lead.installation_timeline,
+      projectDetails: lead.project_details,
+      propertyType: lead.property_type,
+      emailStatus: lead.email_status,
+      phoneType: lead.phone_type,
+      estimatedRoofSqft: lead.estimated_roof_sqft,
+    },
+    enrichment,
   );
-
-  const breakdown = {
-    contactValidity: contact.score,
-    propertyValidity: property.score,
-    residentialCommercial: propType.score,
-    existingSolar: existing.score,
-    solarPotential: solar.score,
-    buyingIntent: intent.score,
-    propertyType: propType.type,
-    contactValid: contact.valid,
-    propertyValid: property.valid,
-    existingSolarLikely: existing.likely,
-  };
 
   const [settingsRows] = await db.query(
     `SELECT default_bid_window_hours, default_min_bid FROM marketplace_settings WHERE id = 1`,
   );
   const settings = settingsRows[0] || {};
-  const { opens, closes, minBid } = computeBiddingWindow(settings);
+  const { opens, closes } = computeBiddingWindow(settings);
+  const minBid = computeStartingBid(scored.leadScore, settings);
 
   const billRange = lead.bill_range || billRangeFromAmount(lead.monthly_bill);
-  const zip = property.zip || lead.zip;
+  const zip = extractZip(lead.address, lead.zip) || lead.zip;
   const addressParts = parseAddressParts(lead.address);
   const leadState = lead.state || addressParts.state || null;
 
-  // Hard fail contact/property → ai_qualified without bidding
-  const canList = contact.valid && property.valid && !existing.likely;
+  // Gate listing on contact + property validity (existing solar remains bidable at lower solar score)
+  const canList = scored.contactValid && scored.propertyValid;
 
   const sharedFields = [
     zip,
     leadState,
-    propType.type,
-    overall,
-    JSON.stringify(breakdown),
+    scored.propertyType,
+    scored.leadScore,
+    scored.solarPotentialScore,
+    JSON.stringify(scored.breakdown),
     billRange,
-    existing.likely ? 1 : 0,
-    solar.label,
-    solar.estimatedRoofSqft,
-    solar.estimatedSolarKw,
+    scored.existingSolarLikely ? 1 : 0,
+    scored.solarPotentialLabel,
+    scored.estimatedRoofSqft,
+    scored.estimatedSolarKw,
   ];
 
   // Homeowner submit: score only, wait for admin approval
@@ -188,6 +86,7 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
          state = COALESCE(?, state),
          property_type = ?,
          opportunity_score = ?,
+         solar_potential_score = ?,
          score_breakdown = ?,
          bill_range = ?,
          existing_solar_likely = ?,
@@ -204,6 +103,7 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
           listed: false,
           awaitingAdmin: true,
           canList,
+          leadScoreTier: scored.leadScoreTier,
         }),
         leadId,
       ],
@@ -220,6 +120,7 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
          state = COALESCE(?, state),
          property_type = ?,
          opportunity_score = ?,
+         solar_potential_score = ?,
          score_breakdown = ?,
          bill_range = ?,
          existing_solar_likely = ?,
@@ -229,21 +130,13 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
          enrichment_json = ?
        WHERE id = ?`,
       [
-        zip,
-        leadState,
-        propType.type,
-        overall,
-        JSON.stringify(breakdown),
-        billRange,
-        existing.likely ? 1 : 0,
-        solar.label,
-        solar.estimatedRoofSqft,
-        solar.estimatedSolarKw,
+        ...sharedFields,
         JSON.stringify({
           ...enrichment,
           qualifiedAt: new Date().toISOString(),
           listed: false,
           reason: 'failed_gates',
+          leadScoreTier: scored.leadScoreTier,
         }),
         leadId,
       ],
@@ -259,6 +152,7 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
        state = COALESCE(?, state),
        property_type = ?,
        opportunity_score = ?,
+       solar_potential_score = ?,
        score_breakdown = ?,
        bill_range = ?,
        existing_solar_likely = ?,
@@ -273,16 +167,7 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
        enrichment_json = ?
      WHERE id = ?`,
     [
-      zip,
-      leadState,
-      propType.type,
-      overall,
-      JSON.stringify(breakdown),
-      billRange,
-      0,
-      solar.label,
-      solar.estimatedRoofSqft,
-      solar.estimatedSolarKw,
+      ...sharedFields,
       opens,
       closes,
       minBid,
@@ -291,6 +176,8 @@ export async function qualifyMarketplaceLead(leadId, options = {}) {
         qualifiedAt: new Date().toISOString(),
         listed: true,
         stages: ['ai_qualified', 'marketplace', 'bidding'],
+        leadScoreTier: scored.leadScoreTier,
+        startingBid: minBid,
       }),
       leadId,
     ],
@@ -317,20 +204,38 @@ export function formatInquiryResponse(lead) {
   if (!lead) return null;
 
   const enrichment = safeJson(lead.enrichment_json) || {};
+  const breakdown = safeJson(lead.score_breakdown) || {};
+  const validationChecks = Array.isArray(breakdown.validationChecks)
+    ? breakdown.validationChecks
+    : rebuildValidationChecks(breakdown);
+  const listedInMarketplace =
+    lead.status === 'bidding' || lead.status === 'no_bid_expanding';
 
   return {
     ok: true,
     leadCode: lead.lead_code,
+    status: lead.status,
     message:
       'Thank you! Your inquiry was received and is under review. A qualified installer will reach out once your request is approved.',
     propertyType: lead.property_type || 'residential',
-    solarPotentialLabel: lead.solar_potential_label || null,
+    solarPotentialLabel: lead.solar_potential_label || breakdown.solarPotentialLabel || null,
     billRange: lead.bill_range || null,
     estimatedSolarKw:
       lead.estimated_solar_kw != null ? Number(lead.estimated_solar_kw) : null,
     estimatedRoofSqft:
       lead.estimated_roof_sqft != null ? Number(lead.estimated_roof_sqft) : null,
+    // Lead Score (homeowner) — primary opportunity score
     opportunityScore: Number(lead.opportunity_score) || 0,
+    leadScore: Number(lead.opportunity_score) || 0,
+    leadScoreTier: breakdown.leadScoreTier || enrichment.leadScoreTier || null,
+    // Solar Potential Score (installer)
+    solarPotentialScore:
+      lead.solar_potential_score != null
+        ? Number(lead.solar_potential_score)
+        : Number(breakdown.solarPotentialScore) || 0,
+    scoreBreakdown: breakdown,
+    validationChecks,
+    listedInMarketplace,
     enrichmentSource: enrichment.googleSolarHit ? 'google_solar' : 'estimated',
     dataSources: enrichment.dataSources || null,
     satelliteImageUrl: lead.lead_code
@@ -363,6 +268,64 @@ export function formatInquiryResponse(lead) {
     propertyLat: lead.latitude != null ? Number(lead.latitude) : enrichment.lat,
     propertyLng: lead.longitude != null ? Number(lead.longitude) : enrichment.lng,
   };
+}
+
+function rebuildValidationChecks(breakdown = {}) {
+  const sections = breakdown.sections || {};
+  const lead = sections.lead || {};
+  const solar = sections.solar || {};
+  if (!lead.purchaseIntent && breakdown.buyingIntent == null) return [];
+
+  return [
+    {
+      key: 'purchaseIntent',
+      label: 'Purchase intent',
+      score: lead.purchaseIntent?.points ?? Math.round((breakdown.buyingIntent || 0) * 0.2),
+      max: 20,
+      passed: (lead.purchaseIntent?.points ?? 0) >= 7 || (breakdown.buyingIntent || 0) >= 45,
+      detail: lead.purchaseIntent?.label,
+    },
+    {
+      key: 'ownershipRoof',
+      label: 'Ownership & roof',
+      score: lead.ownershipRoof?.points ?? 0,
+      max: 15,
+      passed: (lead.ownershipRoof?.points ?? 0) > 0,
+      detail: lead.ownershipRoof?.ownershipLabel,
+    },
+    {
+      key: 'electricityBill',
+      label: 'Electricity bill',
+      score: lead.electricityBill?.points ?? 0,
+      max: 15,
+      passed: (lead.electricityBill?.points ?? 0) > 0,
+      detail: lead.electricityBill?.label,
+    },
+    {
+      key: 'personalInfo',
+      label: 'Personal information',
+      score: lead.personalInfo?.points ?? Math.round((breakdown.contactValidity || 0) * 0.5),
+      max: 50,
+      passed: breakdown.contactValid !== false,
+      detail: 'Name, contact, address, and property type',
+    },
+    {
+      key: 'solarPotential',
+      label: 'Solar potential',
+      score: breakdown.solarPotentialScore ?? breakdown.solarPotential ?? 0,
+      max: 100,
+      passed: (breakdown.solarPotentialScore ?? breakdown.solarPotential ?? 0) >= 45,
+      detail: breakdown.solarPotentialLabel,
+    },
+    {
+      key: 'existingSolar',
+      label: 'Existing solar',
+      score: solar.existingSolar?.points ?? 0,
+      max: 15,
+      passed: !breakdown.existingSolarLikely,
+      detail: solar.existingSolar?.label,
+    },
+  ];
 }
 
 export async function createInquiry(payload) {

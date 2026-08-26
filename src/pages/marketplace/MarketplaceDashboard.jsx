@@ -647,10 +647,15 @@ export default function MarketplaceDashboard() {
                   <div className="flex flex-col items-end gap-2">
                     <BiddingCountdown closesAt={o.biddingClosesAt} />
                     <div className="text-right">
-                      <div className="text-lg font-bold text-primary">{o.opportunityScore}</div>
+                      <div className="text-lg font-bold text-primary">{o.leadScore ?? o.opportunityScore}</div>
                       <div className="text-[10px] uppercase tracking-wide text-white/40">
-                        Opportunity score
+                        Lead score{o.leadScoreTier ? ` · ${o.leadScoreTier}` : ''}
                       </div>
+                      {o.solarPotentialScore != null && o.solarPotentialScore > 0 && (
+                        <div className="text-[10px] text-white/35 mt-0.5">
+                          Solar {o.solarPotentialScore}/100
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -711,7 +716,7 @@ export default function MarketplaceDashboard() {
                       onClick={() => setTab('wallet')}
                       className="text-[11px] text-amber-200/90 underline-offset-2 hover:underline"
                     >
-                      Top up wallet
+                      View wallet / pay window
                     </button>
                   )}
                 </div>
@@ -828,72 +833,26 @@ export default function MarketplaceDashboard() {
 
       {tab === 'wallet' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-primary/30 bg-primary/10 p-5">
+                    <div className="rounded-xl border border-primary/30 bg-primary/10 p-5">
             <div className="text-xs uppercase tracking-wide text-white/50">Bid wallet balance</div>
             <div className="text-3xl font-bold text-primary mt-1">{formatMoney(wallet.balance)}</div>
             <p className="text-xs text-white/50 mt-2">
               Bid wallet (USD) — not used for map lead unlocks. Minimum{' '}
               {formatMoney(wallet.minBalanceToBid || 25)} balance required to bid on opportunities.
-              Top up with card via Razorpay.
             </p>
           </div>
 
-          <section className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-white">Top up bid wallet</h2>
-            <div className="flex flex-wrap gap-2">
-              {(wallet.packs || MARKETPLACE_WALLET_PACKS).map((pack) => (
-                <button
-                  key={pack.id}
-                  type="button"
-                  disabled={walletPaying}
-                  onClick={() => startWalletCheckout({ packId: pack.id })}
-                  className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
-                >
-                  {pack.label || `${formatMoney(pack.price || pack.credits)} wallet`}
-                </button>
-              ))}
-            </div>
-            <form
-              className="flex flex-wrap gap-2 items-end"
-              onSubmit={(e) => {
-                e.preventDefault();
-              }}
-            >
-              <label className="text-xs text-white/60">
-                Custom amount (USD)
-                <input
-                  type="number"
-                  min="25"
-                  max="5000"
-                  step="1"
-                  className={inputCls}
-                  value={walletAmount}
-                  onChange={(e) => setWalletAmount(e.target.value)}
-                  placeholder="75"
-                />
-              </label>
-              <button
-                type="button"
-                disabled={walletPaying}
-                onClick={() => startWalletCheckout({ amount: walletAmount })}
-                className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2 disabled:opacity-50"
-              >
-                {walletPaying ? 'Opening checkout…' : 'Pay & top up'}
-              </button>
-            </form>
-            {isDevBuild && (
-              <>
-                <p className="text-[11px] text-white/45 leading-relaxed">
-                  Razorpay test mode (USD): card{' '}
-                  <span className="font-mono">4111 1111 1111 1111</span>, any future expiry, any CVV.
-                  If OTP appears, enter exactly <span className="font-mono">123456</span>.
-                </p>
-                <p className="text-[11px] text-amber-200/70 leading-relaxed">
-                  OTP locked out (429)? Wait 30–60 minutes, then retry in a fresh incognito window.
-                </p>
-              </>
-            )}
-          </section>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
+            <h2 className="text-sm font-semibold text-amber-200">Payment after you win</h2>
+            <p className="text-xs text-white/70 leading-relaxed">
+              Instant top-up packs are removed from this screen. When you win a marketplace lead,
+              complete payment within <strong className="text-white">10 minutes</strong> — a payment
+              due timer is set on the won lead.
+            </p>
+            <p className="text-[11px] text-white/45">
+              Existing wallet balance can still be used for bids. Admin can adjust balances if needed.
+            </p>
+          </div>
           <div className="rounded-xl border border-white/10 overflow-hidden">
             <div className="px-3 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-white/50">Recent wallet activity</p>
@@ -955,6 +914,17 @@ export default function MarketplaceDashboard() {
               <Meta label="Bill" value={selectedLead.monthlyBill ?? selectedLead.billRange} />
               <Meta label="Timeline" value={selectedLead.installationTimeline} />
             </dl>
+            {selectedLead.paymentDueAt && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  new Date(selectedLead.paymentDueAt).getTime() < Date.now()
+                    ? 'border-red-400/40 bg-red-500/10 text-red-200'
+                    : 'border-amber-400/40 bg-amber-500/10 text-amber-100'
+                }`}
+              >
+                Payment due: {formatWhen(selectedLead.paymentDueAt)}
+              </div>
+            )}
             {selectedLead.projectDetails && (
               <p className="text-xs text-white/60 border border-white/10 rounded-lg p-3">
                 {selectedLead.projectDetails}
@@ -1041,6 +1011,17 @@ function LeadList({ leads, loading, onSelect, showActions, emptyHint }) {
               {isBiddingOpen(lead.status) && lead.biddingClosesAt && (
                 <div className="mt-2">
                   <BiddingCountdown closesAt={lead.biddingClosesAt} compact />
+                </div>
+              )}
+              {lead.paymentDueAt && (
+                <div
+                  className={`mt-2 inline-flex items-center gap-1 text-[10px] font-semibold rounded px-1.5 py-0.5 ${
+                    new Date(lead.paymentDueAt).getTime() < Date.now()
+                      ? 'text-red-300 bg-red-500/10'
+                      : 'text-amber-200 bg-amber-500/10'
+                  }`}
+                >
+                  Payment due {formatWhen(lead.paymentDueAt)}
                 </div>
               )}
             </div>

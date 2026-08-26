@@ -5,6 +5,7 @@ import { clearToken } from "../../lib/auth.js";
 import { formatLeadGeneratedAt } from "../../lib/formatDate.js";
 import { placeAdvancedLeadMarker } from "../../lib/mapMarkers.js";
 import FullPageLoader from "../../components/layout/FullPageLoader.jsx";
+import DashboardTour, { DashboardTourButton } from "../../components/DashboardTour.jsx";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -191,7 +192,8 @@ export default function Dashboard() {
             growing.
           </p>
         </div>
-        <div className="flex gap-stack-sm text-xs">
+        <div className="flex gap-stack-sm text-xs flex-wrap items-center">
+          <DashboardTourButton />
           <Link
             to="/map"
             className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-glass-stroke rounded-lg text-on-surface hover:bg-white/5 transition-all font-button"
@@ -208,6 +210,8 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      <DashboardTour />
 
       {/* Summary Cards Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-stack-md mb-stack-lg text-xs">

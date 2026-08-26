@@ -25,6 +25,12 @@ export function maskOpportunity(row, { ownBid = null, allActiveAmounts = [], set
     electricityBillRange: row.bill_range || null,
     installationTimeline: row.installation_timeline || null,
     opportunityScore: Number(row.opportunity_score) || 0,
+    leadScore: Number(row.opportunity_score) || 0,
+    solarPotentialScore:
+      row.solar_potential_score != null
+        ? Number(row.solar_potential_score)
+        : Number(safeJson(row.score_breakdown)?.solarPotentialScore) || 0,
+    leadScoreTier: safeJson(row.score_breakdown)?.leadScoreTier || null,
     scoreBreakdown: safeJson(row.score_breakdown),
     biddingOpensAt: row.bidding_opens_at,
     biddingClosesAt: row.bidding_closes_at,
@@ -70,6 +76,12 @@ export function unlockOpportunity(row, settings = {}) {
     estimatedSolarKw: row.estimated_solar_kw != null ? Number(row.estimated_solar_kw) : null,
     solarPotentialLabel: row.solar_potential_label,
     opportunityScore: Number(row.opportunity_score) || 0,
+    leadScore: Number(row.opportunity_score) || 0,
+    solarPotentialScore:
+      row.solar_potential_score != null
+        ? Number(row.solar_potential_score)
+        : Number(safeJson(row.score_breakdown)?.solarPotentialScore) || 0,
+    leadScoreTier: safeJson(row.score_breakdown)?.leadScoreTier || null,
     scoreBreakdown: safeJson(row.score_breakdown),
     enrichment: safeJson(row.enrichment_json),
     minBid: row.min_bid != null ? Number(row.min_bid) : null,
@@ -78,6 +90,7 @@ export function unlockOpportunity(row, settings = {}) {
     winningAmount: row.winning_amount != null ? Number(row.winning_amount) : null,
     winnerUserId: row.winner_user_id,
     unlockedAt: row.unlocked_at,
+    paymentDueAt: row.payment_due_at || null,
     crmLeadId: row.crm_lead_id,
     expansionStage: row.expansion_stage,
     createdAt: row.created_at,

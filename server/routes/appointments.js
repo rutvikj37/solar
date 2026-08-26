@@ -3,6 +3,7 @@ import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { logActivity } from './crm.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
+import { sendEmail } from '../services/outreachDelivery.js';
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ async function assertLeadOwnership(leadId, userId, role) {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT a.*, l.owner_name, l.address, l.phone
+      `SELECT a.*, l.owner_name, l.address, l.phone, l.email
        FROM appointments a
        LEFT JOIN leads l ON l.id = a.lead_id
        WHERE a.user_id = ?
@@ -37,8 +38,9 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 
   try {
+    let lead = null;
     if (leadId) {
-      const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
+      lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
       if (!lead) return res.status(404).json({ error: 'Lead not found' });
     }
 
@@ -57,8 +59,38 @@ router.post('/', authenticateToken, async (req, res) => {
       ]);
     }
 
+    let emailSent = false;
+    const toEmail = lead?.email;
+    if (toEmail) {
+      try {
+        const when = new Date(scheduledAt).toLocaleString();
+        await sendEmail({
+          userId: req.user.id,
+          to: toEmail,
+          subject: `Appointment confirmation: ${title}`,
+          body: [
+            `Hi ${lead.owner_name || 'there'},`,
+            '',
+            `Your appointment is confirmed.`,
+            `Title: ${title}`,
+            `When: ${when}`,
+            `Duration: ${durationMinutes} minutes`,
+            location ? `Location: ${location}` : null,
+            notes ? `Notes: ${notes}` : null,
+            '',
+            'We look forward to meeting you.',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        });
+        emailSent = true;
+      } catch (mailErr) {
+        console.warn('[Appointments] confirmation email failed:', mailErr.message || mailErr);
+      }
+    }
+
     const [rows] = await db.query('SELECT * FROM appointments WHERE id = ?', [ins.insertId]);
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], emailSent });
   } catch (error) {
     console.error('Create appointment error:', error);
     res.status(500).json({ error: 'Failed to create appointment' });

@@ -89,10 +89,28 @@ export function buildSolarReportEstimates(data = {}) {
   const opportunityScore =
     data.opportunityScore != null
       ? Number(data.opportunityScore)
-      : Math.min(95, Math.max(52, 60 + Math.floor(bill / 15)));
+      : data.leadScore != null
+        ? Number(data.leadScore)
+        : Math.min(95, Math.max(52, 60 + Math.floor(bill / 15)));
+
+  const leadScoreTier =
+    data.leadScoreTier ||
+    (opportunityScore >= 90
+      ? 'Hot'
+      : opportunityScore >= 75
+        ? 'Strong'
+        : opportunityScore >= 55
+          ? 'Moderate'
+          : 'Early-stage');
 
   const fitLabel =
-    opportunityScore >= 80 ? 'Strong fit' : opportunityScore >= 65 ? 'Good fit' : 'Moderate fit';
+    opportunityScore >= 90
+      ? 'Hot'
+      : opportunityScore >= 75
+        ? 'Strong'
+        : opportunityScore >= 55
+          ? 'Moderate'
+          : 'Early-stage';
 
   return {
     bill,
@@ -117,6 +135,10 @@ export function buildSolarReportEstimates(data = {}) {
     treesEquiv,
     milesOffset,
     opportunityScore,
+    leadScore: opportunityScore,
+    leadScoreTier,
+    solarPotentialScore:
+      data.solarPotentialScore != null ? Number(data.solarPotentialScore) : null,
     fitLabel,
     googleSolarHit,
     productionSource: solar.productionSource || (googleSolarHit ? 'Google Solar API' : 'estimated'),
@@ -133,48 +155,85 @@ export function mapValidationToFitRows(validationChecks = [], estimates) {
 
   const rows = [
     {
-      label: 'Monthly electricity bill',
-      score: byKey.solarPotential?.score ?? estimates.opportunityScore * 0.15,
-      max: 15,
+      label: 'Purchase intent',
+      score: byKey.purchaseIntent?.score ?? byKey.buyingIntent?.score ?? 0,
+      max: byKey.purchaseIntent?.max ?? 20,
+      detail: byKey.purchaseIntent?.detail || 'How soon they want solar.',
+    },
+    {
+      label: 'Ownership & roof',
+      score: byKey.ownershipRoof?.score ?? 0,
+      max: byKey.ownershipRoof?.max ?? 15,
+      detail: byKey.ownershipRoof?.detail || 'Home ownership and roof type.',
+    },
+    {
+      label: 'Electricity bill',
+      score: byKey.electricityBill?.score ?? Math.min(15, Math.round(estimates.bill / 20)),
+      max: byKey.electricityBill?.max ?? 15,
       detail: `$${estimates.bill}/mo · Higher usage improves solar economics.`,
     },
     {
-      label: 'Solar coverage potential',
-      score: Math.round((estimates.coveragePct / 100) * 15),
-      max: 15,
-      detail: `${estimates.coveragePct}% of estimated demand · Based on system size vs usage.`,
-    },
-    {
-      label: 'Roof & property check',
-      score: byKey.propertyValidity?.score ? Math.round(byKey.propertyValidity.score * 0.1) : 8,
-      max: 10,
-      detail: byKey.propertyValidity?.detail || 'Address and property details validated.',
-    },
-    {
-      label: 'Contact & intent',
-      score: Math.round(
-        ((byKey.contactValidity?.score || 70) + (byKey.buyingIntent?.score || 60)) / 13,
-      ),
-      max: 10,
-      detail: byKey.buyingIntent?.detail || 'Timeline and contact details reviewed.',
-    },
-    {
-      label: 'Existing solar check',
-      score: byKey.existingSolar?.passed ? 10 : 2,
-      max: 10,
-      detail: byKey.existingSolar?.detail || 'No existing system flagged.',
-    },
-    {
-      label: 'Property type fit',
-      score: byKey.residentialCommercial?.score
-        ? Math.round(byKey.residentialCommercial.score * 0.05)
-        : 5,
-      max: 5,
-      detail: byKey.residentialCommercial?.detail || 'Residential property profile.',
+      label: 'Personal information',
+      score: byKey.personalInfo?.score ?? byKey.contactValidity?.score ?? 0,
+      max: byKey.personalInfo?.max ?? 50,
+      detail: byKey.personalInfo?.detail || 'Name, contact, address, and property type.',
     },
   ];
 
-  const earned = rows.reduce((sum, r) => sum + Math.min(r.max, r.score), 0);
+  const hasNewKeys = Boolean(
+    byKey.purchaseIntent || byKey.ownershipRoof || byKey.personalInfo || byKey.electricityBill,
+  );
+  if (!hasNewKeys && validationChecks.length) {
+    const legacy = [
+      {
+        label: 'Monthly electricity bill',
+        score: byKey.solarPotential?.score ?? estimates.opportunityScore * 0.15,
+        max: 15,
+        detail: `$${estimates.bill}/mo · Higher usage improves solar economics.`,
+      },
+      {
+        label: 'Solar coverage potential',
+        score: Math.round((estimates.coveragePct / 100) * 15),
+        max: 15,
+        detail: `${estimates.coveragePct}% of estimated demand · Based on system size vs usage.`,
+      },
+      {
+        label: 'Roof & property check',
+        score: byKey.propertyValidity?.score ? Math.round(byKey.propertyValidity.score * 0.1) : 8,
+        max: 10,
+        detail: byKey.propertyValidity?.detail || 'Address and property details validated.',
+      },
+      {
+        label: 'Contact & intent',
+        score: Math.round(
+          ((byKey.contactValidity?.score || 70) + (byKey.buyingIntent?.score || 60)) / 13,
+        ),
+        max: 10,
+        detail: byKey.buyingIntent?.detail || 'Timeline and contact details reviewed.',
+      },
+      {
+        label: 'Existing solar check',
+        score: byKey.existingSolar?.passed ? 10 : 2,
+        max: 10,
+        detail: byKey.existingSolar?.detail || 'No existing system flagged.',
+      },
+      {
+        label: 'Property type fit',
+        score: byKey.residentialCommercial?.score
+          ? Math.round(byKey.residentialCommercial.score * 0.05)
+          : 5,
+        max: 5,
+        detail: byKey.residentialCommercial?.detail || 'Residential property profile.',
+      },
+    ];
+    return {
+      rows: legacy,
+      earned: legacy.reduce((sum, r) => sum + Math.min(r.max, r.score), 0),
+      maxTotal: legacy.reduce((sum, r) => sum + r.max, 0),
+    };
+  }
+
+  const earned = rows.reduce((sum, r) => sum + Math.min(r.max, Number(r.score) || 0), 0);
   const maxTotal = rows.reduce((sum, r) => sum + r.max, 0);
 
   return { rows, earned, maxTotal };

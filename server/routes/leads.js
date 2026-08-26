@@ -978,7 +978,7 @@ router.post('/:id/activities', authenticateToken, asyncHandler(async (req, res) 
 // Update Lead status
 router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, notes } = req.body;
+  const { status, notes, followUpAt, nextAction, conversationNotes } = req.body;
 
   const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id, l.user_id');
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
@@ -992,6 +992,18 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
   if (notes !== undefined) {
     updates.push('notes = ?');
     params.push(notes);
+  }
+  if (followUpAt !== undefined) {
+    updates.push('follow_up_at = ?');
+    params.push(followUpAt ? new Date(followUpAt) : null);
+  }
+  if (nextAction !== undefined) {
+    updates.push('next_action = ?');
+    params.push(nextAction || null);
+  }
+  if (conversationNotes !== undefined) {
+    updates.push('conversation_notes = ?');
+    params.push(conversationNotes || null);
   }
 
   if (updates.length > 0) {

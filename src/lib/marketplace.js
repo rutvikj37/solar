@@ -24,19 +24,19 @@ export const DISPUTE_TYPES = [
   { id: 'wrong_property_type', label: 'Wrong property type' },
 ];
 
+export const TIMELINE_OPTIONS = [
+  '0–3 months',
+  '3–6 months',
+  '6–12 months',
+  'Just researching',
+];
+
 export const HOMEOWNER_STATUS_OPTIONS = [
   'Homeowner',
+  'Renter with owner permission',
   'Renter',
   'Property manager',
   'Business owner',
-];
-
-export const TIMELINE_OPTIONS = [
-  'ASAP / This month',
-  '1–3 months',
-  '3–6 months',
-  '6–12 months',
-  'Just exploring',
 ];
 
 export const BIDDING_OPEN_STATUSES = new Set(['bidding', 'no_bid_expanding']);

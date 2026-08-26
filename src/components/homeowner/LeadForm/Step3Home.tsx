@@ -9,7 +9,8 @@ export function Step3Home({ onNext, onBack, data, updateData }: any) {
 
   const ownershipOptions = [
     { label: 'Yes, I own it', value: 'own' },
-    { label: 'No, I rent it', value: 'rent' }
+    { label: 'I rent — have owner permission', value: 'rent_permission' },
+    { label: 'No, I rent it', value: 'rent' },
   ];
 
   const canContinue = Boolean(data.ownership && data.roofType);
@@ -18,7 +19,7 @@ export function Step3Home({ onNext, onBack, data, updateData }: any) {
     <div className="space-y-8">
       <div>
         <h3 className="text-xl font-bold text-white mb-4">Do you own this home?</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {ownershipOptions.map((opt) => (
             <button
               key={opt.value}

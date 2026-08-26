@@ -358,14 +358,15 @@ export default function MapFilterBar({
         )}
       </div>
 
-      {/* Preset Selector Dropdown */}
-      <div className="flex items-center gap-1.5">
+      {/* Preset Selector — saves Single Family / Skip Paneled / ZIP for one-click reuse */}
+      <div className="flex items-center gap-1.5" title="Save or load filter presets (ZIP + Single Family + Skip Paneled)">
         <select
           value={selectedPresetId}
           onChange={(e) => handleSelectPreset(e.target.value)}
           className="bg-surface-container-low border border-glass-stroke rounded-xl py-1.5 px-3 text-white text-xs focus:outline-none focus:border-primary"
+          aria-label="Saved filter presets"
         >
-          <option value="">-- Preset Filters --</option>
+          <option value="">Saved filters</option>
           {presets.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -376,7 +377,7 @@ export default function MapFilterBar({
         <button
           type="button"
           onClick={() => setShowSaveModal(true)}
-          title="Save current filters as preset"
+          title="Save current filters as a reusable preset"
           className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-primary border border-glass-stroke transition-colors"
         >
           <span className="material-symbols-outlined text-base">bookmark_add</span>

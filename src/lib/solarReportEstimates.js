@@ -89,10 +89,28 @@ export function buildSolarReportEstimates(data = {}) {
   const opportunityScore =
     data.opportunityScore != null
       ? Number(data.opportunityScore)
-      : Math.min(95, Math.max(52, 60 + Math.floor(bill / 15)));
+      : data.leadScore != null
+        ? Number(data.leadScore)
+        : Math.min(95, Math.max(52, 60 + Math.floor(bill / 15)));
+
+  const leadScoreTier =
+    data.leadScoreTier ||
+    (opportunityScore >= 90
+      ? 'Hot'
+      : opportunityScore >= 75
+        ? 'Strong'
+        : opportunityScore >= 55
+          ? 'Moderate'
+          : 'Early-stage');
 
   const fitLabel =
-    opportunityScore >= 80 ? 'Strong fit' : opportunityScore >= 65 ? 'Good fit' : 'Moderate fit';
+    opportunityScore >= 90
+      ? 'Hot'
+      : opportunityScore >= 75
+        ? 'Strong'
+        : opportunityScore >= 55
+          ? 'Moderate'
+          : 'Early-stage';
 
   return {
     bill,
@@ -117,6 +135,10 @@ export function buildSolarReportEstimates(data = {}) {
     treesEquiv,
     milesOffset,
     opportunityScore,
+    leadScore: opportunityScore,
+    leadScoreTier,
+    solarPotentialScore:
+      data.solarPotentialScore != null ? Number(data.solarPotentialScore) : null,
     fitLabel,
     googleSolarHit,
     productionSource: solar.productionSource || (googleSolarHit ? 'satellite modeled' : 'estimated'),
@@ -131,6 +153,49 @@ export function buildSolarReportEstimates(data = {}) {
 export function mapValidationToFitRows(validationChecks = [], estimates) {
   const byKey = Object.fromEntries(validationChecks.map((c) => [c.key, c]));
 
+  // Homeowner Lead Score breakdown (doc): Intent 20 + Ownership 15 + Bill 15 + Personal 50
+  const rows = [
+    {
+      label: 'Purchase intent',
+      score: byKey.purchaseIntent?.score ?? byKey.buyingIntent?.score ?? 0,
+      max: byKey.purchaseIntent?.max ?? 20,
+      detail: byKey.purchaseIntent?.detail || 'How soon they want solar.',
+    },
+    {
+      label: 'Ownership & roof',
+      score: byKey.ownershipRoof?.score ?? 0,
+      max: byKey.ownershipRoof?.max ?? 15,
+      detail: byKey.ownershipRoof?.detail || 'Home ownership and roof type.',
+    },
+    {
+      label: 'Electricity bill',
+      score: byKey.electricityBill?.score ?? Math.min(15, Math.round(estimates.bill / 20)),
+      max: byKey.electricityBill?.max ?? 15,
+      detail: `$${estimates.bill}/mo · Higher usage improves solar economics.`,
+    },
+    {
+      label: 'Personal information',
+      score: byKey.personalInfo?.score ?? byKey.contactValidity?.score ?? 0,
+      max: byKey.personalInfo?.max ?? 50,
+      detail: byKey.personalInfo?.detail || 'Name, contact, address, and property type.',
+    },
+  ];
+
+  // If legacy keys only, fall back to previous illustrative rows
+  const hasNewKeys = Boolean(
+    byKey.purchaseIntent || byKey.ownershipRoof || byKey.personalInfo || byKey.electricityBill,
+  );
+  if (!hasNewKeys && validationChecks.length) {
+    return mapLegacyFitRows(byKey, estimates);
+  }
+
+  const earned = rows.reduce((sum, r) => sum + Math.min(r.max, Number(r.score) || 0), 0);
+  const maxTotal = rows.reduce((sum, r) => sum + r.max, 0);
+
+  return { rows, earned, maxTotal };
+}
+
+function mapLegacyFitRows(byKey, estimates) {
   const rows = [
     {
       label: 'Monthly electricity bill',
@@ -169,9 +234,7 @@ export function mapValidationToFitRows(validationChecks = [], estimates) {
       detail: byKey.residentialCommercial?.detail || 'Residential property profile.',
     },
   ];
-
   const earned = rows.reduce((sum, r) => sum + Math.min(r.max, r.score), 0);
   const maxTotal = rows.reduce((sum, r) => sum + r.max, 0);
-
   return { rows, earned, maxTotal };
 }

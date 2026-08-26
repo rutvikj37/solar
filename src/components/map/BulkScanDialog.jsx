@@ -14,6 +14,15 @@ export default function BulkScanDialog({
   unlimitedCredits,
   onStartScan,
   busy = false,
+  // Filters (same as Bulk Area Scan page)
+  useMinSqFt = false,
+  setUseMinSqFt,
+  minSqFt = 0,
+  setMinSqFt,
+  singleFamily = true,
+  setSingleFamily,
+  skipPaneled = true,
+  setSkipPaneled,
 }) {
   if (!show) return null;
 
@@ -81,6 +90,63 @@ export default function BulkScanDialog({
               className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary outline-none"
             />
             <p className="text-[10px] text-on-surface-variant">Maximum 50 leads per scan</p>
+          </div>
+
+          {/* Bulk-scan filters: min roof area + single family + skip paneled */}
+          <div className="space-y-3 p-3 rounded-xl border border-white/10 bg-white/[0.03]">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Filters</p>
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="flex items-center gap-2 text-[11px] text-white">
+                <input
+                  type="checkbox"
+                  checked={useMinSqFt}
+                  onChange={(e) => setUseMinSqFt?.(e.target.checked)}
+                  className="accent-primary"
+                />
+                Filter by Min Roof Area
+              </span>
+              <span className="text-[10px] text-primary">
+                {useMinSqFt ? `${Number(minSqFt).toLocaleString()} sq ft` : 'Any Size (Default)'}
+              </span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="5000"
+              step="100"
+              disabled={!useMinSqFt}
+              value={minSqFt}
+              onChange={(e) => setMinSqFt?.(parseInt(e.target.value, 10))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary outline-none disabled:opacity-40"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <label
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] cursor-pointer ${
+                  singleFamily ? 'border-primary/40 bg-primary/10 text-white' : 'border-white/10 text-slate-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={singleFamily}
+                  onChange={(e) => setSingleFamily?.(e.target.checked)}
+                  className="accent-primary"
+                />
+                Single-family only
+              </label>
+              <label
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-[11px] cursor-pointer ${
+                  skipPaneled ? 'border-primary/40 bg-primary/10 text-white' : 'border-white/10 text-slate-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={skipPaneled}
+                  onChange={(e) => setSkipPaneled?.(e.target.checked)}
+                  className="accent-primary"
+                />
+                Skip paneled homes
+              </label>
+            </div>
           </div>
 
           <div className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-2">

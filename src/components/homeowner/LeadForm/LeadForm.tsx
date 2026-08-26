@@ -133,11 +133,17 @@ export function LeadForm() {
             monthlyBill: formData.monthlyBill,
             propertyLat: formData.propertyLat != null ? Number(formData.propertyLat) : undefined,
             propertyLng: formData.propertyLng != null ? Number(formData.propertyLng) : undefined,
-            homeownerStatus: formData.ownership === 'rent' ? 'Renter' : 'Homeowner',
+            homeownerStatus:
+              formData.ownership === 'rent'
+                ? 'Renter'
+                : formData.ownership === 'rent_permission'
+                  ? 'Renter with owner permission'
+                  : 'Homeowner',
             installationTimeline: formData.timeline,
             projectDetails: [
               formData.roofType ? `Roof: ${formData.roofType}` : null,
               formData.propertyType ? `Property: ${formData.propertyType}` : null,
+              formData.ownership === 'rent_permission' ? 'Owner permission: yes' : null,
               formData.propertyLat != null && formData.propertyLng != null
                 ? `Pin: ${Number(formData.propertyLat).toFixed(6)},${Number(formData.propertyLng).toFixed(6)}`
                 : null,
@@ -188,6 +194,9 @@ export function LeadForm() {
         ...formData,
         leadCode: data.leadCode,
         opportunityScore: data.opportunityScore,
+        leadScore: data.leadScore ?? data.opportunityScore,
+        leadScoreTier: data.leadScoreTier,
+        solarPotentialScore: data.solarPotentialScore,
         marketplaceStatus: data.status,
         propertyType: data.propertyType,
         solarPotentialLabel: data.solarPotentialLabel,
@@ -202,6 +211,8 @@ export function LeadForm() {
         googleSolarHit: data.enrichmentSource === 'google_solar',
         propertyLat: data.propertyLat ?? formData.propertyLat,
         propertyLng: data.propertyLng ?? formData.propertyLng,
+        scoreBreakdown: data.scoreBreakdown ?? null,
+        validationChecks: data.validationChecks ?? [],
       };
 
       setFormData(reportPayload);

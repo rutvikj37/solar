@@ -137,6 +137,7 @@ export async function closeBiddingForLead(leadId, { retryDepth = 0 } = {}) {
          winner_user_id = ?,
          winning_amount = ?,
          unlocked_at = NOW(),
+         payment_due_at = DATE_ADD(NOW(), INTERVAL 10 MINUTE),
          crm_lead_id = ?,
          expansion_stage = 0,
          expansion_radius_miles = 25
@@ -331,6 +332,7 @@ export async function selectWinnerBid(leadId, bidId) {
          winner_user_id = ?,
          winning_amount = ?,
          unlocked_at = NOW(),
+         payment_due_at = DATE_ADD(NOW(), INTERVAL 10 MINUTE),
          crm_lead_id = ?,
          expansion_stage = 0,
          expansion_radius_miles = 25

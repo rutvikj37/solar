@@ -81,27 +81,15 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
         { name: 'Support', path: '/support', icon: 'support_agent' },
         ...(isAdmin
           ? [{ name: 'Admin', path: '/admin', icon: 'admin_panel_settings', badge: 'Operator' }]
-          : [])
+          : []),
+        { name: 'Export CSV', action: 'export', icon: 'download' },
       ]
     },
-    {
-      title: 'TOOLS',
-      items: [
-        { name: 'Locate Me', action: 'locate', icon: 'location_searching' },
-        { name: 'Export CSV', action: 'export', icon: 'download' }
-      ]
-    }
   ];
 
   const handleAction = (actionName) => {
     handleClose();
-    if (actionName === 'locate') {
-      if (typeof window.locateMe === 'function') {
-        window.locateMe();
-      } else {
-        window.location.href = '/map?action=locate';
-      }
-    } else if (actionName === 'export') {
+    if (actionName === 'export') {
       if (typeof window.exportCSV === 'function') {
         window.exportCSV();
       } else {
@@ -125,8 +113,8 @@ export default function Sidebar({ isOpen, setIsOpen, onClose, showBanner }) {
       )}
 
       <aside
-        className={`fixed right-0 ${topStyle} ${heightStyle} w-[260px] bg-deep/95 backdrop-blur-xl border-l border-glass-stroke shadow-2xl flex flex-col p-5 z-50 transition-all duration-300 lg:translate-x-0 lg:border lg:bg-deep/80 lg:rounded-2xl lg:h-auto lg:bottom-6 ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed left-0 ${topStyle} ${heightStyle} w-[260px] bg-deep/95 backdrop-blur-xl border-r border-glass-stroke shadow-2xl flex flex-col p-5 z-50 transition-all duration-300 lg:translate-x-0 lg:border lg:bg-deep/80 lg:rounded-2xl lg:h-auto lg:bottom-6 lg:left-6 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex justify-between items-center mb-4 lg:hidden pb-2 border-b border-glass-stroke">

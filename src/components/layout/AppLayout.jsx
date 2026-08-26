@@ -73,8 +73,8 @@ export default function AppLayout() {
               isMapPage
                 ? 'p-0 h-screen overflow-hidden relative'
                 : isWideTablePage
-                  ? 'pb-8 px-4 sm:px-5 lg:pr-[280px] max-w-[1680px] mx-auto w-full'
-                  : 'pb-12 px-6 lg:pr-[280px] max-w-7xl mx-auto w-full'
+                  ? 'pb-8 px-4 sm:px-5 lg:pl-[280px] max-w-[1680px] mx-auto w-full'
+                  : 'pb-12 px-6 lg:pl-[280px] max-w-7xl mx-auto w-full'
             }`}
           >
             <div className="app-page h-full min-h-0">

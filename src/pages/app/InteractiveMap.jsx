@@ -4,7 +4,6 @@ import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import UpgradeModal from '../../components/UpgradeModal';
 import LeadManagerPanel from '../../components/LeadManagerPanel';
 import MapModePill from '../../components/map/MapModePill';
-import MapStatusBar from '../../components/map/MapStatusBar';
 import MapFilterBar from '../../components/map/MapFilterBar';
 import AskHeraFab from '../../components/map/AskHeraFab';
 import PropertyDrawer from '../../components/map/PropertyDrawer';
@@ -742,7 +741,8 @@ export default function InteractiveMap() {
       solar: {},
       propertyData: {},
       contact: {},
-      aiLeadScore: { overall: 0, breakdown: {} }
+      aiLeadScore: { overall: 0, breakdown: {} },
+      isSearchMatch: Boolean(previewProp?.isSearchMatch),
     });
     setActiveTab('Overview');
     setGeneratedLeadStatus('idle');
@@ -754,7 +754,10 @@ export default function InteractiveMap() {
       });
       if (!response.ok) throw new Error('Failed to fetch details');
       const data = await response.json();
-      setSelectedProperty(data);
+      setSelectedProperty({
+        ...data,
+        isSearchMatch: Boolean(previewProp?.isSearchMatch || data.isSearchMatch),
+      });
       setGeneratedLeadStatus(data.unlocked ? 'generated' : 'idle');
       const pinLat = Number(data.lat);
       const pinLng = Number(data.lng);
@@ -917,8 +920,12 @@ export default function InteractiveMap() {
           propertyId: selectedProperty.id,
           detail: {
             ...selectedProperty,
-            expectedAddress: looksLikeStreetAddress(zip) ? zip.trim() : undefined,
-            searchQuery: zip || undefined,
+            // Only enforce search-address match for the searched parcel — neighbors unlock freely.
+            expectedAddress:
+              selectedProperty.isSearchMatch && looksLikeStreetAddress(zip)
+                ? zip.trim()
+                : undefined,
+            searchQuery: undefined,
           }
         })
       });
@@ -977,11 +984,7 @@ export default function InteractiveMap() {
           </div>
         )}
 
-        <MapStatusBar
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20"
-          feedLive={configStatus === 'ready' && !mapError}
-          zoom={15}
-        />
+        {/* Status telemetry bar removed — keep map UI simple */}
 
         <button
           type="button"
@@ -1148,6 +1151,14 @@ export default function InteractiveMap() {
           leadCredits={leadCredits}
           unlimitedCredits={unlimitedCredits}
           onStartScan={handleExecuteScan}
+          useMinSqFt={useMinSqFt}
+          setUseMinSqFt={setUseMinSqFt}
+          minSqFt={minSqFt}
+          setMinSqFt={setMinSqFt}
+          singleFamily={singleFamily}
+          setSingleFamily={setSingleFamily}
+          skipPaneled={skipPaneled}
+          setSkipPaneled={setSkipPaneled}
         />
 
         <AskHeraFab className="absolute bottom-6 right-6 z-40" />

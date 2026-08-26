@@ -75,6 +75,9 @@ export default function LeadDetails() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState('');
+  const [followUpAt, setFollowUpAt] = useState('');
+  const [nextAction, setNextAction] = useState('');
+  const [conversationNotes, setConversationNotes] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [apptAt, setApptAt] = useState('');
   const [busy, setBusy] = useState('');
@@ -125,6 +128,13 @@ export default function LeadDetails() {
         const data = await response.json();
         setLead(data);
         setNote(data.notes || '');
+        setFollowUpAt(
+          data.follow_up_at
+            ? new Date(data.follow_up_at).toISOString().slice(0, 16)
+            : '',
+        );
+        setNextAction(data.next_action || '');
+        setConversationNotes(data.conversation_notes || '');
         setEmailBody(
           `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`
         );
@@ -310,6 +320,30 @@ export default function LeadDetails() {
     });
     await load();
     setBusy('');
+  };
+
+  const handleSaveFollowUp = async () => {
+    setBusy('followup');
+    try {
+      const res = await fetch(`${API}/api/leads/${id}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          followUpAt: followUpAt || null,
+          nextAction,
+          conversationNotes,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save follow-up');
+      }
+      setLead(await res.json());
+    } catch (err) {
+      alert(err.message || 'Failed to save follow-up');
+    } finally {
+      setBusy('');
+    }
   };
 
   const handleExport = async () => {
@@ -632,6 +666,48 @@ export default function LeadDetails() {
                 className="bg-white/10 hover:bg-white/15 text-white px-4 py-2 rounded-lg font-bold"
               >
                 Save Note
+              </button>
+            </div>
+
+            <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
+              <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest">
+                Follow-up
+              </h3>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
+                Schedule follow-up
+                <input
+                  type="datetime-local"
+                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                  value={followUpAt}
+                  onChange={(e) => setFollowUpAt(e.target.value)}
+                />
+              </label>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
+                Next action
+                <input
+                  type="text"
+                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                  placeholder="e.g. Send proposal, call back, site visit"
+                  value={nextAction}
+                  onChange={(e) => setNextAction(e.target.value)}
+                />
+              </label>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
+                What they talked about
+                <textarea
+                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs min-h-[80px]"
+                  placeholder="Conversation notes…"
+                  value={conversationNotes}
+                  onChange={(e) => setConversationNotes(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleSaveFollowUp}
+                disabled={busy === 'followup'}
+                className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
+              >
+                {busy === 'followup' ? 'Saving…' : 'Save follow-up'}
               </button>
             </div>
 

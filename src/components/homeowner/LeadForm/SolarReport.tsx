@@ -48,7 +48,10 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
   if (!data) return null;
 
   const estimates = buildSolarReportEstimates(data);
-  const fit = mapValidationToFitRows([], estimates);
+  const fit = mapValidationToFitRows(
+    Array.isArray(data.validationChecks) ? data.validationChecks : [],
+    estimates,
+  );
   const leadCode = String(data.leadCode || 'Pending');
   const address = String(data.address || 'Your property');
   const roofType = String(data.roofType || 'Roof assessed');
@@ -217,7 +220,8 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
                 )}
               </p>
               <p className="text-[10px] font-black uppercase tracking-wider text-cyan-400/80">
-                Solar Opportunity Score · {estimates.opportunityScore} / 100
+                Lead Score · {estimates.opportunityScore} / 100
+                {estimates.leadScoreTier ? ` · ${estimates.leadScoreTier}` : ''}
               </p>
             </div>
           </div>
@@ -228,12 +232,12 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
           <div className="flex flex-col lg:flex-row gap-8">
             <div className="lg:w-1/3 text-center lg:text-left">
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-cyan-400 mb-2">
-                Your solar fit
+                Your lead score
               </p>
               <h2 className="text-xl font-black leading-snug">
-                Not every home is ideal for solar.
-                <span className="text-white/70"> Yours scored </span>
-                {estimates.fitLabel.toLowerCase()}.
+                How likely you are to become a solar customer:
+                <span className="text-white/70"> scored </span>
+                {String(estimates.fitLabel || 'Moderate').toLowerCase()}.
               </h2>
               <div className="mt-6 inline-flex flex-col items-center lg:items-start">
                 <div className="size-32 rounded-full border-[10px] border-white/10 border-t-cyan-400 flex flex-col items-center justify-center">
@@ -241,8 +245,25 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
                   <span className="text-[10px] font-bold text-white/40 uppercase">/ 100</span>
                 </div>
                 <p className="mt-3 text-xs text-white/45 max-w-xs">
-                  Combined score from property, usage, intent, and solar potential for your address.
+                  Purchase intent, ownership, bill, and personal details (0–100).
+                  {estimates.solarPotentialScore != null && (
+                    <>
+                      {' '}
+                      Solar potential for installers: {estimates.solarPotentialScore}/100.
+                    </>
+                  )}
                 </p>
+                <details className="mt-4 text-left max-w-xs mx-auto lg:mx-0">
+                  <summary className="text-[10px] font-bold uppercase tracking-wider text-cyan-400/80 cursor-pointer">
+                    How this score is calculated
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-[11px] text-white/55 list-disc pl-4">
+                    <li>Purchase intent — up to 20</li>
+                    <li>Ownership + roof — up to 15</li>
+                    <li>Electricity bill — up to 15</li>
+                    <li>Personal information — up to 50</li>
+                  </ul>
+                </details>
               </div>
             </div>
 
