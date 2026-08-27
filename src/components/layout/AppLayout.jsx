@@ -1,15 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import Sidebar from './Sidebar';
+import Sidebar, { COLLAPSED_WIDTH, EXPANDED_WIDTH } from './Sidebar';
 import TopBar from './TopBar';
 import { fetchMe } from '../../lib/auth.js';
+
+const SIDEBAR_COLLAPSED_KEY = 'str_sidebar_collapsed';
 
 /**
  * Persistent authenticated shell. Used as a React Router layout route so
  * TopBar/Sidebar stay mounted across in-app navigations.
  */
 export default function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [showBanner, setShowBanner] = useState(true);
   const [credits, setCredits] = useState(null);
   const location = useLocation();
@@ -17,6 +26,7 @@ export default function AppLayout() {
   const isWideTablePage = location.pathname === '/my-leads';
 
   const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
+  const sidebarPad = collapsed ? COLLAPSED_WIDTH + 28 : EXPANDED_WIDTH + 20;
 
   useEffect(() => {
     let cancelled = false;
@@ -27,6 +37,23 @@ export default function AppLayout() {
       cancelled = true;
     };
   }, []);
+
+  // Close mobile drawer on navigate
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore quota / private mode */
+      }
+      return next;
+    });
+  };
 
   const creditsLow = credits !== null && credits <= 2;
   const creditsEmpty = credits === 0;
@@ -55,8 +82,10 @@ export default function AppLayout() {
               </Link>
             )}
             <button
+              type="button"
               onClick={() => setShowBanner(false)}
               className="text-on-surface-variant hover:text-on-surface transition-colors p-0.5"
+              aria-label="Dismiss banner"
             >
               <span className="material-symbols-outlined text-[14px] leading-none block">close</span>
             </button>
@@ -65,16 +94,27 @@ export default function AppLayout() {
       )}
 
       <div className="flex-grow flex flex-col relative min-h-screen">
-        <TopBar onMenuToggle={() => setSidebarOpen(true)} showBanner={showBanner} />
+        <TopBar
+          onMenuToggle={() => setMobileOpen(true)}
+          mobileNavOpen={mobileOpen}
+          onSidebarToggle={toggleCollapsed}
+          sidebarCollapsed={collapsed}
+          showBanner={showBanner}
+        />
 
         <div className="flex-1 flex w-full relative">
           <main
-            className={`flex-1 min-h-0 ${bodyPadding} ${
+            style={
+              isMapPage
+                ? undefined
+                : { ['--app-sidebar-pad']: `${sidebarPad}px` }
+            }
+            className={`flex-1 min-h-0 transition-[padding] duration-300 ease-out ${bodyPadding} ${
               isMapPage
                 ? 'p-0 h-screen overflow-hidden relative'
                 : isWideTablePage
-                  ? 'pb-8 px-4 sm:px-5 lg:pl-[280px] max-w-[1680px] mx-auto w-full'
-                  : 'pb-12 px-6 lg:pl-[280px] max-w-7xl mx-auto w-full'
+                  ? 'pb-8 px-4 sm:px-5 lg:pl-[var(--app-sidebar-pad)] max-w-[1680px] mx-auto w-full'
+                  : 'pb-12 px-6 lg:pl-[var(--app-sidebar-pad)] max-w-7xl mx-auto w-full'
             }`}
           >
             <div className="app-page h-full min-h-0">
@@ -83,7 +123,13 @@ export default function AppLayout() {
           </main>
         </div>
 
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} showBanner={showBanner} />
+        <Sidebar
+          mobileOpen={mobileOpen}
+          onMobileClose={() => setMobileOpen(false)}
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapsed}
+          showBanner={showBanner}
+        />
       </div>
     </div>
   );
