@@ -101,7 +101,7 @@ function kpiRow(doc, items, y) {
   return y + 64;
 }
 
-function kpiRow(doc, items, y) {
+function drawFooter(doc, leadCode) {
   const footerY = PAGE.height - 42;
   doc.rect(0, footerY - 6, PAGE.width, 48).fill(C.deep);
   doc.font('Helvetica').fontSize(7).fillColor('#94A3B8');
