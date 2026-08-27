@@ -9,11 +9,9 @@ import { buildLeadMarkerIcon } from '../../lib/mapMarkers.js';
 import { resolveGoogleMapsApiKey } from '../../lib/mapsKey.js';
 import FullPageLoader from '../../components/layout/FullPageLoader.jsx';
 import {
-  connectEmailProvider,
   emailToastFromSearchParams,
   fetchEmailIntegration,
 } from '../../lib/emailIntegrations.js';
-import SmtpConnectForm from '../../components/SmtpConnectForm.jsx';
 import { fetchMe, isAdminRole, peekAuthSessionCache, getToken } from '../../lib/auth.js';
 import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../../utils/leadSharePdf.js';
 
@@ -95,8 +93,6 @@ export default function LeadDetails() {
   const [emailIntegration, setEmailIntegration] = useState(null);
   const [emailQuota, setEmailQuota] = useState(null);
   const [emailMsg, setEmailMsg] = useState('');
-  const [emailConnectBusy, setEmailConnectBusy] = useState('');
-  const [showSmtpConnect, setShowSmtpConnect] = useState(false);
   const [mapEl, setMapEl] = useState(null);
   const [isAdmin, setIsAdmin] = useState(() => isAdminRole(peekAuthSessionCache(getToken())?.role));
   const mapInstanceRef = useRef(null);
@@ -404,7 +400,7 @@ export default function LeadDetails() {
       return;
     }
     if (!emailIntegration?.connected) {
-      setEmailMsg('Connect Gmail, Outlook, or SMTP below before sending.');
+      setEmailMsg('Connect your mailbox in Integrations before sending.');
       return;
     }
     if (
@@ -435,36 +431,6 @@ export default function LeadDetails() {
       setEmailMsg(err.message || 'Email failed');
     } finally {
       setBusy('');
-    }
-  };
-
-  const returnToLead = `/lead/${id}`;
-
-  const handleConnectOAuth = async (provider) => {
-    setEmailConnectBusy(provider);
-    setEmailMsg('');
-    try {
-      await connectEmailProvider(provider, returnToLead);
-    } catch (err) {
-      setEmailMsg(err.message || 'Could not start email connect');
-      setEmailConnectBusy('');
-    }
-  };
-
-  const handleSmtpConnected = async (json) => {
-    setEmailMsg(json?.message || 'SMTP connected — you can send from your address.');
-    setShowSmtpConnect(false);
-    try {
-      setEmailIntegration(await fetchEmailIntegration());
-      const t = token();
-      if (t) {
-        const quotaRes = await fetch(`${API}/api/email/usage`, {
-          headers: { Authorization: `Bearer ${t}` },
-        });
-        if (quotaRes.ok) setEmailQuota(await quotaRes.json());
-      }
-    } catch {
-      /* keep prior state */
     }
   };
 
@@ -909,7 +875,8 @@ export default function LeadDetails() {
               ) : (
                 <>
                   <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                    Emails send from your inbox. Replies come back to you. Uses your plan email quota.
+                    Connect your mailbox in Integrations to send from your inbox. Replies come back
+                    to you.
                   </p>
                   {emailMsg && (
                     <p
@@ -923,55 +890,12 @@ export default function LeadDetails() {
                       {emailMsg}
                     </p>
                   )}
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => handleConnectOAuth('gmail')}
-                      disabled={!!emailConnectBusy || emailIntegration?.gmailAvailable === false}
-                      className="w-full bg-primary text-on-primary py-3 rounded-xl font-bold text-sm hover:brightness-110 disabled:opacity-50"
-                    >
-                      {emailConnectBusy === 'gmail' ? 'Opening Gmail…' : 'Connect Gmail'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleConnectOAuth('outlook')}
-                      disabled={!!emailConnectBusy || emailIntegration?.outlookAvailable === false}
-                      className="w-full bg-white/10 border border-glass-stroke text-white py-2.5 rounded-xl font-bold text-sm hover:bg-white/15 disabled:opacity-50"
-                    >
-                      {emailConnectBusy === 'outlook' ? 'Opening Outlook…' : 'Connect Outlook'}
-                    </button>
-                    {!showSmtpConnect ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowSmtpConnect(true)}
-                        disabled={!!emailConnectBusy}
-                        className="w-full bg-white/5 border border-glass-stroke text-white py-2.5 rounded-xl font-bold text-sm hover:bg-white/10 disabled:opacity-50"
-                      >
-                        Custom SMTP / Company email
-                      </button>
-                    ) : (
-                      <div className="rounded-xl border border-glass-stroke bg-black/20 p-4 space-y-2">
-                        <p className="text-sm text-white font-semibold">Custom SMTP</p>
-                        <SmtpConnectForm
-                          compact
-                          onCancel={() => setShowSmtpConnect(false)}
-                          onSuccess={handleSmtpConnected}
-                          onError={(msg) => setEmailMsg(msg)}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {(emailIntegration?.gmailAvailable === false ||
-                    emailIntegration?.outlookAvailable === false) && (
-                    <p className="text-[10px] text-on-surface-variant">
-                      {emailIntegration?.gmailAvailable === false &&
-                      emailIntegration?.outlookAvailable === false
-                        ? 'Gmail/Outlook not enabled yet — use Custom SMTP, or ask your admin.'
-                        : emailIntegration?.gmailAvailable === false
-                          ? 'Gmail not enabled yet — try Outlook or Custom SMTP.'
-                          : 'Outlook not enabled yet — try Gmail or Custom SMTP.'}
-                    </p>
-                  )}
+                  <Link
+                    to="/integrations#email"
+                    className="inline-flex w-full items-center justify-center bg-primary text-on-primary py-3 rounded-xl font-bold text-sm hover:brightness-110"
+                  >
+                    Open Integrations
+                  </Link>
                 </>
               )}
             </div>

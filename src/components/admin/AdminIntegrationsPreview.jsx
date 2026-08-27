@@ -77,7 +77,7 @@ export default function AdminIntegrationsPreview({ crmSetup, emailSetup }) {
   if (!crmSetup && !emailSetup) return null;
 
   const crmReady = crmSetup?.hubspotConfigured || crmSetup?.salesforceConfigured;
-  const emailReady = emailSetup?.gmailConfigured || emailSetup?.outlookConfigured;
+  const emailReady = !!emailSetup?.gmailConfigured;
 
   return (
     <div className="space-y-6">
@@ -105,12 +105,12 @@ export default function AdminIntegrationsPreview({ crmSetup, emailSetup }) {
         <h4 className="text-white font-bold text-sm">Email</h4>
         {!emailReady && (
           <p className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
-            Gmail and Outlook are locked for users until Google / Microsoft OAuth is configured below. Custom SMTP is always available.
+            Gmail is locked for users until Google OAuth is configured below. Custom SMTP is always
+            available.
           </p>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <EmailPreviewCard provider="gmail" configured={!!emailSetup?.gmailConfigured} />
-          <EmailPreviewCard provider="outlook" configured={!!emailSetup?.outlookConfigured} />
           <EmailPreviewCard provider="smtp" configured alwaysOn />
         </div>
       </div>

@@ -39,10 +39,19 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.hash !== '#email') return;
+    const el = document.getElementById('email');
+    if (el) {
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  }, [loading]);
+
   const connectOAuth = async (provider) => {
     setBusy(provider);
     try {
-      await connectEmailProvider(provider, '/integrations');
+      await connectEmailProvider(provider, '/integrations#email');
     } catch (err) {
       onToast?.(err.message);
       setBusy('');
@@ -89,16 +98,20 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-48 rounded-2xl bg-white/5 border border-glass-stroke animate-pulse" />
-        ))}
+      <div id="email" className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-48 rounded-2xl bg-white/5 border border-glass-stroke animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
 
   const connected = data?.connected;
   const activeProvider = data?.provider;
+  const gmailMeta = EMAIL_PROVIDER_META.gmail;
+  const gmailAvailable = data?.gmailAvailable;
 
   const quotaLabel = emailQuota?.unlimited
     ? 'Unlimited emails on your plan'
@@ -107,12 +120,12 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
       : 'Counted against your subscription';
 
   return (
-    <div className="space-y-4">
+    <div id="email" className="space-y-4 scroll-mt-6">
       <div>
         <h3 className="text-white font-bold text-lg">Email</h3>
         <p className="text-xs text-on-surface-variant mt-1">
-          Connect Gmail, Outlook, or company SMTP in one step. Emails send from your inbox —
-          replies come back to you. Uses your plan email quota.
+          Connect Gmail or company SMTP in one step. Emails send from your inbox — replies come
+          back to you. Uses your plan email quota.
         </p>
       </div>
 
@@ -166,44 +179,33 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
 
       {!connected && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {['gmail', 'outlook'].map((key) => {
-              const meta = EMAIL_PROVIDER_META[key];
-              const available = key === 'gmail' ? data?.gmailAvailable : data?.outlookAvailable;
-              return (
-                <div
-                  key={key}
-                  className="rounded-2xl border border-glass-stroke bg-white/[0.03] p-5 flex flex-col min-h-[160px]"
+          <div className="rounded-2xl border border-glass-stroke bg-white/[0.03] p-5 flex flex-col min-h-[160px]">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-3xl text-primary">{gmailMeta.icon}</span>
+              <div>
+                <p className="text-white font-bold text-lg">{gmailMeta.label}</p>
+                <p className="text-[11px] text-on-surface-variant">{gmailMeta.description}</p>
+              </div>
+            </div>
+            <div className="mt-auto pt-5">
+              {gmailAvailable ? (
+                <button
+                  type="button"
+                  onClick={() => connectOAuth('gmail')}
+                  disabled={!!busy}
+                  className="w-full px-4 py-3.5 rounded-xl bg-primary text-on-primary text-sm font-bold hover:brightness-110 disabled:opacity-50"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-3xl text-primary">{meta.icon}</span>
-                    <div>
-                      <p className="text-white font-bold text-lg">{meta.label}</p>
-                      <p className="text-[11px] text-on-surface-variant">{meta.description}</p>
-                    </div>
-                  </div>
-                  <div className="mt-auto pt-5">
-                    {available ? (
-                      <button
-                        type="button"
-                        onClick={() => connectOAuth(key)}
-                        disabled={!!busy}
-                        className="w-full px-4 py-3.5 rounded-xl bg-primary text-on-primary text-sm font-bold hover:brightness-110 disabled:opacity-50"
-                      >
-                        {busy === key ? 'Opening login…' : `Connect ${meta.label}`}
-                      </button>
-                    ) : (
-                      <div className="rounded-xl border border-glass-stroke bg-black/20 px-4 py-3 text-center space-y-1.5">
-                        <span className="material-symbols-outlined text-on-surface-variant text-xl">lock</span>
-                        <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                          {lockedMessage(meta.label)}
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  {busy === 'gmail' ? 'Opening login…' : `Connect ${gmailMeta.label}`}
+                </button>
+              ) : (
+                <div className="rounded-xl border border-glass-stroke bg-black/20 px-4 py-3 text-center space-y-1.5">
+                  <span className="material-symbols-outlined text-on-surface-variant text-xl">lock</span>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                    {lockedMessage(gmailMeta.label)}
+                  </p>
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-glass-stroke bg-white/[0.03] p-5 space-y-4">
@@ -236,8 +238,8 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
 
       {!connected && (
         <p className="text-[11px] text-on-surface-variant">
-          Pick any option above — no need to hunt for settings. Platform noreply is never used as
-          From for customer outreach.
+          Pick Gmail or Custom SMTP above — no need to hunt for settings. Platform noreply is never
+          used as From for customer outreach.
         </p>
       )}
     </div>

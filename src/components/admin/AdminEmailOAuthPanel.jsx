@@ -91,8 +91,8 @@ export default function AdminEmailOAuthPanel({ embedded = false, onSaved }) {
       setForm((prev) => ({ ...prev, googleClientSecret: '', microsoftClientSecret: '' }));
       setSuccess(
         json.ready
-          ? 'Email OAuth settings saved. Users can connect Gmail or Outlook from Integrations.'
-          : 'Settings saved, but Gmail or Outlook still needs both Client ID and Secret before users can connect.',
+          ? 'Email OAuth settings saved. Users can connect Gmail from Integrations.'
+          : 'Settings saved, but Gmail still needs both Client ID and Secret before users can connect.',
       );
       onSaved?.();
     } catch (err) {
@@ -112,14 +112,17 @@ export default function AdminEmailOAuthPanel({ embedded = false, onSaved }) {
         <div>
           <h3 className="text-white font-bold text-lg">Email OAuth settings</h3>
           <p className="text-xs text-on-surface-variant mt-1">
-            One-time platform setup. Users connect their own Gmail, Outlook, or SMTP from Integrations.
+            One-time platform setup. Users connect Gmail or SMTP from Integrations.
           </p>
         </div>
       )}
       {embedded && (
         <div>
           <h4 className="text-white font-bold text-base">Configure Email OAuth</h4>
-          <p className="text-xs text-on-surface-variant mt-1">Google and Microsoft app credentials for Gmail / Outlook.</p>
+          <p className="text-xs text-on-surface-variant mt-1">
+            Google app credentials unlock Gmail for users. Microsoft fields are optional / unused in
+            the user UI.
+          </p>
         </div>
       )}
 
