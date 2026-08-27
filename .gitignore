@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .env
 server/.env
+*_accessKeys.csv
+*accessKeys.csv
 server/uploads/tickets/*
 !server/uploads/tickets/.gitkeep
 server/uploads/voicemail-cache/*
