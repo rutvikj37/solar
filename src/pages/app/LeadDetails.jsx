@@ -8,7 +8,12 @@ import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
 import { buildLeadMarkerIcon } from '../../lib/mapMarkers.js';
 import { resolveGoogleMapsApiKey } from '../../lib/mapsKey.js';
 import FullPageLoader from '../../components/layout/FullPageLoader.jsx';
-import { fetchEmailIntegration } from '../../lib/emailIntegrations.js';
+import {
+  connectEmailProvider,
+  emailToastFromSearchParams,
+  fetchEmailIntegration,
+} from '../../lib/emailIntegrations.js';
+import SmtpConnectForm from '../../components/SmtpConnectForm.jsx';
 import { fetchMe, isAdminRole, peekAuthSessionCache, getToken } from '../../lib/auth.js';
 import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../../utils/leadSharePdf.js';
 
@@ -90,6 +95,8 @@ export default function LeadDetails() {
   const [emailIntegration, setEmailIntegration] = useState(null);
   const [emailQuota, setEmailQuota] = useState(null);
   const [emailMsg, setEmailMsg] = useState('');
+  const [emailConnectBusy, setEmailConnectBusy] = useState('');
+  const [showSmtpConnect, setShowSmtpConnect] = useState(false);
   const [mapEl, setMapEl] = useState(null);
   const [isAdmin, setIsAdmin] = useState(() => isAdminRole(peekAuthSessionCache(getToken())?.role));
   const mapInstanceRef = useRef(null);
@@ -192,6 +199,16 @@ export default function LeadDetails() {
     next.delete('proposal');
     setSearchParams(next, { replace: true });
   }, [lead, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const msg = emailToastFromSearchParams(searchParams, setSearchParams);
+    if (msg) {
+      setEmailMsg(msg);
+      fetchEmailIntegration()
+        .then(setEmailIntegration)
+        .catch(() => {});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const cached = peekAuthSessionCache(getToken());
@@ -387,7 +404,7 @@ export default function LeadDetails() {
       return;
     }
     if (!emailIntegration?.connected) {
-      setEmailMsg('Connect your email in Integrations before sending.');
+      setEmailMsg('Connect Gmail, Outlook, or SMTP below before sending.');
       return;
     }
     if (
@@ -418,6 +435,36 @@ export default function LeadDetails() {
       setEmailMsg(err.message || 'Email failed');
     } finally {
       setBusy('');
+    }
+  };
+
+  const returnToLead = `/lead/${id}`;
+
+  const handleConnectOAuth = async (provider) => {
+    setEmailConnectBusy(provider);
+    setEmailMsg('');
+    try {
+      await connectEmailProvider(provider, returnToLead);
+    } catch (err) {
+      setEmailMsg(err.message || 'Could not start email connect');
+      setEmailConnectBusy('');
+    }
+  };
+
+  const handleSmtpConnected = async (json) => {
+    setEmailMsg(json?.message || 'SMTP connected — you can send from your address.');
+    setShowSmtpConnect(false);
+    try {
+      setEmailIntegration(await fetchEmailIntegration());
+      const t = token();
+      if (t) {
+        const quotaRes = await fetch(`${API}/api/email/usage`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (quotaRes.ok) setEmailQuota(await quotaRes.json());
+      }
+    } catch {
+      /* keep prior state */
     }
   };
 
@@ -823,49 +870,109 @@ export default function LeadDetails() {
                   )}
                 </span>
               </div>
-              <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                Sends from your connected Gmail, Outlook, or SMTP address. Replies land in that
-                inbox. We only provide delivery and count against your plan quota.
-                {!emailIntegration?.connected ? (
-                  <>
-                    {' '}
-                    <Link to="/integrations" className="text-primary font-bold hover:underline">
-                      Connect email in Integrations
-                    </Link>
-                    {' '}before sending.
-                  </>
-                ) : null}
-              </p>
-              <textarea
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
-                value={emailBody}
-                onChange={(e) => setEmailBody(e.target.value)}
-                disabled={!emailIntegration?.connected}
-              />
-              {emailMsg && (
-                <p className={`text-[11px] ${emailMsg.toLowerCase().includes('sent') || emailMsg.toLowerCase().includes('success') ? 'text-green-400' : 'text-red-400'}`}>
-                  {emailMsg}
-                </p>
-              )}
+
               {emailIntegration?.connected ? (
-                <button
-                  type="button"
-                  onClick={handleEmail}
-                  disabled={
-                    busy === 'email' ||
-                    (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
-                  }
-                  className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
-                >
-                  {busy === 'email' ? 'Sending...' : 'Send Email'}
-                </button>
+                <>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                    Emails send from your inbox. Replies come back to you. Uses your plan email quota.
+                  </p>
+                  <textarea
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                  />
+                  {emailMsg && (
+                    <p
+                      className={`text-[11px] ${
+                        emailMsg.toLowerCase().includes('sent') ||
+                        emailMsg.toLowerCase().includes('success') ||
+                        emailMsg.toLowerCase().includes('connected')
+                          ? 'text-green-400'
+                          : 'text-red-400'
+                      }`}
+                    >
+                      {emailMsg}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleEmail}
+                    disabled={
+                      busy === 'email' ||
+                      (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
+                    }
+                    className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
+                  >
+                    {busy === 'email' ? 'Sending...' : 'Send Email'}
+                  </button>
+                </>
               ) : (
-                <Link
-                  to="/integrations"
-                  className="block w-full text-center bg-primary text-on-primary py-2 rounded-lg font-bold hover:brightness-110"
-                >
-                  Connect your email
-                </Link>
+                <>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                    Emails send from your inbox. Replies come back to you. Uses your plan email quota.
+                  </p>
+                  {emailMsg && (
+                    <p
+                      className={`text-[11px] ${
+                        emailMsg.toLowerCase().includes('connected') ||
+                        emailMsg.toLowerCase().includes('success')
+                          ? 'text-green-400'
+                          : 'text-red-400'
+                      }`}
+                    >
+                      {emailMsg}
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => handleConnectOAuth('gmail')}
+                      disabled={!!emailConnectBusy || emailIntegration?.gmailAvailable === false}
+                      className="w-full bg-primary text-on-primary py-3 rounded-xl font-bold text-sm hover:brightness-110 disabled:opacity-50"
+                    >
+                      {emailConnectBusy === 'gmail' ? 'Opening Gmail…' : 'Connect Gmail'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConnectOAuth('outlook')}
+                      disabled={!!emailConnectBusy || emailIntegration?.outlookAvailable === false}
+                      className="w-full bg-white/10 border border-glass-stroke text-white py-2.5 rounded-xl font-bold text-sm hover:bg-white/15 disabled:opacity-50"
+                    >
+                      {emailConnectBusy === 'outlook' ? 'Opening Outlook…' : 'Connect Outlook'}
+                    </button>
+                    {!showSmtpConnect ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowSmtpConnect(true)}
+                        disabled={!!emailConnectBusy}
+                        className="w-full bg-white/5 border border-glass-stroke text-white py-2.5 rounded-xl font-bold text-sm hover:bg-white/10 disabled:opacity-50"
+                      >
+                        Custom SMTP / Company email
+                      </button>
+                    ) : (
+                      <div className="rounded-xl border border-glass-stroke bg-black/20 p-4 space-y-2">
+                        <p className="text-sm text-white font-semibold">Custom SMTP</p>
+                        <SmtpConnectForm
+                          compact
+                          onCancel={() => setShowSmtpConnect(false)}
+                          onSuccess={handleSmtpConnected}
+                          onError={(msg) => setEmailMsg(msg)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {(emailIntegration?.gmailAvailable === false ||
+                    emailIntegration?.outlookAvailable === false) && (
+                    <p className="text-[10px] text-on-surface-variant">
+                      {emailIntegration?.gmailAvailable === false &&
+                      emailIntegration?.outlookAvailable === false
+                        ? 'Gmail/Outlook not enabled yet — use Custom SMTP, or ask your admin.'
+                        : emailIntegration?.gmailAvailable === false
+                          ? 'Gmail not enabled yet — try Outlook or Custom SMTP.'
+                          : 'Outlook not enabled yet — try Gmail or Custom SMTP.'}
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
