@@ -63,19 +63,23 @@ export default function SocialLoginButtons({
 
   // Finish Google redirect sign-in when returning from accounts.google.com
   React.useEffect(() => {
-    let cancelled = false;
+    let alive = true;
+    setBusy(true);
     (async () => {
       try {
         const data = await completeGoogleRedirectIfPresent();
-        if (!cancelled && data) onSuccess?.(data);
+        if (!alive) return;
+        if (data) onSuccess?.(data);
       } catch (err) {
-        if (!cancelled) onError?.(err?.message || "Google sign-in failed");
+        if (alive) onError?.(err?.message || "Google sign-in failed");
+      } finally {
+        if (alive) setBusy(false);
       }
     })();
     return () => {
-      cancelled = true;
+      alive = false;
     };
-    // intentionally once on mount
+    // intentionally once on mount — completion is a module singleton
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -83,7 +87,8 @@ export default function SocialLoginButtons({
     setBusy(true);
     try {
       const data = await signInWithGoogle();
-      onSuccess?.(data);
+      // Redirect fallback never resolves (page navigates away).
+      if (data) onSuccess?.(data);
     } catch (err) {
       onError?.(err?.message || "Google sign-in failed");
     } finally {

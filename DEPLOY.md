@@ -51,7 +51,29 @@ If a security template already sets `Cross-Origin-Opener-Policy: same-origin`, r
 Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
 ```
 
-Google sign-in uses a full-page redirect (`signInWithRedirect`); COOP still applies to the return navigation from `accounts.google.com`.
+Google sign-in prefers `signInWithPopup` (requires the COOP header above). Full-page redirect is only a fallback when the popup is blocked.
+
+### Why redirect alone fails on spacetoroof.com
+
+`authDomain` is `solar-9ac1f.firebaseapp.com` while the app is on `spacetoroof.com`. Modern Chrome/Safari/Firefox block that cross-site storage, so after Google the user returns to `/login` and `getRedirectResult()` is `null`.
+
+To make **redirect** work long-term (optional), proxy Firebase helper paths on the same host and set `authDomain` to `spacetoroof.com`:
+
+**nginx** (transparent proxy — no 302):
+
+```nginx
+location /__/auth/ {
+  proxy_pass https://solar-9ac1f.firebaseapp.com/__/auth/;
+  proxy_set_header Host solar-9ac1f.firebaseapp.com;
+  proxy_ssl_server_name on;
+}
+```
+
+Then in Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web client, add:
+
+`https://spacetoroof.com/__/auth/handler`
+
+And set `VITE_FIREBASE_AUTH_DOMAIN=spacetoroof.com` (and the same in server Firebase web config) before rebuilding the frontend.
 
 ## Health check
 
