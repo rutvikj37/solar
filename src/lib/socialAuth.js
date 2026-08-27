@@ -1,7 +1,6 @@
 import {
   GoogleAuthProvider,
   getRedirectResult,
-  signInWithPopup,
   signInWithRedirect,
 } from "firebase/auth";
 import { API_BASE } from "../config.js";
@@ -23,15 +22,6 @@ async function exchangeFirebaseToken(idToken) {
   return data;
 }
 
-function shouldFallbackToRedirect(err) {
-  const code = String(err?.code || "");
-  return (
-    code === "auth/popup-blocked" ||
-    code === "auth/cancelled-popup-request" ||
-    /cross-origin-opener|window\.closed|opener/i.test(String(err?.message || ""))
-  );
-}
-
 /** Complete Google redirect sign-in after returning to the app (or null if none). */
 export async function completeGoogleRedirectIfPresent() {
   const authInstance = await ensureFirebaseAuth();
@@ -41,16 +31,9 @@ export async function completeGoogleRedirectIfPresent() {
   return exchangeFirebaseToken(idToken);
 }
 
+/** Full-page redirect avoids COOP blocking Firebase popup window.closed polling. */
 export async function signInWithGoogle() {
   const authInstance = await ensureFirebaseAuth();
-  try {
-    const result = await signInWithPopup(authInstance, googleProvider);
-    const idToken = await result.user.getIdToken();
-    return exchangeFirebaseToken(idToken);
-  } catch (err) {
-    if (!shouldFallbackToRedirect(err)) throw err;
-    // Popup blocked / closed by COOP — full-page redirect still works.
-    await signInWithRedirect(authInstance, googleProvider);
-    return new Promise(() => {});
-  }
+  await signInWithRedirect(authInstance, googleProvider);
+  return new Promise(() => {});
 }

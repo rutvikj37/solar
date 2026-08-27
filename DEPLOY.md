@@ -31,6 +31,28 @@ npm run start
 
 Serve the `dist/` folder from your reverse proxy. Proxy `/api` and WebSocket `/media-stream` to the Node server.
 
+Alternatively, set `STATIC_FRONTEND_DIR` to the built `dist/` path and let the Node process serve the SPA (see `Dockerfile`); Helmet then applies security headers including COOP to HTML and assets.
+
+### Reverse proxy headers (required for Google sign-in)
+
+Firebase Auth needs `Cross-Origin-Opener-Policy: same-origin-allow-popups` on HTML responses. Do **not** use `same-origin` alone — it triggers console errors (`window.closed` blocked) and can break OAuth popups.
+
+**nginx** (inside the `server` block that serves `dist/`):
+
+```nginx
+add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
+```
+
+If a security template already sets `Cross-Origin-Opener-Policy: same-origin`, replace or remove that line.
+
+**Apache** (requires `mod_headers`):
+
+```apache
+Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
+```
+
+Google sign-in uses a full-page redirect (`signInWithRedirect`); COOP still applies to the return navigation from `accounts.google.com`.
+
 ## Health check
 
 `GET /health` returns `{ status: "ok", db: "connected" }` when the API and database are reachable. Use this for load balancer probes.

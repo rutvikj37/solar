@@ -1,4 +1,6 @@
 import './loadEnv.js';
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -263,6 +265,19 @@ app.use('/api/ai-calling', aiCallingRoutes);
 app.use('/api/proposals', proposalRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/marketplace/admin', marketplaceAdminRoutes);
+
+// Optional bundled frontend (Docker / single-process deploy). Helmet above sets COOP for HTML/JS.
+const staticFrontendDir = String(process.env.STATIC_FRONTEND_DIR || '').trim();
+if (staticFrontendDir && fs.existsSync(staticFrontendDir)) {
+  app.use(express.static(staticFrontendDir, { index: false }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    res.sendFile(path.join(staticFrontendDir, 'index.html'), (err) => {
+      if (err) next(err);
+    });
+  });
+  console.log(`${BRAND_LOG_PREFIX} Serving static frontend from ${staticFrontendDir}`);
+}
 
 // Centralized Error Handling Middleware
 app.use(errorHandler);
