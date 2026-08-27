@@ -88,6 +88,7 @@ export default function LeadDetails() {
   const [mapError, setMapError] = useState('');
   const [dripEnrollments, setDripEnrollments] = useState([]);
   const [emailIntegration, setEmailIntegration] = useState(null);
+  const [emailQuota, setEmailQuota] = useState(null);
   const [emailMsg, setEmailMsg] = useState('');
   const [mapEl, setMapEl] = useState(null);
   const [isAdmin, setIsAdmin] = useState(() => isAdminRole(peekAuthSessionCache(getToken())?.role));
@@ -157,6 +158,16 @@ export default function LeadDetails() {
         setEmailIntegration(await fetchEmailIntegration());
       } catch {
         setEmailIntegration(null);
+      }
+
+      try {
+        const quotaRes = await fetch(`${API}/api/email/usage`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (quotaRes.ok) setEmailQuota(await quotaRes.json());
+        else setEmailQuota(null);
+      } catch {
+        setEmailQuota(null);
       }
     } catch (error) {
       console.error(error);
@@ -367,8 +378,20 @@ export default function LeadDetails() {
   };
 
   const handleEmail = async () => {
-    if (!emailIntegration?.connected) {
-      setEmailMsg('Connect your email in Integrations first.');
+    if (!emailBody.trim()) {
+      setEmailMsg('Write a message before sending.');
+      return;
+    }
+    if (!lead?.email || lead.email === 'Not Available') {
+      setEmailMsg('This lead has no email address.');
+      return;
+    }
+    if (
+      emailQuota &&
+      !emailQuota.unlimited &&
+      Number(emailQuota.remaining) <= 0
+    ) {
+      setEmailMsg('Monthly email limit reached. Upgrade your plan to send more.');
       return;
     }
     setBusy('email');
@@ -381,7 +404,11 @@ export default function LeadDetails() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Email failed');
-      setEmailMsg(data.simulated ? 'Email simulated (check server config)' : 'Email sent from your connected address.');
+      setEmailMsg(
+        data.simulated
+          ? 'Email simulated (check SES / email server config).'
+          : 'Email sent successfully.',
+      );
       await load();
     } catch (err) {
       setEmailMsg(err.message || 'Email failed');
@@ -777,30 +804,35 @@ export default function LeadDetails() {
             <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <h4 className="font-bold text-white">Send Email</h4>
-                {emailIntegration?.connected ? (
-                  <span className="text-[10px] text-green-400 font-semibold">
-                    From: {emailIntegration.fromEmail}
-                  </span>
-                ) : (
-                  <Link to="/integrations" className="text-[10px] text-primary font-bold hover:underline">
-                    Connect email →
-                  </Link>
-                )}
+                <span className="text-[10px] text-on-surface-variant font-semibold text-right">
+                  {emailQuota?.unlimited
+                    ? 'Unlimited emails'
+                    : emailQuota
+                      ? `${emailQuota.remaining ?? 0} / ${emailQuota.limit ?? 0} left`
+                      : 'Plan email'}
+                  {emailIntegration?.connected ? (
+                    <span className="block text-green-400 mt-0.5">
+                      Connected: {emailIntegration.fromEmail}
+                    </span>
+                  ) : null}
+                </span>
               </div>
               <textarea
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
                 value={emailBody}
                 onChange={(e) => setEmailBody(e.target.value)}
-                disabled={!emailIntegration?.connected}
               />
               {emailMsg && (
-                <p className={`text-[11px] ${emailMsg.includes('sent') || emailMsg.includes('Sent') ? 'text-green-400' : 'text-red-400'}`}>
+                <p className={`text-[11px] ${emailMsg.toLowerCase().includes('sent') || emailMsg.toLowerCase().includes('success') ? 'text-green-400' : 'text-red-400'}`}>
                   {emailMsg}
                 </p>
               )}
               <button
                 onClick={handleEmail}
-                disabled={busy === 'email' || !emailIntegration?.connected}
+                disabled={
+                  busy === 'email' ||
+                  (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
+                }
                 className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
               >
                 {busy === 'email' ? 'Sending...' : 'Send Email'}
