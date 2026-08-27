@@ -791,6 +791,7 @@ router.post('/plans', ...adminChain, async (req, res) => {
     id,
     name,
     lead_limit,
+    email_limit,
     price,
     description,
     features,
@@ -837,12 +838,13 @@ router.post('/plans', ...adminChain, async (req, res) => {
     const featuresJson =
       typeof features === 'string' ? features : JSON.stringify(features || []);
     await db.query(
-      `INSERT INTO packages (id, name, lead_limit, price, description, features, is_active, stripe_price_id, razorpay_plan_id, billing_interval, is_subscription)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO packages (id, name, lead_limit, email_limit, price, description, features, is_active, stripe_price_id, razorpay_plan_id, billing_interval, is_subscription)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         planId,
         name,
         Number(lead_limit) || 0,
+        Number(email_limit) || 0,
         Number(price) || 0,
         description || '',
         featuresJson,
@@ -865,6 +867,7 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
   const {
     name,
     lead_limit,
+    email_limit,
     price,
     description,
     features,
@@ -895,6 +898,7 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
       `UPDATE packages SET
          name = COALESCE(?, name),
          lead_limit = COALESCE(?, lead_limit),
+         email_limit = COALESCE(?, email_limit),
          price = COALESCE(?, price),
          description = COALESCE(?, description),
          features = COALESCE(?, features),
@@ -907,6 +911,7 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
       [
         name ?? null,
         lead_limit !== undefined ? Number(lead_limit) : null,
+        email_limit !== undefined ? Number(email_limit) : null,
         price !== undefined ? Number(price) : null,
         description ?? null,
         featuresJson,

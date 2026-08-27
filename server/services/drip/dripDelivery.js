@@ -68,6 +68,7 @@ export async function executeDripStep({ step, enrollment, lead, campaignName, us
         to: lead.email,
         subject,
         body,
+        source: 'drip',
       });
       const status = result.simulated ? 'simulated' : 'sent';
       const [ins] = await db.query(

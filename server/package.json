@@ -13,6 +13,7 @@
     "marketplace:clear-demos": "node scripts/clearMarketplaceDemos.js"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1119.0",
     "abort-controller": "^3.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

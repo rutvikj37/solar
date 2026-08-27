@@ -833,7 +833,11 @@ export default function Billing() {
                     <div className="mt-4 flex items-baseline gap-1">
                       <span className="text-3xl font-bold text-white">${Number(pkg.price).toLocaleString()}</span>
                       <span className="text-xs text-on-surface-variant">
-                        {isMonthly ? '/ month' : ''} · {pkg.lead_limit} credits{isMonthly ? '/month' : ''}
+                        {isMonthly ? '/ month' : ''} · {pkg.lead_limit} leads
+                        {Number(pkg.email_limit) > 0
+                          ? ` · ${Number(pkg.email_limit).toLocaleString()} emails`
+                          : ''}
+                        {isMonthly ? '/month' : ''}
                       </span>
                     </div>
                     {pkg.description && <p className="text-xs text-on-surface-variant mt-3">{pkg.description}</p>}

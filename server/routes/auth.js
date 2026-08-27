@@ -9,6 +9,7 @@ import {
   isAdminRole,
 } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
+import { getEmailQuota } from "../services/email/emailQuota.js";
 import { checkLeadCreditAccess } from "./billing.js";
 import { getFirebaseAdmin, isFirebaseAdminConfigured } from "../firebase.js";
 import {
@@ -467,7 +468,7 @@ router.get(
     const creditsUsedToday = Number(usedTodayRows[0]?.cnt) || 0;
 
     const [subs] = await db.query(
-      `SELECT s.package_id, s.status, s.current_period_end, s.cancel_at_period_end, p.name AS package_name, p.lead_limit
+      `SELECT s.package_id, s.status, s.current_period_end, s.cancel_at_period_end, p.name AS package_name, p.lead_limit, p.email_limit
      FROM user_subscriptions s
      LEFT JOIN packages p ON p.id = s.package_id
      WHERE s.user_id = ?
@@ -475,6 +476,8 @@ router.get(
       [user.id],
     );
     const sub = subs[0] || null;
+
+    const emailQuota = await getEmailQuota(user.id, user.role);
 
     setAuthNoStore(res);
     res.json({
@@ -491,6 +494,15 @@ router.get(
         remaining: unlimitedCredits ? 9999 : credits,
         total: unlimitedCredits ? 9999 : Math.max(purchasedLeads, credits + creditsUsedToday),
       },
+      emailQuota: {
+        unlimited: !!emailQuota.unlimited,
+        packageId: emailQuota.packageId,
+        packageName: emailQuota.packageName,
+        limit: emailQuota.unlimited ? null : emailQuota.limit,
+        used: emailQuota.used,
+        remaining: emailQuota.unlimited ? null : emailQuota.remaining,
+        periodEnd: emailQuota.periodEnd,
+      },
       activePackage: unlimitedCredits ? "Admin" : activePackage,
       unlimitedCredits,
       subscription: sub
@@ -499,6 +511,7 @@ router.get(
             packageName: sub.package_name,
             status: sub.status,
             leadLimit: sub.lead_limit,
+            emailLimit: sub.email_limit,
             currentPeriodEnd: sub.current_period_end,
             cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
           }

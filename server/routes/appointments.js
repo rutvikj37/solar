@@ -66,8 +66,10 @@ router.post('/', authenticateToken, async (req, res) => {
         const when = new Date(scheduledAt).toLocaleString();
         await sendEmail({
           userId: req.user.id,
+          userRole: req.user.role,
           to: toEmail,
           subject: `Appointment confirmation: ${title}`,
+          source: 'meeting',
           body: [
             `Hi ${lead.owner_name || 'there'},`,
             '',

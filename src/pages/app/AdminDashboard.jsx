@@ -103,6 +103,7 @@ export default function AdminDashboard() {
     id: '',
     name: '',
     lead_limit: 25,
+    email_limit: 1000,
     price: 299,
     description: '',
     features: 'Lead unlocks/month\nCSV export',
@@ -514,6 +515,7 @@ export default function AdminDashboard() {
       id: '',
       name: '',
       lead_limit: 25,
+      email_limit: 1000,
       price: 299,
       description: '',
       features: 'Lead unlocks/month\nCSV export',
@@ -532,6 +534,21 @@ export default function AdminDashboard() {
       headers: authHeaders(),
       body: JSON.stringify({ is_active: !Number(plan.is_active) })
     });
+    loadTab('plans');
+  };
+
+  const savePlanEmailLimit = async (plan, emailLimit) => {
+    const res = await fetch(`${API_BASE}/api/admin/plans/${plan.id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ email_limit: Number(emailLimit) || 0 }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || 'Failed to update email limit');
+      return;
+    }
+    toast.success('Email limit updated');
     loadTab('plans');
   };
 
@@ -1085,9 +1102,14 @@ export default function AdminDashboard() {
               onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
             <div className="grid grid-cols-2 gap-3">
-              <input type="number" placeholder="Credits / month" value={planForm.lead_limit}
+              <input type="number" placeholder="Lead credits / month" value={planForm.lead_limit}
                 onChange={(e) => setPlanForm({ ...planForm, lead_limit: e.target.value })}
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+              <input type="number" placeholder="Emails / month" value={planForm.email_limit}
+                onChange={(e) => setPlanForm({ ...planForm, email_limit: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <input type="number" step="0.01" placeholder="Price USD / month" value={planForm.price}
                 onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })}
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
@@ -1139,13 +1161,34 @@ export default function AdminDashboard() {
             )}
             {plans.map((p) => (
               <div key={p.id} className="glass-card p-4 rounded-xl text-xs flex justify-between gap-3">
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-white font-bold">{p.name} <span className="text-on-surface-variant font-normal">({p.id})</span></p>
                   <p className="text-on-surface-variant mt-1">
-                    {p.lead_limit} credits/{Number(p.is_subscription) ? 'month' : 'pack'} · ${Number(p.price).toLocaleString()}
+                    {p.lead_limit} leads · {Number(p.email_limit) || 0} emails/{Number(p.is_subscription) ? 'mo' : 'pack'} · ${Number(p.price).toLocaleString()}
                     {Number(p.is_subscription) ? '/mo' : ''} ·{' '}
                     {Number(p.is_active) ? <span className="text-green-400">Active</span> : <span className="text-red-400">Inactive</span>}
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <label className="text-on-surface-variant">Emails/mo</label>
+                    <input
+                      type="number"
+                      min="0"
+                      defaultValue={Number(p.email_limit) || 0}
+                      key={`${p.id}-${p.email_limit}`}
+                      id={`email-limit-${p.id}`}
+                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1 text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(`email-limit-${p.id}`);
+                        savePlanEmailLimit(p, el?.value);
+                      }}
+                      className="text-primary font-semibold"
+                    >
+                      Save
+                    </button>
+                  </div>
                   {p.razorpay_plan_id && (
                     <p className="text-on-surface-variant mt-1 font-mono text-[10px]">RZP: {p.razorpay_plan_id}</p>
                   )}

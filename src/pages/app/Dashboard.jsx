@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [credits, setCredits] = useState(null);
   const [creditsUsedToday, setCreditsUsedToday] = useState(0);
   const [activePackage, setActivePackage] = useState(null);
+  const [emailQuota, setEmailQuota] = useState(null);
   const [leads, setLeads] = useState([]);
   const [territorySummary, setTerritorySummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,7 @@ export default function Dashboard() {
         setCredits(meData.credits);
         setCreditsUsedToday(Number(meData.creditsUsedToday) || 0);
         setActivePackage(meData.activePackage || "Growth");
+        setEmailQuota(meData.emailQuota || null);
 
         // Fetch User Leads
         const leadsResponse = await fetch(`${API_BASE}/api/leads`, {
@@ -263,6 +265,33 @@ export default function Dashboard() {
             </p>
             <p className="font-label-mono text-[9px] text-slate-300 mt-1">
               1 unlock = 1 credit
+            </p>
+          </div>
+        </div>
+
+        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
+          <div className="flex justify-between items-start">
+            <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
+              Emails left
+            </p>
+            <span className="material-symbols-outlined text-secondary opacity-80">
+              mail
+            </span>
+          </div>
+          <div>
+            <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-secondary font-mono tabular-nums">
+              {emailQuota == null
+                ? '—'
+                : emailQuota.unlimited
+                  ? '∞'
+                  : emailQuota.remaining}
+            </p>
+            <p className="font-label-mono text-[9px] text-slate-300 mt-1">
+              {emailQuota?.unlimited
+                ? 'Unlimited'
+                : emailQuota
+                  ? `${emailQuota.used || 0} / ${emailQuota.limit || 0} this period`
+                  : 'Plan email pool'}
             </p>
           </div>
         </div>

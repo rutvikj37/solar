@@ -45,6 +45,12 @@ function mapPackage(pkg, index, total) {
   if (pkg.lead_limit != null) {
     features.unshift({ text: `${pkg.lead_limit} lead credits`, included: true });
   }
+  if (pkg.email_limit != null && Number(pkg.email_limit) > 0) {
+    features.unshift({
+      text: `${Number(pkg.email_limit).toLocaleString()} emails/month (leads, drip, meetings)`,
+      included: true,
+    });
+  }
   const priceNum = Number(pkg.price);
   return {
     id: pkg.id,

@@ -1148,4 +1148,53 @@ export async function migrateSchema() {
   await ensureColumn("leads", "follow_up_at", "DATETIME NULL");
   await ensureColumn("leads", "next_action", "VARCHAR(255) NULL");
   await ensureColumn("leads", "conversation_notes", "TEXT NULL");
+
+  // ===== PLAN EMAIL QUOTA (SES) =====
+  await ensureColumn(
+    "packages",
+    "email_limit",
+    "INT NOT NULL DEFAULT 0",
+  );
+
+  // Seed plan email quotas (idempotent updates for known plans)
+  await db.query(
+    `UPDATE packages SET email_limit = CASE id
+       WHEN 'Free' THEN 100
+       WHEN 'Starter' THEN 1000
+       WHEN 'Growth' THEN 5000
+       WHEN 'Enterprise' THEN 25000
+       ELSE GREATEST(COALESCE(email_limit, 0), 0)
+     END
+     WHERE id IN ('Free', 'Starter', 'Growth', 'Enterprise')
+       AND (email_limit IS NULL OR email_limit = 0)`,
+  );
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS email_usage_monthly (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      period_key VARCHAR(64) NOT NULL,
+      sent_count INT UNSIGNED NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_email_usage_user_period (user_id, period_key),
+      INDEX idx_email_usage_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS email_send_log (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      to_email VARCHAR(255) NOT NULL,
+      subject VARCHAR(500) NULL,
+      source VARCHAR(40) NOT NULL DEFAULT 'other',
+      status VARCHAR(40) NOT NULL DEFAULT 'sent',
+      ses_message_id VARCHAR(255) NULL,
+      error_message VARCHAR(500) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_email_log_user (user_id),
+      INDEX idx_email_log_created (created_at),
+      INDEX idx_email_log_source (source)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }

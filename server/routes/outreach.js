@@ -106,9 +106,11 @@ router.post('/email', authenticateToken, async (req, res) => {
     const emailSubject = subject || `Solar savings estimate for ${lead.address}`;
     const result = await sendEmail({
       userId: req.user.id,
+      userRole: req.user.role,
       to: lead.email,
       subject: emailSubject,
       body: message,
+      source: 'outreach',
     });
     const status = result.simulated ? 'simulated' : 'sent';
 
@@ -126,8 +128,14 @@ router.post('/email', authenticateToken, async (req, res) => {
     res.status(201).json({ id: ins.insertId, status, simulated: !!result.simulated });
   } catch (error) {
     console.error('Email outreach error:', error);
-    const status = error.code === 'EMAIL_NOT_CONNECTED' ? 400 : 500;
-    res.status(status).json({ error: error.message || 'Failed to send email' });
+    const status = error.code === 'EMAIL_NOT_CONNECTED' || error.code === 'EMAIL_QUOTA_EXCEEDED' || error.code === 'EMAIL_NOT_CONFIGURED'
+      ? 400
+      : 500;
+    res.status(status).json({
+      error: error.message || 'Failed to send email',
+      code: error.code || null,
+      quota: error.quota || null,
+    });
   }
 });
 

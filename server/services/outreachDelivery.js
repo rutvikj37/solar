@@ -1,10 +1,12 @@
 /**
  * Shared SMS / email delivery for outreach and drip automation.
+ * Customer sends: Amazon SES + plan email quota (shared pool).
+ * Platform auth mail: Resend/SendGrid/SES without consuming customer quota.
  */
 import { trackedFetch } from './apiUsage.js';
-import { sendUserEmail } from './email/sendUserEmail.js';
-import { getUserEmailConnection } from './email/userEmailConnections.js';
 import { BRAND_NOREPLY } from '../config/brand.js';
+import { isSesConfigured, sendViaSes } from './email/sesClient.js';
+import { consumeEmailQuota, refundEmailQuota, logEmailSend } from './email/emailQuota.js';
 
 function isKeyValid(key) {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -37,13 +39,12 @@ export async function sendTwilioSms(to, body) {
   return { ok: true, sid: data.sid, simulated: false };
 }
 
-/** Platform transactional mail (auth verify, password reset). */
-export async function sendPlatformEmail(to, subject, body) {
+async function sendViaResendOrSendGrid(to, subject, body) {
   const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
   const from = process.env.OUTREACH_FROM_EMAIL || BRAND_NOREPLY;
 
   if (!isKeyValid(apiKey)) {
-    return { ok: false, simulated: true, id: `sim_email_${Date.now()}` };
+    return { ok: false, simulated: true, id: `sim_email_${Date.now()}`, provider: 'none' };
   }
 
   if (process.env.RESEND_API_KEY && isKeyValid(process.env.RESEND_API_KEY)) {
@@ -57,7 +58,7 @@ export async function sendPlatformEmail(to, subject, body) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Email send failed');
-    return { ok: true, id: data.id, simulated: false };
+    return { ok: true, id: data.id, simulated: false, provider: 'resend' };
   }
 
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
@@ -77,25 +78,98 @@ export async function sendPlatformEmail(to, subject, body) {
     const text = await response.text();
     throw new Error(text || 'SendGrid failed');
   }
-  return { ok: true, id: response.headers.get('x-message-id') || `sg_${Date.now()}`, simulated: false };
+  return {
+    ok: true,
+    id: response.headers.get('x-message-id') || `sg_${Date.now()}`,
+    simulated: false,
+    provider: 'sendgrid',
+  };
+}
+
+/** Platform transport: SES preferred, then Resend/SendGrid, else simulate. */
+async function sendPlatformTransport({ to, subject, body, html, replyTo }) {
+  if (isSesConfigured()) {
+    return sendViaSes({ to, subject, body, html, replyTo });
+  }
+  return sendViaResendOrSendGrid(to, subject, body);
+}
+
+/** Platform transactional mail (auth verify, password reset) — no customer quota. */
+export async function sendPlatformEmail(to, subject, body) {
+  return sendPlatformTransport({ to, subject, body });
 }
 
 /**
- * Outreach email — prefers user's connected mailbox, then platform fallback.
+ * Customer / product email — consumes plan monthly email quota.
+ * Shared pool for outreach, drip, meetings, marketing, etc.
  */
-export async function sendEmail({ userId, to, subject, body }) {
-  const conn = userId ? await getUserEmailConnection(userId) : null;
-  if (conn) {
-    return sendUserEmail(userId, { to, subject, body });
-  }
-
-  const platformResult = await sendPlatformEmail(to, subject, body);
-  if (platformResult.simulated) {
-    const err = new Error('Connect your email in Integrations before sending to leads');
-    err.code = 'EMAIL_NOT_CONNECTED';
+export async function sendEmail({
+  userId,
+  to,
+  subject,
+  body,
+  html,
+  replyTo,
+  source = 'other',
+  userRole = null,
+  skipQuota = false,
+}) {
+  if (!userId && !skipQuota) {
+    const err = new Error('userId required to send plan emails');
+    err.code = 'EMAIL_USER_REQUIRED';
     throw err;
   }
-  return platformResult;
+
+  let reserved = false;
+  if (!skipQuota && userId) {
+    await consumeEmailQuota(userId, 1, userRole);
+    reserved = true;
+  }
+
+  try {
+    const result = await sendPlatformTransport({ to, subject, body, html, replyTo });
+
+    if (!result.ok && result.simulated) {
+      const allowSim =
+        process.env.NODE_ENV !== 'production' ||
+        process.env.ALLOW_EMAIL_SIMULATION === '1';
+      if (!allowSim) {
+        const err = new Error(
+          'Email delivery is not configured. Set AWS SES credentials (or RESEND_API_KEY).',
+        );
+        err.code = 'EMAIL_NOT_CONFIGURED';
+        throw err;
+      }
+    }
+
+    if (userId) {
+      await logEmailSend({
+        userId,
+        to,
+        subject,
+        source,
+        status: result.simulated ? 'simulated' : 'sent',
+        sesMessageId: result.id || null,
+      });
+    }
+
+    return result;
+  } catch (err) {
+    if (reserved && userId) {
+      await refundEmailQuota(userId, 1, userRole);
+    }
+    if (userId) {
+      await logEmailSend({
+        userId,
+        to,
+        subject,
+        source,
+        status: 'failed',
+        errorMessage: err.message,
+      });
+    }
+    throw err;
+  }
 }
 
 /** @deprecated Use sendPlatformEmail for auth mail. Kept for ai-calling duplicate. */
