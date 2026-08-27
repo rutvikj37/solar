@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { API_BASE } from '../config.js';
 import {
   EMAIL_PROVIDER_META,
   connectEmailProvider,
@@ -12,6 +13,7 @@ import {
 export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [emailQuota, setEmailQuota] = useState(null);
   const [busy, setBusy] = useState('');
   const [showSmtp, setShowSmtp] = useState(false);
   const [smtpForm, setSmtpForm] = useState({
@@ -28,6 +30,14 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
     setLoading(true);
     try {
       setData(await fetchEmailIntegration());
+      const token = localStorage.getItem('solar_token');
+      if (token) {
+        const quotaRes = await fetch(`${API_BASE}/api/email/usage`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (quotaRes.ok) setEmailQuota(await quotaRes.json());
+        else setEmailQuota(null);
+      }
     } catch (err) {
       onToast?.(err.message);
     } finally {
@@ -115,12 +125,36 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
   const connected = data?.connected;
   const activeProvider = data?.provider;
 
+  const quotaLabel = emailQuota?.unlimited
+    ? 'Unlimited emails on your plan'
+    : emailQuota
+      ? `${emailQuota.remaining ?? 0} of ${emailQuota.limit ?? 0} emails left this period`
+      : 'Counted against your subscription';
+
   return (
     <div className="space-y-4">
       <div>
         <h3 className="text-white font-bold text-lg">Email</h3>
         <p className="text-xs text-on-surface-variant mt-1">
-          Connect once — send lead emails from your own address.
+          Send as your email — we only provide delivery + quota. Connect Gmail, Outlook, or SMTP.
+          You never enter AWS keys. Lead, drip, and meeting mail goes From your address; replies
+          land in your inbox.
+        </p>
+      </div>
+
+      <div className="glass-card rounded-xl p-4 border border-primary/20 bg-primary/5 space-y-1.5">
+        <p className="text-sm text-white font-semibold">Your mailbox + plan quota</p>
+        <p className="text-xs text-on-surface-variant leading-relaxed">
+          {quotaLabel}. Successful customer sends use one credit from your plan (shared with drip
+          and meetings). Check remaining on the{' '}
+          <Link to="/dashboard" className="text-primary font-bold hover:underline">
+            Dashboard
+          </Link>
+          {' '}or upgrade under{' '}
+          <Link to="/billing" className="text-primary font-bold hover:underline">
+            Billing
+          </Link>
+          .
         </p>
       </div>
 
@@ -132,7 +166,8 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
               <span className="text-green-300">{data.fromEmail}</span>
             </p>
             <p className="text-[10px] text-on-surface-variant mt-1 capitalize">
-              via {EMAIL_PROVIDER_META[activeProvider]?.label || activeProvider}
+              via {EMAIL_PROVIDER_META[activeProvider]?.label || activeProvider} — replies stay in
+              this inbox
             </p>
           </div>
           <div className="flex gap-2">
@@ -297,7 +332,15 @@ export default function EmailIntegrationsSection({ onToast, isAdmin = false }) {
 
       {connected && (
         <p className="text-[11px] text-on-surface-variant">
-          Open any lead and use <strong className="text-white">Send Email</strong> — messages go from your connected address.
+          Open any lead and use <strong className="text-white">Send Email</strong> — messages go
+          from your connected address and count against your plan quota.
+        </p>
+      )}
+
+      {!connected && (
+        <p className="text-[11px] text-amber-300/90">
+          Connect a mailbox above before sending lead, drip, or meeting emails. Platform noreply is
+          never used as From for customer outreach.
         </p>
       )}
     </div>

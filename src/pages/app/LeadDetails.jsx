@@ -386,6 +386,10 @@ export default function LeadDetails() {
       setEmailMsg('This lead has no email address.');
       return;
     }
+    if (!emailIntegration?.connected) {
+      setEmailMsg('Connect your email in Integrations before sending.');
+      return;
+    }
     if (
       emailQuota &&
       !emailQuota.unlimited &&
@@ -406,8 +410,8 @@ export default function LeadDetails() {
       if (!res.ok) throw new Error(data.error || 'Email failed');
       setEmailMsg(
         data.simulated
-          ? 'Email simulated (check SES / email server config).'
-          : 'Email sent successfully.',
+          ? 'Email simulated (check your connected mailbox).'
+          : `Email sent from ${emailIntegration.fromEmail || 'your connected mailbox'}.`,
       );
       await load();
     } catch (err) {
@@ -806,37 +810,63 @@ export default function LeadDetails() {
                 <h4 className="font-bold text-white">Send Email</h4>
                 <span className="text-[10px] text-on-surface-variant font-semibold text-right">
                   {emailQuota?.unlimited
-                    ? 'Unlimited emails'
+                    ? 'Unlimited plan emails'
                     : emailQuota
                       ? `${emailQuota.remaining ?? 0} / ${emailQuota.limit ?? 0} left`
-                      : 'Plan email'}
+                      : 'Plan quota'}
                   {emailIntegration?.connected ? (
                     <span className="block text-green-400 mt-0.5">
-                      Connected: {emailIntegration.fromEmail}
+                      From: {emailIntegration.fromEmail}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="block text-amber-400 mt-0.5">Mailbox not connected</span>
+                  )}
                 </span>
               </div>
+              <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                Sends from your connected Gmail, Outlook, or SMTP address. Replies land in that
+                inbox. We only provide delivery and count against your plan quota.
+                {!emailIntegration?.connected ? (
+                  <>
+                    {' '}
+                    <Link to="/integrations" className="text-primary font-bold hover:underline">
+                      Connect email in Integrations
+                    </Link>
+                    {' '}before sending.
+                  </>
+                ) : null}
+              </p>
               <textarea
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
                 value={emailBody}
                 onChange={(e) => setEmailBody(e.target.value)}
+                disabled={!emailIntegration?.connected}
               />
               {emailMsg && (
                 <p className={`text-[11px] ${emailMsg.toLowerCase().includes('sent') || emailMsg.toLowerCase().includes('success') ? 'text-green-400' : 'text-red-400'}`}>
                   {emailMsg}
                 </p>
               )}
-              <button
-                onClick={handleEmail}
-                disabled={
-                  busy === 'email' ||
-                  (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
-                }
-                className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
-              >
-                {busy === 'email' ? 'Sending...' : 'Send Email'}
-              </button>
+              {emailIntegration?.connected ? (
+                <button
+                  type="button"
+                  onClick={handleEmail}
+                  disabled={
+                    busy === 'email' ||
+                    (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
+                  }
+                  className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
+                >
+                  {busy === 'email' ? 'Sending...' : 'Send Email'}
+                </button>
+              ) : (
+                <Link
+                  to="/integrations"
+                  className="block w-full text-center bg-primary text-on-primary py-2 rounded-lg font-bold hover:brightness-110"
+                >
+                  Connect your email
+                </Link>
+              )}
             </div>
 
             <div className="glass-card rounded-xl p-5 border border-glass-stroke flex flex-col sm:flex-row gap-3 sm:items-end">

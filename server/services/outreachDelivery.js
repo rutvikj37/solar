@@ -1,12 +1,14 @@
 /**
  * Shared SMS / email delivery for outreach and drip automation.
- * Customer sends: Amazon SES + plan email quota (shared pool).
- * Platform auth mail: Resend/SendGrid/SES without consuming customer quota.
+ * Customer sends: client's connected mailbox (Gmail / Outlook / SMTP) + plan email quota.
+ * Platform auth mail: SES / Resend / SendGrid without consuming customer quota.
+ * Never send customer outreach From the platform noreply / SES_FROM address.
  */
 import { trackedFetch } from './apiUsage.js';
 import { BRAND_NOREPLY } from '../config/brand.js';
 import { isSesConfigured, sendViaSes } from './email/sesClient.js';
 import { consumeEmailQuota, refundEmailQuota, logEmailSend } from './email/emailQuota.js';
+import { sendUserEmail } from './email/sendUserEmail.js';
 
 function isKeyValid(key) {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -86,7 +88,7 @@ async function sendViaResendOrSendGrid(to, subject, body) {
   };
 }
 
-/** Platform transport: SES preferred, then Resend/SendGrid, else simulate. */
+/** Platform transport: SES preferred, then Resend/SendGrid, else simulate. Auth / system only. */
 async function sendPlatformTransport({ to, subject, body, html, replyTo }) {
   if (isSesConfigured()) {
     return sendViaSes({ to, subject, body, html, replyTo });
@@ -100,8 +102,8 @@ export async function sendPlatformEmail(to, subject, body) {
 }
 
 /**
- * Customer / product email — consumes plan monthly email quota.
- * Shared pool for outreach, drip, meetings, marketing, etc.
+ * Customer / product email — sends From the client's connected mailbox.
+ * Consumes plan monthly email quota (shared pool for outreach, drip, meetings).
  */
 export async function sendEmail({
   userId,
@@ -109,65 +111,50 @@ export async function sendEmail({
   subject,
   body,
   html,
-  replyTo,
   source = 'other',
   userRole = null,
   skipQuota = false,
 }) {
-  if (!userId && !skipQuota) {
+  if (!userId) {
     const err = new Error('userId required to send plan emails');
     err.code = 'EMAIL_USER_REQUIRED';
     throw err;
   }
 
+  // html is accepted for API compatibility; connected providers send plain body today
+  void html;
+
   let reserved = false;
-  if (!skipQuota && userId) {
+  if (!skipQuota) {
     await consumeEmailQuota(userId, 1, userRole);
     reserved = true;
   }
 
   try {
-    const result = await sendPlatformTransport({ to, subject, body, html, replyTo });
+    const result = await sendUserEmail(userId, { to, subject, body });
 
-    if (!result.ok && result.simulated) {
-      const allowSim =
-        process.env.NODE_ENV !== 'production' ||
-        process.env.ALLOW_EMAIL_SIMULATION === '1';
-      if (!allowSim) {
-        const err = new Error(
-          'Email delivery is not configured. Set AWS SES credentials (or RESEND_API_KEY).',
-        );
-        err.code = 'EMAIL_NOT_CONFIGURED';
-        throw err;
-      }
-    }
-
-    if (userId) {
-      await logEmailSend({
-        userId,
-        to,
-        subject,
-        source,
-        status: result.simulated ? 'simulated' : 'sent',
-        sesMessageId: result.id || null,
-      });
-    }
+    await logEmailSend({
+      userId,
+      to,
+      subject,
+      source,
+      status: result.simulated ? 'simulated' : 'sent',
+      sesMessageId: result.id || null,
+    });
 
     return result;
   } catch (err) {
-    if (reserved && userId) {
+    if (reserved) {
       await refundEmailQuota(userId, 1, userRole);
     }
-    if (userId) {
-      await logEmailSend({
-        userId,
-        to,
-        subject,
-        source,
-        status: 'failed',
-        errorMessage: err.message,
-      });
-    }
+    await logEmailSend({
+      userId,
+      to,
+      subject,
+      source,
+      status: 'failed',
+      errorMessage: err.message,
+    });
     throw err;
   }
 }

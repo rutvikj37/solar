@@ -114,7 +114,8 @@ export default function IntegrationsPage() {
       <div>
         <h2 className="font-headline-lg text-2xl font-bold text-primary">Integrations</h2>
         <p className="text-on-surface-variant text-sm mt-1">
-          Connect CRM and email once — push leads and send messages from your own accounts.
+          Connect CRM to push leads. Connect your email (Gmail, Outlook, or SMTP) to send as
+          yourself — we only provide delivery and meter your plan quota. No AWS keys required.
         </p>
       </div>
 
