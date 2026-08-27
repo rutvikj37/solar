@@ -85,11 +85,7 @@ export default function SocialLoginButtons({
       const data = await signInWithGoogle();
       onSuccess?.(data);
     } catch (err) {
-      const message =
-        err?.code === "auth/popup-closed-by-user"
-          ? "Sign-in popup was closed."
-          : err?.message || "Google sign-in failed";
-      onError?.(message);
+      onError?.(err?.message || "Google sign-in failed");
     } finally {
       setBusy(false);
     }

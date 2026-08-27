@@ -16,14 +16,19 @@ export function getFirebaseAdmin() {
     return null;
   }
 
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId,
-        clientEmail,
-        privateKey,
-      }),
-    });
+  try {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId,
+          clientEmail,
+          privateKey,
+        }),
+      });
+    }
+  } catch (err) {
+    console.error('[Firebase] Admin SDK failed to initialize:', err.message);
+    return null;
   }
 
   initialized = true;

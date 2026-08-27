@@ -153,7 +153,7 @@ app.use(
       ? { maxAge: 31536000, includeSubDomains: true, preload: true }
       : false,
     permittedCrossDomainPolicies: { permittedPolicies: 'none' },
-    // same-origin breaks Firebase/Google signInWithPopup (window.closed / COOP).
+    // same-origin logs COOP errors on Google redirect return (window.closed).
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     crossOriginEmbedderPolicy: false,
   })
