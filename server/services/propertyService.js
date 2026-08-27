@@ -17,7 +17,7 @@ import {
   emptyContactDetails,
   enrichOwnerContacts
 } from './contactEnrichmentService.js';
-import { resolvePropertyCoordinates, isSameStreetProperty, looksLikeStreetAddress } from './coordinateService.js';
+import { resolvePropertyCoordinates, isSameStreetProperty, looksLikeStreetAddress, fetchRentcastPropertyByAddress } from './coordinateService.js';
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -410,8 +410,9 @@ export function toLockedPreview(details) {
 export async function retrievePropertyDetails(id, providedLat, providedLng, rentcastRecord = null, options = {}) {
   const skipContacts = !!options.skipContacts;
   const bypassCache = !!options.bypassCache;
+  const addressHint = String(options.addressHint || '').trim();
 
-  let address = '';
+  let address = addressHint;
   let lat = parseFloat(providedLat) || 0;
   let lng = parseFloat(providedLng) || 0;
   let propertyType = 'Not Available';
@@ -459,6 +460,22 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
   let propertyDetails = {};
   let contactDetails = {};
   let rentcastPropUsed = rentcastRecord || null;
+
+  // Coordinate pins from address search carry the searched street in the id/hint.
+  if (!rentcastPropUsed && addressHint && looksLikeStreetAddress(addressHint)) {
+    try {
+      const prop = await fetchRentcastPropertyByAddress(addressHint);
+      if (prop) {
+        rentcastPropUsed = prop;
+        cacheRentcastRecord(prop);
+        address = prop.formattedAddress || address;
+        lat = parseFloat(prop.latitude) || lat;
+        lng = parseFloat(prop.longitude) || lng;
+      }
+    } catch (err) {
+      console.warn('[Property Enrichment] RentCast lookup from address hint failed:', err.message || err);
+    }
+  }
 
   const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
   if (id.startsWith('rentcast-') && isKeyValid(rentcastApiKey)) {

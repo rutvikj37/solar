@@ -232,7 +232,7 @@ export default function BulkAreaScan() {
                   type="checkbox"
                   checked={singleFamily}
                   onChange={(e) => setSingleFamily(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-glass-stroke bg-surface-container-low text-primary focus:ring-0"
+                  className="w-3.5 h-3.5 rounded border-glass-stroke bg-surface-container-low text-primary focus:ring-0 cursor-pointer"
                 />
                 <span className="text-white text-[11px] font-semibold">Single-family only</span>
               </label>
@@ -241,7 +241,7 @@ export default function BulkAreaScan() {
                   type="checkbox"
                   checked={skipPaneled}
                   onChange={(e) => setSkipPaneled(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-glass-stroke bg-surface-container-low text-primary focus:ring-0"
+                  className="w-3.5 h-3.5 rounded border-glass-stroke bg-surface-container-low text-primary focus:ring-0 cursor-pointer"
                 />
                 <span className="text-white text-[11px] font-semibold">Skip paneled homes</span>
               </label>
@@ -250,7 +250,7 @@ export default function BulkAreaScan() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-primary text-on-primary font-bold py-3 rounded-lg mt-4 hover:brightness-110 active:scale-[0.98] transition-all text-xs disabled:opacity-50"
+              className="w-full bg-primary text-on-primary font-bold py-3 rounded-lg mt-4 hover:brightness-110 active:scale-[0.98] transition-all text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? 'Locating area…' : 'Initiate Bulk Area Scan'}
             </button>

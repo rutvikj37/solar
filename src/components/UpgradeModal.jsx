@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-export default function UpgradeModal({ open, onClose, credits = 0, message }) {
-  if (!open) return null;
+export default function UpgradeModal({ open, show, onClose, credits = 0, message }) {
+  const visible = open ?? show;
+  if (!visible) return null;
 
   const defaultMessage =
     credits <= 0

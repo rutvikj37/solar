@@ -9,6 +9,7 @@ import {
   isAdminRole,
 } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
+import { checkLeadCreditAccess } from "./billing.js";
 import { getFirebaseAdmin, isFirebaseAdminConfigured } from "../firebase.js";
 import {
   getFirebaseWebConfig,
@@ -449,10 +450,11 @@ router.get(
     };
 
     const [packages] = await db.query(
-      'SELECT package_id, remaining_leads, purchased_leads FROM user_packages WHERE user_id = ? AND status = "active"',
+      'SELECT package_id, remaining_leads, purchased_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
       [user.id],
     );
-    const credits = packages.length > 0 ? packages[0].remaining_leads : 0;
+    const creditCheck = await checkLeadCreditAccess(user.id);
+    const credits = creditCheck.credits ?? 0;
     const purchasedLeads = packages.length > 0 ? packages[0].purchased_leads : 0;
     const activePackage = packages.length > 0 ? packages[0].package_id : "Free";
     const unlimitedCredits = isAdminRole(user.role);
@@ -480,6 +482,9 @@ router.get(
       needsOnboarding: !user.company,
       credits: unlimitedCredits ? Math.max(credits, 9999) : credits,
       creditsUsedToday,
+      canUnlockLeads: unlimitedCredits || creditCheck.allowed,
+      creditBlockReason: unlimitedCredits ? null : creditCheck.reason || null,
+      creditBlockMessage: unlimitedCredits ? null : creditCheck.error || null,
       creditCostPerUnlock: 1,
       scanQuota: {
         usedToday: creditsUsedToday,

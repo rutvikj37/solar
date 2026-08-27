@@ -2,7 +2,6 @@ import PDFDocument from 'pdfkit';
 import { BRAND_MONOGRAM, BRAND_NAME } from '../config/brand.js';
 import {
   buildSolarReportEstimates,
-  mapValidationToFitRows,
   roofTypeFromProjectDetails,
 } from './solarReportEstimates.js';
 
@@ -102,27 +101,7 @@ function kpiRow(doc, items, y) {
   return y + 64;
 }
 
-function fitBar(doc, label, score, max, y) {
-  const contentW = PAGE.width - M * 2;
-  const barW = contentW - 80;
-  const pct = Math.min(100, Math.round((score / max) * 100));
-  doc.font('Helvetica').fontSize(8).fillColor(C.text);
-  doc.text(label, M, y, { width: contentW - 50, lineBreak: false });
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(C.accent);
-  doc.text(`${Math.min(max, Math.round(score))}/${max}`, PAGE.width - M - 36, y, {
-    width: 36,
-    align: 'right',
-    lineBreak: false,
-  });
-  const barY = y + 12;
-  doc.roundedRect(M, barY, barW, 6, 3).fill('#E2E8F0');
-  if (pct > 0) {
-    doc.roundedRect(M, barY, Math.max(4, (barW * pct) / 100), 6, 3).fill(C.accent);
-  }
-  return barY + 16;
-}
-
-function drawFooter(doc, leadCode) {
+function kpiRow(doc, items, y) {
   const footerY = PAGE.height - 42;
   doc.rect(0, footerY - 6, PAGE.width, 48).fill(C.deep);
   doc.font('Helvetica').fontSize(7).fillColor('#94A3B8');
@@ -139,7 +118,6 @@ function drawFooter(doc, leadCode) {
 
 function drawReport(doc, data) {
   const estimates = buildSolarReportEstimates(data);
-  const fit = mapValidationToFitRows(data.validationChecks || [], estimates);
   const contentW = PAGE.width - M * 2;
   const leadCode = fmt(data.leadCode, 'Pending');
   const address = fmt(data.address, 'Your property');
@@ -151,18 +129,7 @@ function drawReport(doc, data) {
   doc.font('Helvetica').fontSize(8).fillColor('#94A3B8');
   doc.text('PERSONALIZED SOLAR SNAPSHOT', M, 52, { lineBreak: false });
   doc.font('Helvetica-Bold').fontSize(16).fillColor(C.white);
-  doc.text(address, M, 66, { width: contentW - 90, lineBreak: false });
-
-  const badgeX = PAGE.width - M - 72;
-  doc.roundedRect(badgeX, 28, 72, 48, 8).fill('#0F172A');
-  doc.font('Helvetica').fontSize(7).fillColor('#94A3B8');
-  doc.text('SCORE', badgeX, 36, { width: 72, align: 'center', lineBreak: false });
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(C.glow);
-  doc.text(String(estimates.opportunityScore), badgeX, 50, {
-    width: 72,
-    align: 'center',
-    lineBreak: false,
-  });
+  doc.text(address, M, 66, { width: contentW, lineBreak: false });
 
   let y = 124;
   y = sectionTitle(doc, 'Estimated system snapshot', y);
@@ -217,12 +184,6 @@ function drawReport(doc, data) {
   doc.text(fmt(data.qualificationMessage, ''), M + 12, y + 24, { width: contentW - 24 });
   y += 58;
 
-  y = sectionTitle(doc, `Your solar fit — ${estimates.fitLabel}`, y);
-  fit.rows.slice(0, 4).forEach((row) => {
-    y = fitBar(doc, row.label, row.score, row.max, y);
-  });
-
-  y += 4;
   y = sectionTitle(doc, 'Cost of waiting & monthly comparison', y);
   doc.font('Helvetica').fontSize(8).fillColor(C.text);
   doc.text(`Bill today: $${estimates.bill}/mo`, M, y, { continued: true });
@@ -248,18 +209,6 @@ function drawReport(doc, data) {
     ],
     y,
   );
-
-  if ((data.validationChecks || []).length) {
-    y = sectionTitle(doc, 'Qualification checks', y);
-    data.validationChecks.slice(0, 6).forEach((check) => {
-      const mark = check.passed ? 'Pass' : 'Review';
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(check.passed ? '#059669' : '#D97706');
-      doc.text(`${mark}`, M, y, { width: 36, lineBreak: false });
-      doc.font('Helvetica').fontSize(8).fillColor(C.text);
-      doc.text(`${check.label} (${check.score})`, M + 40, y, { width: contentW - 44 });
-      y += 14;
-    });
-  }
 
   doc.font('Helvetica').fontSize(7).fillColor(C.muted);
   doc.text(

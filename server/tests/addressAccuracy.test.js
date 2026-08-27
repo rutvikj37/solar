@@ -5,6 +5,9 @@ import {
   isSameStreetProperty,
   assertAddressMatchesSearch,
   looksLikeStreetAddress,
+  pickAddressSearchPinCoords,
+  buildCoordinatePropertyId,
+  parseCoordinatePropertyId,
 } from '../services/coordinateService.js';
 
 test('looksLikeStreetAddress detects street queries', () => {
@@ -56,4 +59,55 @@ test('different number same street rejected', () => {
     isSameStreetProperty('4 Chamberlin Ct', '48 Chamberlin Ct, Lawrence Township, NJ'),
     false
   );
+  assert.equal(
+    isSameStreetProperty('1308 Johnson Cir, Bridgewater, NJ 08807', '2308 Johnson Cir, Bridgewater, NJ 08807'),
+    false
+  );
+});
+
+test('pickAddressSearchPinCoords prefers geocode over neighbor-snapped solar', () => {
+  const query = '1308 Johnson Cir, Bridgewater, NJ 08807, USA';
+  const geocoded = {
+    lat: 40.58647,
+    lng: -74.66944,
+    source: 'geocode',
+    locationType: 'ROOFTOP',
+    formattedAddress: '1308 Johnson Cir, Bridgewater, NJ 08807, USA',
+    rank: 2,
+  };
+  // Solar snapped ~45m away to neighbor 2308 (typical same-street spacing).
+  const solarCenter = {
+    lat: 40.58687,
+    lng: -74.66910,
+    source: 'google_solar',
+    rank: 1,
+  };
+  const wrongAutocomplete = {
+    lat: 40.58687,
+    lng: -74.66910,
+    source: 'provided',
+    rank: 5,
+  };
+
+  const picked = pickAddressSearchPinCoords({
+    query,
+    geocoded,
+    solarCenter,
+    provided: wrongAutocomplete,
+  });
+
+  assert.ok(picked);
+  assert.equal(picked.source, 'geocode');
+  assert.equal(picked.lat, geocoded.lat);
+  assert.equal(picked.lng, geocoded.lng);
+  assert.match(picked.formattedAddress, /^1308 /);
+});
+
+test('coordinate property ids round-trip embedded address', () => {
+  const id = buildCoordinatePropertyId(40.58647, -74.66944, '1308 Johnson Cir, Bridgewater, NJ 08807');
+  const parsed = parseCoordinatePropertyId(id);
+  assert.ok(parsed);
+  assert.equal(parsed.lat, 40.58647);
+  assert.equal(parsed.lng, -74.66944);
+  assert.equal(parsed.address, '1308 Johnson Cir, Bridgewater, NJ 08807');
 });

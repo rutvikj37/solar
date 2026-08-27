@@ -116,6 +116,34 @@
     font-family: "Sora", ui-sans-serif, system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"],
+  select {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  input[type="range"]:disabled {
+    cursor: not-allowed;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    cursor: pointer;
+  }
+
+  input[type="range"]:disabled::-webkit-slider-thumb,
+  input[type="range"]:disabled::-moz-range-thumb {
+    cursor: not-allowed;
+  }
 }
 
 .material-symbols-outlined {

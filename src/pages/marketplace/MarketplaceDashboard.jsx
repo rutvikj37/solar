@@ -502,10 +502,10 @@ export default function MarketplaceDashboard() {
           <section className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <h2 className="text-sm font-semibold text-white">Coverage filter (optional)</h2>
+                <h2 className="text-sm font-semibold text-white">Your service area</h2>
                 <p className="text-[11px] text-white/45 mt-1">
-                  Homeowner inquiries appear automatically by submission location. Add ZIP or state
-                  rows only if you want to narrow which opportunities you see.
+                  Add at least one ZIP code or state to see homeowner inquiries in your territory.
+                  Opportunities are hidden until you choose where you work.
                 </p>
               </div>
               {profile && (
@@ -589,17 +589,35 @@ export default function MarketplaceDashboard() {
                 </li>
               ))}
               {!areas.length && (
-                <li className="text-xs text-white/45">
-                  No coverage filter — showing all open homeowner inquiries nationwide.
+                <li className="text-xs text-amber-200/90">
+                  No service area yet — add a ZIP or state above to view leads in your market.
                 </li>
               )}
             </ul>
           </section>
 
+          {areas.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-amber-400/30 bg-amber-500/5 p-6 text-sm text-white/70 space-y-2">
+              <p className="font-semibold text-amber-100">Choose your service area first</p>
+              <p className="text-xs text-white/50 leading-relaxed">
+                Bidders only see homeowner inquiries that match their territory. Add a ZIP code
+                (e.g. 85001) or state (e.g. AZ) with an optional radius, then relevant open leads
+                will appear here.
+              </p>
+              {oppFilter?.openLeadCount > 0 && (
+                <p className="text-[11px] text-white/40">
+                  {oppFilter.openLeadCount} open lead{oppFilter.openLeadCount === 1 ? '' : 's'}{' '}
+                  nationwide — waiting for your area selection.
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
           {!wallet.canBid && (
             <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 flex flex-wrap items-center justify-between gap-2">
               <span>
-                Add at least {formatMoney(wallet.minBalanceToBid || 25)} to your bid wallet to place bids.
+                Top up at least {formatMoney(wallet.minBalanceToBid || 25)} in your bid wallet to
+                place bids on opportunities in your area.
               </span>
               <button
                 type="button"
@@ -751,6 +769,10 @@ export default function MarketplaceDashboard() {
                       Installers.
                     </p>
                   </>
+                ) : oppFilter?.hiddenByNoServiceArea > 0 ? (
+                  <>
+                    <p>Add your service area above to see open homeowner inquiries.</p>
+                  </>
                 ) : oppFilter?.hiddenByCoverage > 0 ? (
                   <>
                     <p>
@@ -776,6 +798,8 @@ export default function MarketplaceDashboard() {
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
       )}
 
@@ -842,15 +866,69 @@ export default function MarketplaceDashboard() {
             </p>
           </div>
 
+          <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Top up bid wallet</h2>
+              <p className="text-xs text-white/55 mt-1 leading-relaxed">
+                Add at least {formatMoney(wallet.minBalanceToBid || 25)} before placing bids.
+                Winning bids debit this balance. Map lead unlocks use separate lead credits.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(wallet.packs || MARKETPLACE_WALLET_PACKS).map((pack) => (
+                <button
+                  key={pack.id}
+                  type="button"
+                  disabled={walletPaying}
+                  onClick={() => startWalletCheckout({ packId: pack.id })}
+                  className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
+                >
+                  {pack.label}
+                </button>
+              ))}
+            </div>
+            <form
+              className="flex flex-wrap gap-2 items-end"
+              onSubmit={(e) => {
+                e.preventDefault();
+                startWalletCheckout({ amount: walletAmount });
+              }}
+            >
+              <label className="text-xs text-white/60 flex-1 min-w-[140px]">
+                Custom amount (USD)
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={25}
+                  max={5000}
+                  step={1}
+                  placeholder="25–5000"
+                  value={walletAmount}
+                  onChange={(e) => setWalletAmount(e.target.value)}
+                  disabled={walletPaying}
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={walletPaying}
+                className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2 disabled:opacity-50"
+              >
+                {walletPaying ? 'Processing…' : 'Top up wallet'}
+              </button>
+            </form>
+            {isDevBuild && (
+              <p className="text-[10px] text-white/40">
+                Dev mode may credit instantly without Razorpay when payment keys are missing.
+              </p>
+            )}
+          </div>
+
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
-            <h2 className="text-sm font-semibold text-amber-200">Payment after you win</h2>
+            <h2 className="text-sm font-semibold text-amber-200">When you win a bid</h2>
             <p className="text-xs text-white/70 leading-relaxed">
-              Instant top-up packs are removed from this screen. When you win a marketplace lead,
-              complete payment within <strong className="text-white">10 minutes</strong> — a payment
-              due timer is set on the won lead.
-            </p>
-            <p className="text-[11px] text-white/45">
-              Existing wallet balance can still be used for bids. Admin can adjust balances if needed.
+              Your winning bid amount is debited from this wallet. If the balance is too low at win
+              time, complete payment within <strong className="text-white">10 minutes</strong> — a
+              payment due timer is set on the won lead.
             </p>
           </div>
           <div className="rounded-xl border border-white/10 overflow-hidden">

@@ -501,6 +501,14 @@ export default function MyLeads() {
                               <p className="text-[11px] text-slate-400 whitespace-nowrap" title={generatedAt || undefined}>
                                 {generatedAt || '—'}
                               </p>
+                              {lead.follow_up_at ? (
+                                <p
+                                  className="text-[10px] text-amber-300/90 whitespace-nowrap mt-0.5"
+                                  title={lead.next_action || 'Scheduled follow-up'}
+                                >
+                                  Follow-up {formatLeadGeneratedAt(lead.follow_up_at)}
+                                </p>
+                              ) : null}
                             </td>
                             <td className="px-3 py-2.5 text-right">
                               <Link

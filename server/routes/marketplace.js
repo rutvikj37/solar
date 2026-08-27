@@ -362,18 +362,40 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
       [userId],
     );
     const verificationStatus = profiles[0]?.verification_status || 'pending';
+    const accountBlocked =
+      verificationStatus === 'rejected' || verificationStatus === 'suspended';
     const [areaRows] = await db.query(
       `SELECT COUNT(*) AS c FROM installer_service_areas WHERE user_id = ?`,
       [userId],
     );
     const serviceAreaCount = Number(areaRows[0]?.c || 0);
 
+    if (serviceAreaCount === 0) {
+      await ensureWallet(userId);
+      const walletBalance = await getWalletBalance(userId);
+      return res.json({
+        opportunities: [],
+        walletBalance,
+        minBalanceToBid: MIN_WALLET_BALANCE_TO_BID,
+        canBid: walletBalance >= MIN_WALLET_BALANCE_TO_BID,
+        filter: {
+          openLeadCount: leads.length,
+          visibleCount: 0,
+          requireVerified,
+          verificationStatus,
+          serviceAreaCount: 0,
+          hiddenByNoServiceArea: leads.length,
+          hiddenByVerification: 0,
+          hiddenByCoverage: 0,
+          hiddenByAccountStatus: accountBlocked ? leads.length : 0,
+        },
+      });
+    }
+
     const eligible = [];
     let hiddenByVerification = 0;
     let hiddenByCoverage = 0;
     let hiddenByAccountStatus = 0;
-    const accountBlocked =
-      verificationStatus === 'rejected' || verificationStatus === 'suspended';
     for (const lead of leads) {
       if (await isInstallerEligible(userId, lead, { requireVerified })) {
         eligible.push(lead);

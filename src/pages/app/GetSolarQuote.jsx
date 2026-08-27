@@ -65,21 +65,6 @@ export default function GetSolarQuote() {
               <span className="text-white/50">Lead ID:</span>{' '}
               <span className="font-mono text-primary">{result.leadCode}</span>
             </div>
-            {result.opportunityScore != null && (
-              <div>
-                <span className="text-white/50">Lead score:</span>{' '}
-                <span className="font-semibold">{result.opportunityScore}</span>
-                {result.leadScoreTier ? (
-                  <span className="text-white/40"> · {result.leadScoreTier}</span>
-                ) : null}
-              </div>
-            )}
-            {result.solarPotentialScore != null && result.solarPotentialScore > 0 && (
-              <div>
-                <span className="text-white/50">Solar potential:</span>{' '}
-                <span className="font-semibold">{result.solarPotentialScore}</span>
-              </div>
-            )}
             <div>
               <span className="text-white/50">Status:</span> {result.status}
             </div>

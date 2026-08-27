@@ -13,10 +13,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import {
-  buildSolarReportEstimates,
-  mapValidationToFitRows,
-} from '@/lib/solarReportEstimates.js';
+import { buildSolarReportEstimates } from '@/lib/solarReportEstimates.js';
 import { downloadSolarReportPdf } from '@/utils/solarReportPdf.js';
 import { printElement } from '@/utils/printElement.js';
 import { API_BASE } from '@/config.js';
@@ -48,10 +45,6 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
   if (!data) return null;
 
   const estimates = buildSolarReportEstimates(data);
-  const fit = mapValidationToFitRows(
-    Array.isArray(data.validationChecks) ? data.validationChecks : [],
-    estimates,
-  );
   const leadCode = String(data.leadCode || 'Pending');
   const address = String(data.address || 'Your property');
   const roofType = String(data.roofType || 'Roof assessed');
@@ -219,77 +212,6 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
                     'Thank you! Your inquiry was received and is under review. A qualified installer will reach out once your request is approved.',
                 )}
               </p>
-              <p className="text-[10px] font-black uppercase tracking-wider text-cyan-400/80">
-                Lead Score · {estimates.opportunityScore} / 100
-                {estimates.leadScoreTier ? ` · ${estimates.leadScoreTier}` : ''}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Your Solar Fit — scored factors like reference PDF section 2 */}
-        <motion.div variants={itemVariants} className="glass-form-container rounded-[28px] p-6 md:p-8">
-          <div className="flex flex-col lg:flex-row gap-8">
-            <div className="lg:w-1/3 text-center lg:text-left">
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-cyan-400 mb-2">
-                Your lead score
-              </p>
-              <h2 className="text-xl font-black leading-snug">
-                How likely you are to become a solar customer:
-                <span className="text-white/70"> scored </span>
-                {String(estimates.fitLabel || 'Moderate').toLowerCase()}.
-              </h2>
-              <div className="mt-6 inline-flex flex-col items-center lg:items-start">
-                <div className="size-32 rounded-full border-[10px] border-white/10 border-t-cyan-400 flex flex-col items-center justify-center">
-                  <span className="text-4xl font-black">{estimates.opportunityScore}</span>
-                  <span className="text-[10px] font-bold text-white/40 uppercase">/ 100</span>
-                </div>
-                <p className="mt-3 text-xs text-white/45 max-w-xs">
-                  Purchase intent, ownership, bill, and personal details (0–100).
-                  {estimates.solarPotentialScore != null && (
-                    <>
-                      {' '}
-                      Solar potential for installers: {estimates.solarPotentialScore}/100.
-                    </>
-                  )}
-                </p>
-                <details className="mt-4 text-left max-w-xs mx-auto lg:mx-0">
-                  <summary className="text-[10px] font-bold uppercase tracking-wider text-cyan-400/80 cursor-pointer">
-                    How this score is calculated
-                  </summary>
-                  <ul className="mt-2 space-y-1 text-[11px] text-white/55 list-disc pl-4">
-                    <li>Purchase intent — up to 20</li>
-                    <li>Ownership + roof — up to 15</li>
-                    <li>Electricity bill — up to 15</li>
-                    <li>Personal information — up to 50</li>
-                  </ul>
-                </details>
-              </div>
-            </div>
-
-            <div className="lg:flex-1 space-y-4">
-              {fit.rows.map((row) => {
-                const pct = Math.min(100, Math.round((row.score / row.max) * 100));
-                return (
-                  <div key={row.label} className="space-y-1.5">
-                    <div className="flex justify-between gap-3 text-xs">
-                      <span className="font-bold text-white/80">{row.label}</span>
-                      <span className="font-black text-cyan-400 shrink-0">
-                        {Math.min(row.max, row.score)}/{row.max}
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ duration: 0.8 }}
-                        className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 rounded-full"
-                      />
-                    </div>
-                    <p className="text-[11px] text-white/40">{row.detail}</p>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </motion.div>
@@ -473,8 +395,8 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
           variants={itemVariants}
           className="text-[11px] text-white/25 leading-relaxed text-center px-4"
         >
-          This estimate uses your submitted details, qualification scoring, and regional modeling
-          assumptions. Actual system size, pricing, savings, and performance vary by roof condition,
+          This estimate uses your submitted details and regional modeling assumptions. Actual system
+          size, pricing, savings, and performance vary by roof condition,
           equipment, installer bids, and utility policies. Consult a licensed solar professional
           before making financial decisions. SpaceToRoof does not guarantee savings or installation
           pricing.

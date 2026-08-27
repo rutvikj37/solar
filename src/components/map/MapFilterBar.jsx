@@ -1,18 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../config.js';
-
-/** Skip Places (New) after project-level denial (falls back to Nominatim). */
-let placesAutocompleteDenied = false;
-
-async function ensurePlacesLibrary() {
-  if (window.google?.maps?.places?.AutocompleteSuggestion) {
-    return window.google.maps.places;
-  }
-  if (typeof window.google?.maps?.importLibrary === 'function') {
-    return window.google.maps.importLibrary('places');
-  }
-  return null;
-}
+import {
+  fetchAddressSuggestions,
+  resolveAddressSuggestion,
+} from '../../lib/placesAutocomplete.js';
 
 export default function MapFilterBar({
   zip,
@@ -43,7 +34,6 @@ export default function MapFilterBar({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const sessionTokenRef = React.useRef(null);
-  const geocoderRef = React.useRef(null);
 
   const fetchPresets = async () => {
     try {
@@ -65,7 +55,7 @@ export default function MapFilterBar({
     fetchPresets();
   }, []);
 
-  // Location Suggestions — Places API (New) with Nominatim fallback
+  // Location Suggestions — shared Places/Nominatim autocomplete with ranking
   useEffect(() => {
     const query = zip ? zip.trim() : '';
     if (!query || query.length < 2) {
@@ -78,75 +68,19 @@ export default function MapFilterBar({
     setLoadingSuggestions(true);
 
     const timer = setTimeout(async () => {
-      if (placesAutocompleteDenied) {
-        await fetchNominatimFallback(query, isCancelled);
-        return;
-      }
-
       try {
-        const places = await ensurePlacesLibrary();
-        const AutocompleteSuggestion = places?.AutocompleteSuggestion;
-        const AutocompleteSessionToken = places?.AutocompleteSessionToken;
-        if (!AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
-          throw new Error('Places Autocomplete (New) unavailable');
-        }
-
-        if (!sessionTokenRef.current && AutocompleteSessionToken) {
-          sessionTokenRef.current = new AutocompleteSessionToken();
-        }
-
-        const { suggestions: results } =
-          await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-            input: query,
-            includedRegionCodes: ['us', 'ca'],
-            sessionToken: sessionTokenRef.current || undefined,
-          });
-
+        const formatted = await fetchAddressSuggestions(query, sessionTokenRef);
         if (isCancelled) return;
-
-        const formatted = (results || [])
-          .map((s) => s.placePrediction)
-          .filter(Boolean)
-          .slice(0, 5)
-          .map((prediction) => {
-            const fullText =
-              prediction.text?.text ||
-              prediction.text?.toString?.() ||
-              '';
-            const main =
-              prediction.mainText?.text ||
-              prediction.structuredFormat?.mainText?.text ||
-              fullText.split(',')[0] ||
-              fullText;
-            const secondary =
-              prediction.secondaryText?.text ||
-              prediction.structuredFormat?.secondaryText?.text ||
-              fullText.split(',').slice(1).join(',').trim();
-            return {
-              id: prediction.placeId || fullText,
-              description: fullText,
-              mainText: main,
-              secondaryText: secondary,
-              placeId: prediction.placeId || null,
-              placePrediction: prediction,
-            };
-          });
-
-        if (formatted.length) {
-          setSuggestions(formatted);
-          setShowSuggestions(true);
-          setLoadingSuggestions(false);
-          return;
+        setSuggestions(formatted);
+        setShowSuggestions(formatted.length > 0);
+        setHighlightedIndex(formatted.length ? 0 : -1);
+      } catch {
+        if (!isCancelled) {
+          setSuggestions([]);
+          setShowSuggestions(false);
         }
-      } catch (err) {
-        const msg = String(err?.message || err || '');
-        if (/denied|not.?enabled|PERMISSION|ApiNotActivated|legacy/i.test(msg)) {
-          placesAutocompleteDenied = true;
-        }
-      }
-
-      if (!isCancelled) {
-        await fetchNominatimFallback(query, isCancelled);
+      } finally {
+        if (!isCancelled) setLoadingSuggestions(false);
       }
     }, 200);
 
@@ -156,87 +90,18 @@ export default function MapFilterBar({
     };
   }, [zip]);
 
-  const fetchNominatimFallback = async (query, isCancelled) => {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&countrycodes=us,ca`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        if (isCancelled) return;
-        const formatted = (data || []).map((item) => ({
-          id: item.place_id || item.osm_id,
-          description: item.display_name,
-          mainText: item.address?.city || item.address?.town || item.address?.postcode || item.display_name.split(',')[0],
-          secondaryText: item.display_name.split(',').slice(1).join(',').trim(),
-          lat: parseFloat(item.lat),
-          lng: parseFloat(item.lon)
-        }));
-        setSuggestions(formatted);
-        setShowSuggestions(formatted.length > 0);
-      }
-    } catch {
-      // ignore
-    } finally {
-      if (!isCancelled) setLoadingSuggestions(false);
-    }
-  };
-
   const handleSelectSuggestion = async (item) => {
-    const fullAddress = item.description || item.mainText || '';
-    setZip(fullAddress);
     setShowSuggestions(false);
     setSuggestions([]);
     setHighlightedIndex(-1);
 
-    const searchWithLocation = (address, loc) => {
-      onSearch(address || fullAddress, loc);
-    };
+    const resolved = await resolveAddressSuggestion(item, sessionTokenRef);
+    const fullAddress = resolved.address || item.description || item.mainText || '';
+    setZip(fullAddress);
 
-    if (item.lat != null && item.lng != null) {
-      searchWithLocation(fullAddress, { lat: item.lat, lng: item.lng });
+    if (resolved.lat != null && resolved.lng != null) {
+      onSearch(fullAddress, { lat: resolved.lat, lng: resolved.lng });
       return;
-    }
-
-    // Places API (New): resolve prediction → Place fields
-    if (item.placePrediction?.toPlace) {
-      try {
-        const place = item.placePrediction.toPlace();
-        await place.fetchFields({
-          fields: ['location', 'formattedAddress', 'displayName'],
-        });
-        sessionTokenRef.current = null; // end billing session after selection
-        const address = place.formattedAddress || place.displayName || fullAddress;
-        setZip(address);
-        if (place.location) {
-          searchWithLocation(address, {
-            lat: place.location.lat(),
-            lng: place.location.lng(),
-          });
-          return;
-        }
-      } catch (err) {
-        console.warn('[MapFilterBar] Place.fetchFields failed:', err?.message || err);
-      }
-    }
-
-    if (item.placeId) {
-      if (!geocoderRef.current && window.google?.maps?.Geocoder) {
-        geocoderRef.current = new window.google.maps.Geocoder();
-      }
-      if (geocoderRef.current) {
-        geocoderRef.current.geocode({ placeId: item.placeId }, (results, geoStatus) => {
-          if (geoStatus === 'OK' && results[0]?.geometry?.location) {
-            const loc = results[0].geometry.location;
-            const address = results[0].formatted_address || fullAddress;
-            setZip(address);
-            searchWithLocation(address, { lat: loc.lat(), lng: loc.lng() });
-          } else {
-            onSearch(fullAddress);
-          }
-        });
-        return;
-      }
     }
 
     onSearch(fullAddress);
@@ -358,8 +223,8 @@ export default function MapFilterBar({
         )}
       </div>
 
-      {/* Preset Selector — saves Single Family / Skip Paneled / ZIP for one-click reuse */}
-      <div className="flex items-center gap-1.5" title="Save or load filter presets (ZIP + Single Family + Skip Paneled)">
+      {/* Preset Selector — saves ZIP for one-click reuse */}
+      <div className="flex items-center gap-1.5" title="Save or load ZIP search presets">
         <select
           value={selectedPresetId}
           onChange={(e) => handleSelectPreset(e.target.value)}
@@ -461,29 +326,6 @@ export default function MapFilterBar({
         )}
       </div>
 
-      {/* Quick Filter Toggles */}
-      <div className="flex items-center gap-2 border-l border-glass-stroke/50 pl-2.5">
-        <label className="flex items-center gap-1.5 text-on-surface-variant text-[11px] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={singleFamily}
-            onChange={(e) => setSingleFamily(e.target.checked)}
-            className="accent-primary rounded cursor-pointer"
-          />
-          Single Family
-        </label>
-
-        <label className="flex items-center gap-1.5 text-on-surface-variant text-[11px] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={skipPaneled}
-            onChange={(e) => setSkipPaneled(e.target.checked)}
-            className="accent-primary rounded cursor-pointer"
-          />
-          Skip Paneled
-        </label>
-      </div>
-
       {/* Save Preset Dialog Modal */}
       {showSaveModal && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -495,7 +337,7 @@ export default function MapFilterBar({
               </button>
             </div>
             <p className="text-[11px] text-on-surface-variant">
-              Save your current search settings (single-family, skip paneled, ZIP) for quick one-click loading.
+              Save your current ZIP search for quick one-click loading. Scan filters (single-family, skip paneled, roof area) are set when you start a scan.
             </p>
             <input
               type="text"

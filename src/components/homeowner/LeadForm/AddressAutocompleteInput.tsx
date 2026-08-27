@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadGoogleMapsScript } from '@/lib/googleMapsLoader.js';
+import { looksLikeStreetAddress } from '@/lib/geocodeHelpers.js';
 import { resolveGoogleMapsApiKey } from '@/lib/mapsKey.js';
 import {
   fetchAddressSuggestions,
@@ -37,6 +38,7 @@ export function AddressAutocompleteInput({
   const [mapsReady, setMapsReady] = useState(false);
   const sessionTokenRef = useRef(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pickingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +97,7 @@ export function AddressAutocompleteInput({
   }, []);
 
   const pickSuggestion = async (item: Suggestion) => {
+    pickingRef.current = true;
     setShowSuggestions(false);
     setSuggestions([]);
     setHighlightedIndex(-1);
@@ -102,6 +105,24 @@ export function AddressAutocompleteInput({
     try {
       const resolved = await resolveAddressSuggestion(item, sessionTokenRef);
       onPlaceSelect(resolved);
+    } finally {
+      setLoading(false);
+      pickingRef.current = false;
+    }
+  };
+
+  const geocodeTypedAddress = async () => {
+    const q = value.trim();
+    if (q.length < 5 || !looksLikeStreetAddress(q)) return;
+    setLoading(true);
+    try {
+      const resolved = await resolveAddressSuggestion(
+        { id: q, description: q, mainText: q },
+        sessionTokenRef,
+      );
+      if (resolved.lat != null && resolved.lng != null) {
+        onPlaceSelect(resolved);
+      }
     } finally {
       setLoading(false);
     }
@@ -115,6 +136,13 @@ export function AddressAutocompleteInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+        onBlur={() => {
+          window.setTimeout(() => {
+            if (pickingRef.current) return;
+            setShowSuggestions(false);
+            void geocodeTypedAddress();
+          }, 150);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') {
             e.preventDefault();

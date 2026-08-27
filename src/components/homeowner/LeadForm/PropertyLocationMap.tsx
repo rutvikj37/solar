@@ -189,6 +189,8 @@ export function PropertyLocationMap({
     // string often snaps rural roads and townships to a different map center.
     if (Number.isFinite(lat) && Number.isFinite(lng)) return undefined;
 
+    const debounceMs = /,\s*[A-Za-z]{2}\b|\d{5}/.test(q) ? 400 : 700;
+
     const runGeocode = debounce(async () => {
       if (pinUpdateRef.current) return;
       setGeocoding(true);
@@ -204,7 +206,7 @@ export function PropertyLocationMap({
       } finally {
         setGeocoding(false);
       }
-    }, 700);
+    }, debounceMs);
 
     runGeocode();
     return () => runGeocode.cancel?.();

@@ -40,7 +40,7 @@ export default function BulkScanDialog({
               <p className="text-[10px] text-slate-400">Unlock multiple leads in one run</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1 transition-colors">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1 transition-colors cursor-pointer">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         </div>
@@ -71,7 +71,7 @@ export default function BulkScanDialog({
                   key={n}
                   type="button"
                   onClick={() => setLeadsToCapture(n)}
-                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
                     leadsToCapture === n
                       ? 'bg-primary/20 border-primary text-primary'
                       : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
@@ -101,7 +101,7 @@ export default function BulkScanDialog({
                   type="checkbox"
                   checked={useMinSqFt}
                   onChange={(e) => setUseMinSqFt?.(e.target.checked)}
-                  className="accent-primary"
+                  className="accent-primary cursor-pointer"
                 />
                 Filter by Min Roof Area
               </span>
@@ -129,7 +129,7 @@ export default function BulkScanDialog({
                   type="checkbox"
                   checked={singleFamily}
                   onChange={(e) => setSingleFamily?.(e.target.checked)}
-                  className="accent-primary"
+                  className="accent-primary cursor-pointer"
                 />
                 Single-family only
               </label>
@@ -142,7 +142,7 @@ export default function BulkScanDialog({
                   type="checkbox"
                   checked={skipPaneled}
                   onChange={(e) => setSkipPaneled?.(e.target.checked)}
-                  className="accent-primary"
+                  className="accent-primary cursor-pointer"
                 />
                 Skip paneled homes
               </label>
@@ -174,7 +174,7 @@ export default function BulkScanDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 font-bold py-3 rounded-lg text-xs transition-colors"
+            className="flex-1 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 font-bold py-3 rounded-lg text-xs transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -182,7 +182,7 @@ export default function BulkScanDialog({
             type="button"
             onClick={onStartScan}
             disabled={busy || !hasEnough}
-            className="flex-1 bg-primary text-white font-bold py-3 px-6 rounded-lg text-xs hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 bg-primary text-white font-bold py-3 px-6 rounded-lg text-xs hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-primary/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined text-sm leading-none">play_arrow</span>
             {busy ? 'Starting…' : `Start scan (${creditCost} credits)`}

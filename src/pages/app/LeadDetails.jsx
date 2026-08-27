@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import CrmPushPanel from '../../components/CrmPushPanel';
 import SolarProposalModal from '../../components/SolarProposalModal';
 import { API_BASE } from '../../config.js';
@@ -66,6 +66,7 @@ function SpecRow({ label, value }) {
 export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [crmStatus, setCrmStatus] = useState('idle');
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -172,6 +173,14 @@ export default function LeadDetails() {
     markerRef.current = null;
     load();
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!lead || searchParams.get('proposal') !== '1') return;
+    setShowProposalModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('proposal');
+    setSearchParams(next, { replace: true });
+  }, [lead, searchParams, setSearchParams]);
 
   useEffect(() => {
     const cached = peekAuthSessionCache(getToken());
@@ -547,7 +556,7 @@ export default function LeadDetails() {
               className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110"
             >
               <span className="material-symbols-outlined text-base">picture_as_pdf</span>
-              Download Solar Proposal
+              Create & send proposal
             </button>
 
             <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />

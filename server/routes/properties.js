@@ -16,6 +16,9 @@ import {
   resolveExactAddressSearch,
   assertAddressMatchesSearch,
   isSameStreetProperty,
+  geocodeAddressCoordinates,
+  buildCoordinatePropertyId,
+  parseCoordinatePropertyId,
 } from '../services/coordinateService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { authenticateToken } from '../middleware/auth.js';
@@ -27,8 +30,11 @@ const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 };
 
-async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentcastRecord) {
-  const preview = await retrievePropertyDetails(id, lat, lng, rentcastRecord, { skipContacts: true });
+async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentcastRecord, options = {}) {
+  const preview = await retrievePropertyDetails(id, lat, lng, rentcastRecord, {
+    skipContacts: true,
+    addressHint: options.addressHint || null,
+  });
   let existing = null;
   if (req.user?.id && preview?.address) {
     const [rows] = await db.query(
@@ -140,7 +146,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
           }
           if (!exactMatch) {
             exactMatch = {
-              id: `coordinate-${resolved.lat.toFixed(5)}-${resolved.lng.toFixed(5)}`,
+              id: buildCoordinatePropertyId(resolved.lat, resolved.lng, resolvedAddress),
               lat: resolved.lat,
               lng: resolved.lng,
               address: resolvedAddress,
@@ -169,9 +175,47 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
     } catch (err) {
       console.error('[Address Search] Exact home resolve failed:', err.message || err);
     }
+
+    // Geocode-only fallback — never radius-search neighbors for a street address.
+    if (!exactMatch) {
+      try {
+        const geocoded = await geocodeAddressCoordinates(zip);
+        const resolvedAddress = geocoded?.formattedAddress || zip;
+        const matchGate = assertAddressMatchesSearch(zip, resolvedAddress);
+        if (geocoded && matchGate.ok) {
+          center = {
+            lat: geocoded.lat,
+            lng: geocoded.lng,
+            name: resolvedAddress,
+          };
+          exactMatch = {
+            id: buildCoordinatePropertyId(geocoded.lat, geocoded.lng, resolvedAddress),
+            lat: geocoded.lat,
+            lng: geocoded.lng,
+            address: resolvedAddress,
+            propertyType: 'Unknown',
+            yearBuilt: null,
+            squareFootage: null,
+            solarScore: 0,
+            estSavings: 0,
+            systemSize: '0 kW',
+            panelsCount: 0,
+            existingSolar: 'Unlikely',
+            existingSolarLikely: false,
+            ownerOccupied: false,
+            isSearchMatch: true,
+            searchQuery: zip,
+            addressMatchVerified: true,
+          };
+          console.log(`[Address Search] Geocode-only pin @ ${geocoded.lat}, ${geocoded.lng} (${resolvedAddress})`);
+        }
+      } catch (err) {
+        console.error('[Address Search] Geocode fallback failed:', err.message || err);
+      }
+    }
   }
 
-  if (lat && lng && !center) {
+  if (lat && lng && !center && !isAddressSearch) {
     center = {
       lat: parseFloat(lat),
       lng: parseFloat(lng),
@@ -210,7 +254,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
-  if (isKeyValid(rentcastApiKey)) {
+  if (isKeyValid(rentcastApiKey) && !(isAddressSearch && exactMatch)) {
     try {
       let rentcastUrl;
       const isNumericZip = /^\d{5}$/.test(zip);
@@ -454,12 +498,14 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const cached = getCachedRentcastRecord(id);
   let providedLat;
   let providedLng;
-  const coordMatch = String(id).match(/^coordinate-(-?\d+\.\d+)-(-?\d+\.\d+)$/);
-  if (coordMatch) {
-    providedLat = coordMatch[1];
-    providedLng = coordMatch[2];
+  const parsedCoord = parseCoordinatePropertyId(id);
+  if (parsedCoord) {
+    providedLat = parsedCoord.lat;
+    providedLng = parsedCoord.lng;
   }
-  await respondWithLockedOrUnlockedDetails(req, res, id, providedLat, providedLng, cached);
+  await respondWithLockedOrUnlockedDetails(req, res, id, providedLat, providedLng, cached, {
+    addressHint: parsedCoord?.address || null,
+  });
 }));
 
 export default router;

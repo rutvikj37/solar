@@ -167,6 +167,103 @@ export function isSameStreetProperty(queryAddress, candidateAddress) {
 /** Max drift from a ROOFTOP/parcel seed before we treat a candidate as the wrong building. */
 export const MAX_PARCEL_DRIFT_METERS = 75;
 export const MAX_SOLAR_DRIFT_METERS = 55;
+/** Solar must be this close to a verified geocode/parcel before it wins over geocode. */
+export const MAX_SOLAR_FROM_GEOCODE_METERS = 20;
+
+export function buildCoordinatePropertyId(lat, lng, address = '') {
+  const base = `coordinate-${Number(lat).toFixed(5)}-${Number(lng).toFixed(5)}`;
+  const addr = String(address || '').trim();
+  return addr ? `${base}__${encodeURIComponent(addr)}` : base;
+}
+
+export function parseCoordinatePropertyId(id) {
+  const match = String(id || '').match(/^coordinate-(-?\d+\.\d+)-(-?\d+\.\d+)(?:__(.+))?$/);
+  if (!match) return null;
+  return {
+    lat: parseFloat(match[1]),
+    lng: parseFloat(match[2]),
+    address: match[3] ? decodeURIComponent(match[3]) : null,
+  };
+}
+
+function isVerifiedGeocodeForQuery(query, geocoded) {
+  if (!geocoded) return false;
+  const locationType = geocoded.locationType || '';
+  const preciseLocation =
+    locationType === 'ROOFTOP' || locationType === 'RANGE_INTERPOLATED';
+  if (!preciseLocation) return false;
+  return assertAddressMatchesSearch(query, geocoded.formattedAddress || query).ok;
+}
+
+/**
+ * Pick map pin coords for a street-address search.
+ * Verified geocode/RentCast beat Solar — Solar findClosest can snap to a neighbor
+ * (e.g. 2308) when autocomplete seeds or interpolated geocodes land nearby.
+ */
+export function pickAddressSearchPinCoords({
+  query,
+  geocoded = null,
+  rentcastCoords = null,
+  solarCenter = null,
+  provided = null,
+}) {
+  const q = String(query || '').trim();
+  const geocodeVerified = isVerifiedGeocodeForQuery(q, geocoded);
+
+  let safeProvided = provided;
+  if (safeProvided && geocoded && !isWithinMeters(safeProvided, geocoded, MAX_PARCEL_DRIFT_METERS)) {
+    safeProvided = null;
+  }
+
+  if (rentcastCoords && geocodeVerified && isWithinMeters(rentcastCoords, geocoded, MAX_PARCEL_DRIFT_METERS)) {
+    return {
+      lat: rentcastCoords.lat,
+      lng: rentcastCoords.lng,
+      source: rentcastCoords.source,
+      locationType: geocoded.locationType || null,
+      formattedAddress: geocoded.formattedAddress || rentcastCoords.formattedAddress || q,
+    };
+  }
+
+  if (rentcastCoords && !geocoded) {
+    return {
+      lat: rentcastCoords.lat,
+      lng: rentcastCoords.lng,
+      source: rentcastCoords.source,
+      locationType: null,
+      formattedAddress: rentcastCoords.formattedAddress || q,
+    };
+  }
+
+  if (geocodeVerified) {
+    if (solarCenter && isWithinMeters(geocoded, solarCenter, MAX_SOLAR_FROM_GEOCODE_METERS)) {
+      return {
+        lat: solarCenter.lat,
+        lng: solarCenter.lng,
+        source: solarCenter.source,
+        locationType: geocoded.locationType || null,
+        formattedAddress: geocoded.formattedAddress || q,
+      };
+    }
+    return {
+      lat: geocoded.lat,
+      lng: geocoded.lng,
+      source: geocoded.source,
+      locationType: geocoded.locationType || null,
+      formattedAddress: geocoded.formattedAddress || q,
+    };
+  }
+
+  const fallback = pickBestPropertyCoordinates([solarCenter, geocoded, rentcastCoords, safeProvided]);
+  if (!fallback) return null;
+  return {
+    lat: fallback.lat,
+    lng: fallback.lng,
+    source: fallback.source,
+    locationType: fallback.locationType || null,
+    formattedAddress: fallback.formattedAddress || geocoded?.formattedAddress || q,
+  };
+}
 
 export function isWithinMeters(a, b, maxMeters) {
   if (!a || !b || !isValidCoord(a.lat, a.lng) || !isValidCoord(b.lat, b.lng)) return false;
@@ -346,7 +443,11 @@ export async function resolveExactAddressSearch(query, { seedLat = null, seedLng
   const geocoded = await geocodeAddressCoordinates(q);
   const formatted = geocoded?.formattedAddress || q;
   const provided = coordsFromProvided(seedLat, seedLng);
-  const lookupSeed = geocoded || provided;
+  const safeProvided =
+    provided && geocoded && !isWithinMeters(provided, geocoded, MAX_PARCEL_DRIFT_METERS)
+      ? null
+      : provided;
+  const lookupSeed = geocoded || safeProvided;
 
   // Exact address first — near-coords can return a different house within ~0.2mi.
   let rentcastProp = await fetchRentcastPropertyByAddress(q);
@@ -391,8 +492,8 @@ export async function resolveExactAddressSearch(query, { seedLat = null, seedLng
     rentcastCoords = null;
   }
 
-  // Seed Solar from the exact parcel/geocode — not a rejected neighbor.
-  const seed = rentcastCoords || geocoded || provided;
+  // Seed Solar from verified parcel/geocode — never from a drifted autocomplete pin.
+  const seed = rentcastCoords || geocoded || safeProvided;
 
   let solarCenter = null;
   if (seed) {
@@ -405,14 +506,28 @@ export async function resolveExactAddressSearch(query, { seedLat = null, seedLng
       );
       solarCenter = null;
     }
+    if (
+      solarCenter &&
+      geocoded &&
+      isVerifiedGeocodeForQuery(q, geocoded) &&
+      !isWithinMeters(geocoded, solarCenter, MAX_SOLAR_FROM_GEOCODE_METERS)
+    ) {
+      console.warn(
+        `[Address Search] Solar snapped to neighbor (${Math.round(
+          calculateDistanceMeters(geocoded.lat, geocoded.lng, solarCenter.lat, solarCenter.lng)
+        )}m from geocode) for "${q}" — keeping geocode pin`
+      );
+      solarCenter = null;
+    }
   }
 
-  const best = pickBestPropertyCoordinates([
-    solarCenter,
+  const best = pickAddressSearchPinCoords({
+    query: q,
     geocoded,
     rentcastCoords,
-    provided
-  ]);
+    solarCenter,
+    provided: safeProvided,
+  });
   if (!best) return null;
 
   const formattedAddress =

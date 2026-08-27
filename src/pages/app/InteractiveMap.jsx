@@ -223,12 +223,6 @@ export default function InteractiveMap() {
   }, [scanPin]);
 
   useEffect(() => {
-    if (initialSearchDoneRef.current) {
-      handleSearch(zip);
-    }
-  }, [singleFamily, skipPaneled]);
-
-  useEffect(() => {
     let cancelled = false;
     resolveGoogleMapsApiKey().then((key) => {
       if (cancelled) return;
@@ -694,7 +688,7 @@ export default function InteractiveMap() {
       if (skipPaneled) params.set('skipPaneled', 'true');
       if (activePolygon && activePolygon.length >= 3) {
         params.set('polygon', JSON.stringify(activePolygon));
-      } else if (useGeo) {
+      } else if (useGeo && !looksLikeStreetAddress(query)) {
         params.set('lat', String(searchLat));
         params.set('lng', String(searchLng));
         params.set('radius', String(opts.radius || scanRadius || 1200));
@@ -948,9 +942,13 @@ export default function InteractiveMap() {
         setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
       } else {
+        setUpgradeMessage(data.error || 'Could not unlock this lead. Please try again.');
+        setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
       }
     } catch (err) {
+      setUpgradeMessage(err.message || 'Could not unlock this lead. Please try again.');
+      setShowUpgradeModal(true);
       setGeneratedLeadStatus('idle');
     }
   };
@@ -1165,8 +1163,9 @@ export default function InteractiveMap() {
       </div>
 
       <UpgradeModal
-        show={showUpgradeModal}
+        open={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
+        credits={leadCredits}
         message={upgradeMessage}
       />
     </>

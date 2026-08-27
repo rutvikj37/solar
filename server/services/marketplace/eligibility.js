@@ -70,7 +70,7 @@ export function areaMatchesLead(area, lead) {
  * Returns true if installer may see/bid on this lead based on service areas.
  * - rejected / suspended profiles are always blocked
  * - when requireVerified=true, only verification_status=verified may see leads
- * - no service-area rows → all open leads (coverage is an optional filter)
+ * - no service-area rows → not eligible (installer must pick territory first)
  * - with service-area rows → lead ZIP/state must match
  */
 export async function isInstallerEligible(userId, lead, { requireVerified = true } = {}) {
@@ -88,8 +88,7 @@ export async function isInstallerEligible(userId, lead, { requireVerified = true
     `SELECT zip, state, radius_miles FROM installer_service_areas WHERE user_id = ?`,
     [userId],
   );
-  // No coverage rows → show all real homeowner inquiries (optional filter only).
-  if (!areas.length) return true;
+  if (!areas.length) return false;
 
   for (const area of areas) {
     if (areaMatchesLead(area, lead)) return true;
