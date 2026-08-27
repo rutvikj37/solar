@@ -955,8 +955,8 @@ export default function InteractiveMap() {
 
   return (
     <>
-      <div className="relative h-full w-full overflow-hidden bg-surface-container-lowest">
-        <div ref={mapRef} className="w-full h-full z-10" />
+      <div className="relative h-full w-full min-w-0 min-h-0 overflow-hidden bg-surface-container-lowest">
+        <div ref={mapRef} className="absolute inset-0 w-full h-full min-w-0 z-10" />
 
         {mapError && (
           <div className="absolute top-4 left-4 right-4 z-50 max-w-xl mx-auto pointer-events-auto">

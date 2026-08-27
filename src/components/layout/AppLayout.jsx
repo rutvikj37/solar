@@ -26,8 +26,6 @@ export default function AppLayout() {
   const isWideTablePage = location.pathname === '/my-leads';
 
   const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
-  // Flush left rail + small content gap (no inset floating card offset)
-  const sidebarPad = collapsed ? COLLAPSED_WIDTH + 16 : EXPANDED_WIDTH + 16;
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +41,16 @@ export default function AppLayout() {
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
+
+  // Keep CSS var in sync + nudge Google Maps when rail width changes
+  useEffect(() => {
+    const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
+    document.documentElement.style.setProperty('--app-sidebar-w', `${width}px`);
+    const id = window.setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 320);
+    return () => window.clearTimeout(id);
+  }, [collapsed]);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -103,7 +111,7 @@ export default function AppLayout() {
         </div>
       )}
 
-      <div className="flex-grow flex flex-col relative min-h-screen">
+      <div className="flex-grow flex flex-col relative min-h-screen min-w-0">
         <TopBar
           onNavToggle={handleNavToggle}
           mobileNavOpen={mobileOpen}
@@ -111,29 +119,33 @@ export default function AppLayout() {
           showBanner={showBanner}
         />
 
-        <div className="flex-1 flex w-full relative">
+        {/*
+          Desktop: sidebar is in-flow (lg:static) so main flex-1 fills leftover width.
+          Mobile: sidebar stays a fixed overlay drawer; main is full width.
+          Avoids lg:pl gutters that left a huge empty deep column beside the map.
+        */}
+        <div className={`flex-1 flex w-full min-h-0 min-w-0 relative ${bodyPadding}`}>
+          <Sidebar
+            mobileOpen={mobileOpen}
+            onMobileClose={() => setMobileOpen(false)}
+            collapsed={collapsed}
+            showBanner={showBanner}
+          />
+
           <main
-            style={{ ['--app-sidebar-pad']: `${sidebarPad}px` }}
-            className={`flex-1 min-h-0 transition-[padding] duration-300 ease-out ${bodyPadding} ${
+            className={`flex-1 min-w-0 min-h-0 ${
               isMapPage
-                ? 'p-0 h-screen overflow-hidden relative lg:pl-[var(--app-sidebar-pad)]'
+                ? 'relative overflow-hidden p-0'
                 : isWideTablePage
-                  ? 'pb-8 px-4 sm:px-5 lg:pl-[var(--app-sidebar-pad)] max-w-[1680px] mx-auto w-full'
-                  : 'pb-12 px-6 lg:pl-[var(--app-sidebar-pad)] max-w-7xl mx-auto w-full'
+                  ? 'pb-8 px-4 sm:px-5 max-w-[1680px] mx-auto w-full'
+                  : 'pb-12 px-6 max-w-7xl mx-auto w-full'
             }`}
           >
-            <div className="app-page h-full min-h-0">
+            <div className={`app-page min-h-0 min-w-0 ${isMapPage ? 'h-full' : ''}`}>
               <Outlet />
             </div>
           </main>
         </div>
-
-        <Sidebar
-          mobileOpen={mobileOpen}
-          onMobileClose={() => setMobileOpen(false)}
-          collapsed={collapsed}
-          showBanner={showBanner}
-        />
       </div>
     </div>
   );

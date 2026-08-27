@@ -139,7 +139,7 @@ export default function PropertyDrawer({
 
   return (
     <div
-      className={`absolute top-0 right-0 lg:right-[276px] h-full w-full sm:w-[440px] z-[45] bg-surface-elevated/98 border-l border-glass-stroke shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
+      className={`absolute top-0 right-0 h-full w-full sm:w-[440px] z-[45] bg-surface-elevated/98 border-l border-glass-stroke shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform will-change-transform ${
         open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
       }`}
     >

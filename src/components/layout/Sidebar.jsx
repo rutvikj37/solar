@@ -140,10 +140,11 @@ export default function Sidebar({
         style={{
           ['--sidebar-w']: `${collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH}px`,
         }}
-        className={`fixed left-0 ${topStyle} ${heightStyle} z-50 flex flex-col bg-deep/95 backdrop-blur-xl border-r border-glass-stroke transition-[transform,width] duration-300 ease-out
-          w-[260px] lg:w-[var(--sidebar-w)]
+        className={`z-50 flex flex-col bg-deep/95 backdrop-blur-xl border-r border-glass-stroke transition-[transform,width] duration-300 ease-out
+          w-[260px] lg:w-[var(--sidebar-w)] lg:shrink-0
+          fixed left-0 ${topStyle} ${heightStyle}
           ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
-          lg:translate-x-0 lg:shadow-none
+          lg:static lg:top-auto lg:h-auto lg:min-h-0 lg:self-stretch lg:translate-x-0 lg:shadow-none
           ${collapsed ? 'lg:p-2.5' : 'p-5 lg:p-3'}
         `}
       >
