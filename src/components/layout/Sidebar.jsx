@@ -10,7 +10,6 @@ export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
   collapsed = false,
-  onToggleCollapse,
   showBanner,
 }) {
   const [userRole, setUserRole] = useState('');
@@ -139,14 +138,13 @@ export default function Sidebar({
         aria-label="App navigation"
         data-collapsed={collapsed ? 'true' : 'false'}
         style={{
-          // Desktop width; mobile always full expanded width when open
           ['--sidebar-w']: `${collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH}px`,
         }}
-        className={`fixed left-0 ${topStyle} ${heightStyle} z-50 flex flex-col bg-deep/95 backdrop-blur-xl border-r border-glass-stroke shadow-2xl transition-[transform,width] duration-300 ease-out
+        className={`fixed left-0 ${topStyle} ${heightStyle} z-50 flex flex-col bg-deep/95 backdrop-blur-xl border-r border-glass-stroke transition-[transform,width] duration-300 ease-out
           w-[260px] lg:w-[var(--sidebar-w)]
-          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
-          lg:translate-x-0 lg:border lg:bg-deep/80 lg:rounded-2xl lg:h-auto lg:bottom-6 lg:left-6
-          ${collapsed ? 'lg:p-2.5' : 'p-5 lg:p-4'}
+          ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
+          lg:translate-x-0 lg:shadow-none
+          ${collapsed ? 'lg:p-2.5' : 'p-5 lg:p-3'}
         `}
       >
         {/* Mobile header */}
@@ -159,32 +157,6 @@ export default function Sidebar({
             aria-label="Close navigation"
           >
             <span className="material-symbols-outlined text-xl">close</span>
-          </button>
-        </div>
-
-        {/* Desktop collapse toggle */}
-        <div
-          className={`hidden lg:flex items-center mb-3 ${
-            collapsed ? 'justify-center' : 'justify-between px-1'
-          }`}
-        >
-          {!collapsed && (
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest select-none">
-              Menu
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            aria-expanded={!collapsed}
-            aria-controls="app-sidebar-nav"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          >
-            <span className="material-symbols-outlined text-[20px]">
-              {collapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
-            </span>
           </button>
         </div>
 

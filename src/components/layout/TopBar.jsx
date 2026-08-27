@@ -4,7 +4,12 @@ import { API_BASE } from '../../config.js';
 import { BRAND_NAME } from '../../config/brand.js';
 import { authHeaders, fetchMe, isAuthError, isAdminRole, logoutToLogin } from '../../lib/auth.js';
 
-export default function TopBar({ onMenuToggle, mobileNavOpen = false, onSidebarToggle, sidebarCollapsed, showBanner }) {
+export default function TopBar({
+  onNavToggle,
+  mobileNavOpen = false,
+  sidebarCollapsed = false,
+  showBanner,
+}) {
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
@@ -51,33 +56,27 @@ export default function TopBar({ onMenuToggle, mobileNavOpen = false, onSidebarT
   const topPosition = showBanner ? 'top-9' : 'top-0';
   const isAdmin = isAdminRole(userRole);
 
+  const navToggleLabel = mobileNavOpen
+    ? 'Close navigation'
+    : sidebarCollapsed
+      ? 'Expand sidebar'
+      : 'Collapse sidebar';
+
   return (
     <header className={`fixed ${topPosition} left-0 right-0 h-16 bg-deep/98 border-b border-glass-stroke flex justify-between items-center px-6 z-40 transition-all`}>
       
-      {/* Left side: nav toggles + brand logo */}
+      {/* Left side: single nav toggle + brand logo */}
       <div className="flex items-center gap-3 sm:gap-4">
         <button
           type="button"
-          onClick={onMenuToggle}
-          className="lg:hidden text-on-surface-variant hover:text-on-surface p-1 rounded-md hover:bg-white/5 active:scale-95 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          aria-label="Open navigation"
-          aria-expanded={mobileNavOpen}
+          onClick={onNavToggle}
+          className="text-on-surface-variant hover:text-on-surface p-1.5 rounded-md hover:bg-white/5 active:scale-95 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          aria-label={navToggleLabel}
+          aria-expanded={mobileNavOpen || !sidebarCollapsed}
           aria-controls="app-sidebar-nav"
+          title={navToggleLabel}
         >
           <span className="material-symbols-outlined text-[24px]">menu</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onSidebarToggle}
-          className="hidden lg:inline-flex text-on-surface-variant hover:text-on-surface p-1.5 rounded-md hover:bg-white/5 active:scale-95 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-expanded={!sidebarCollapsed}
-          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <span className="material-symbols-outlined text-[22px]">
-            {sidebarCollapsed ? 'menu_open' : 'menu'}
-          </span>
         </button>
 
         <Link to="/map" className="flex flex-col text-left select-none">

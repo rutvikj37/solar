@@ -26,7 +26,8 @@ export default function AppLayout() {
   const isWideTablePage = location.pathname === '/my-leads';
 
   const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
-  const sidebarPad = collapsed ? COLLAPSED_WIDTH + 28 : EXPANDED_WIDTH + 20;
+  // Flush left rail + small content gap (no inset floating card offset)
+  const sidebarPad = collapsed ? COLLAPSED_WIDTH + 16 : EXPANDED_WIDTH + 16;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +54,15 @@ export default function AppLayout() {
       }
       return next;
     });
+  };
+
+  /** One control: drawer on mobile, icon-rail collapse on desktop. */
+  const handleNavToggle = () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+      toggleCollapsed();
+      return;
+    }
+    setMobileOpen((open) => !open);
   };
 
   const creditsLow = credits !== null && credits <= 2;
@@ -95,23 +105,18 @@ export default function AppLayout() {
 
       <div className="flex-grow flex flex-col relative min-h-screen">
         <TopBar
-          onMenuToggle={() => setMobileOpen(true)}
+          onNavToggle={handleNavToggle}
           mobileNavOpen={mobileOpen}
-          onSidebarToggle={toggleCollapsed}
           sidebarCollapsed={collapsed}
           showBanner={showBanner}
         />
 
         <div className="flex-1 flex w-full relative">
           <main
-            style={
-              isMapPage
-                ? undefined
-                : { ['--app-sidebar-pad']: `${sidebarPad}px` }
-            }
+            style={{ ['--app-sidebar-pad']: `${sidebarPad}px` }}
             className={`flex-1 min-h-0 transition-[padding] duration-300 ease-out ${bodyPadding} ${
               isMapPage
-                ? 'p-0 h-screen overflow-hidden relative'
+                ? 'p-0 h-screen overflow-hidden relative lg:pl-[var(--app-sidebar-pad)]'
                 : isWideTablePage
                   ? 'pb-8 px-4 sm:px-5 lg:pl-[var(--app-sidebar-pad)] max-w-[1680px] mx-auto w-full'
                   : 'pb-12 px-6 lg:pl-[var(--app-sidebar-pad)] max-w-7xl mx-auto w-full'
@@ -127,7 +132,6 @@ export default function AppLayout() {
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
           collapsed={collapsed}
-          onToggleCollapse={toggleCollapsed}
           showBanner={showBanner}
         />
       </div>
