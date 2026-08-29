@@ -22,6 +22,7 @@ import {
 } from '../services/coordinateService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { isMissingField, isPlaceholderOwnerName } from '../services/contactEnrichmentService.js';
 import db from '../db.js';
 
 const router = express.Router();
@@ -30,10 +31,50 @@ const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 };
 
+function coalesceEnrichedText(dbVal, freshVal) {
+  if (!isMissingField(dbVal) && !isPlaceholderOwnerName(dbVal)) return dbVal;
+  if (!isMissingField(freshVal) && !isPlaceholderOwnerName(freshVal)) return freshVal;
+  return dbVal ?? freshVal ?? null;
+}
+
+function coalesceEnrichedContact(dbVal, freshVal) {
+  if (!isMissingField(dbVal)) return dbVal;
+  if (!isMissingField(freshVal)) return freshVal;
+  return dbVal ?? freshVal ?? null;
+}
+
+function leadRecordIsSparse(existing) {
+  if (!existing) return false;
+  return (
+    isPlaceholderOwnerName(existing.owner_name) &&
+    isMissingField(existing.phone) &&
+    isMissingField(existing.email)
+  );
+}
+
+function enrichmentImproved(existing, details) {
+  if (!existing || !details) return false;
+  const ownerBetter =
+    isPlaceholderOwnerName(existing.owner_name) &&
+    !isPlaceholderOwnerName(details.propertyData?.ownerName);
+  const phoneBetter = isMissingField(existing.phone) && !isMissingField(details.contact?.phone);
+  const emailBetter = isMissingField(existing.email) && !isMissingField(details.contact?.email);
+  const valueBetter =
+    (Number(existing.property_value) || 0) < 10000 &&
+    (() => {
+      const raw = details.propertyData?.propertyValue || '';
+      const n = parseFloat(String(raw).replace(/[$,]/g, ''));
+      return !Number.isNaN(n) && n > 10000;
+    })();
+  return ownerBetter || phoneBetter || emailBetter || valueBetter;
+}
+
 async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentcastRecord, options = {}) {
+  const addressHint =
+    options.addressHint || parseCoordinatePropertyId(id)?.address || null;
   const preview = await retrievePropertyDetails(id, lat, lng, rentcastRecord, {
     skipContacts: true,
-    addressHint: options.addressHint || null,
+    addressHint,
   });
   let existing = null;
   if (req.user?.id && preview?.address) {
@@ -46,37 +87,105 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
     existing = rows[0] || null;
   }
   if (existing) {
-    // Reuse DB contacts — do not spend another Tracerfy credit on re-open.
+    let details = preview;
+    const sparse = leadRecordIsSparse(existing);
+    if (sparse) {
+      console.log(`[Property Detail] Sparse saved lead #${existing.id} — refreshing enrichment`);
+      details = await retrievePropertyDetails(id, lat, lng, rentcastRecord, {
+        skipContacts: false,
+        bypassCache: true,
+        addressHint,
+      });
+    }
+
+    const ownerName = coalesceEnrichedText(existing.owner_name, details.propertyData?.ownerName);
+    const phone = coalesceEnrichedContact(existing.phone, details.contact?.phone);
+    const email = coalesceEnrichedContact(existing.email, details.contact?.email);
+    const linkedIn = coalesceEnrichedContact(existing.linkedin, details.contact?.linkedIn);
+    const phoneType = coalesceEnrichedContact(existing.phone_type, details.contact?.phoneType);
+    const emailStatus = coalesceEnrichedContact(existing.email_status, details.contact?.emailStatus);
+    const mailingAddress = coalesceEnrichedText(
+      existing.mailing_address,
+      details.propertyData?.mailingAddress,
+    );
+    const parcelNumber = coalesceEnrichedText(existing.parcel_id, details.propertyData?.parcelNumber);
+    const ownerOccupied =
+      existing.owner_occupied === 1
+        ? 'Yes'
+        : existing.owner_occupied === 0
+          ? 'No'
+          : details.propertyData?.ownerOccupied || null;
+    const propertyValue = (() => {
+      const dbNum = Number(existing.property_value) || 0;
+      const fresh = details.propertyData?.propertyValue;
+      if (dbNum > 10000) return `$${dbNum.toLocaleString('en-US')}`;
+      if (!isMissingField(fresh)) return fresh;
+      return dbNum > 0 ? `$${dbNum.toLocaleString('en-US')}` : null;
+    })();
+
+    if (sparse && enrichmentImproved(existing, details)) {
+      const propValNum = (() => {
+        const raw = propertyValue || '';
+        const n = parseFloat(String(raw).replace(/[$,]/g, ''));
+        return Number.isNaN(n) ? Number(existing.property_value) || 0 : n;
+      })();
+      const ownerOccupiedDb =
+        ownerOccupied === 'Yes' ? 1 : ownerOccupied === 'No' ? 0 : existing.owner_occupied;
+      try {
+        await db.query(
+          `UPDATE leads SET
+             owner_name = ?, phone = ?, phone_type = ?, email = ?, email_status = ?,
+             linkedin = ?, mailing_address = ?, parcel_id = ?, owner_occupied = ?,
+             property_value = CASE WHEN ? > 10000 OR property_value IS NULL OR property_value < 10000 THEN ? ELSE property_value END
+           WHERE id = ? AND user_id = ?`,
+          [
+            ownerName,
+            phone,
+            phoneType,
+            email,
+            emailStatus,
+            linkedIn,
+            mailingAddress,
+            parcelNumber,
+            ownerOccupiedDb,
+            propValNum,
+            propValNum,
+            existing.id,
+            req.user.id,
+          ],
+        );
+        console.log(`[Property Detail] Updated sparse lead #${existing.id} from refreshed enrichment`);
+      } catch (updateErr) {
+        console.warn('[Property Detail] Sparse lead refresh DB update failed:', updateErr.message || updateErr);
+      }
+    }
+
     return res.json({
-      ...preview,
+      ...details,
       unlocked: true,
       leadId: existing.id,
       propertyData: {
-        ...(preview.propertyData || {}),
-        ownerName: existing.owner_name || preview.propertyData?.ownerName || null,
-        ownerOccupied:
-          existing.owner_occupied === 1
-            ? 'Yes'
-            : existing.owner_occupied === 0
-              ? 'No'
-              : preview.propertyData?.ownerOccupied || null,
-        mailingAddress: existing.mailing_address || preview.propertyData?.mailingAddress || null,
-        propertyValue: existing.property_value
-          ? `$${Number(existing.property_value).toLocaleString('en-US')}`
-          : preview.propertyData?.propertyValue || null,
-        parcelNumber: existing.parcel_id || preview.propertyData?.parcelNumber || null,
+        ...(details.propertyData || {}),
+        ownerName,
+        ownerOccupied,
+        mailingAddress,
+        propertyValue,
+        parcelNumber,
       },
       contact: {
-        phone: existing.phone || null,
-        email: existing.email || null,
-        linkedIn: existing.linkedin || null,
-        phoneType: existing.phone_type || null,
-        emailStatus: existing.email_status || null,
-        confidenceScore: existing.phone || existing.email ? 'Saved lead' : null,
+        phone,
+        email,
+        linkedIn,
+        phoneType,
+        emailStatus,
+        confidenceScore:
+          !isMissingField(phone) || !isMissingField(email)
+            ? details.contact?.confidenceScore || 'Saved lead'
+            : null,
       },
       enrichmentMeta: {
-        ...(preview.enrichmentMeta || {}),
-        contactSource: 'lead-db',
+        ...(details.enrichmentMeta || {}),
+        contactSource: sparse ? details.enrichmentMeta?.contactSource || 'refreshed' : 'lead-db',
         skipContacts: false,
       },
     });

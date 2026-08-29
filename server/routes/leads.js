@@ -123,22 +123,79 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     }
   }
 
-  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [req.user.id, full.address]);
-  if (existing.length > 0) {
-    return res.status(200).json({
-      message: 'Lead already generated',
-      leadId: existing[0].id,
-      detail: { ...full, unlocked: true, leadId: existing[0].id },
-      unlocked: true
-    });
-  }
-
   const parseValueSafe = (val, regex) => {
     if (!val || val === 'Not Available') return 0;
     const numStr = String(val).replace(regex, '');
     const parsed = parseFloat(numStr);
     return isNaN(parsed) ? 0 : parsed;
   };
+
+  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [req.user.id, full.address]);
+  if (existing.length > 0) {
+    const row = existing[0];
+    const sparse =
+      isPlaceholderOwnerName(row.owner_name) &&
+      isMissingField(row.phone) &&
+      isMissingField(row.email);
+    const improved =
+      !isPlaceholderOwnerName(full.propertyData?.ownerName) ||
+      !isMissingField(full.contact?.phone) ||
+      !isMissingField(full.contact?.email);
+
+    if (sparse && improved) {
+      const propValueNum = parseValueSafe(full.propertyData?.propertyValue, /[$,]/g);
+      const livingAreaNum = parseValueSafe(full.livingArea, /[^\d.]/g);
+      const roofAreaNum =
+        parseValueSafe(full.solar?.totalRoofArea || full.solar?.usableRoofArea, /[^\d.]/g) ||
+        livingAreaNum;
+      const savingsNum = parseValueSafe(full.solar?.twentyFiveYearSavings, /[$,]/g);
+      await db.query(
+        `UPDATE leads SET
+           owner_name = ?, phone = ?, phone_type = ?, email = ?, email_status = ?,
+           linkedin = ?, mailing_address = ?, property_value = ?, owner_occupied = ?,
+           parcel_id = ?, roof_size = ?, solar_potential = ?, estimated_savings = ?,
+           lead_score = ?, solar_json = ?, property_json = ?, image_url = COALESCE(?, image_url)
+         WHERE id = ? AND user_id = ?`,
+        [
+          full.propertyData?.ownerName,
+          full.contact?.phone,
+          full.contact?.phoneType || 'Not Available',
+          full.contact?.email,
+          full.contact?.emailStatus || 'Not Available',
+          full.contact?.linkedIn || 'Not Available',
+          full.propertyData?.mailingAddress,
+          propValueNum,
+          full.propertyData?.ownerOccupied === 'Yes' ? 1 : 0,
+          full.propertyData?.parcelNumber,
+          roofAreaNum,
+          full.solar?.potential,
+          savingsNum,
+          full.aiLeadScore?.overall,
+          JSON.stringify(full.solar || {}),
+          JSON.stringify({
+            ...(full.propertyData || {}),
+            livingArea: full.livingArea,
+            lotSize: full.lotSize,
+            stories: full.stories,
+            propertyType: full.propertyType,
+            yearBuilt: full.yearBuilt,
+            aiLeadScore: full.aiLeadScore || null,
+          }),
+          full.imageUrl || null,
+          row.id,
+          req.user.id,
+        ],
+      );
+      console.log(`[Lead Generate] Refreshed sparse saved lead #${row.id}`);
+    }
+
+    return res.status(200).json({
+      message: 'Lead already generated',
+      leadId: row.id,
+      detail: { ...full, unlocked: true, leadId: row.id },
+      unlocked: true
+    });
+  }
 
   const propValueNum = parseValueSafe(full.propertyData?.propertyValue, /[$,]/g);
   const livingAreaNum = parseValueSafe(full.livingArea, /[^\d.]/g);
