@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast, Toaster } from 'sonner';
 import { API_BASE } from '../../config.js';
+import { isAdminRole } from '../../lib/auth.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import BiddingCountdown from '../../components/marketplace/BiddingCountdown.jsx';
 import {
   DISPUTE_TYPES,
@@ -78,6 +80,8 @@ function describeRazorpayFailure(resp) {
 }
 
 export default function MarketplaceDashboard() {
+  const { user, unlimitedCredits } = useAuth();
+  const isAdmin = isAdminRole(user?.role) || unlimitedCredits;
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState('opportunities');
   const [loading, setLoading] = useState(false);
@@ -477,6 +481,22 @@ export default function MarketplaceDashboard() {
           Bid on masked solar opportunities. Contact details unlock only when you win.
         </p>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-amber-100">
+            <span className="font-bold">Admin:</span> Homeowner form submissions are approved in the operator
+            console — not on this installer bidding page.
+          </div>
+          <Link
+            to="/admin?tab=marketplace&mkt=leads"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 text-black text-xs font-bold px-3 py-2 hover:bg-amber-300"
+          >
+            <span className="material-symbols-outlined text-sm">fact_check</span>
+            Open marketplace approvals
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
         {MARKETPLACE_TABS.map((t) => (

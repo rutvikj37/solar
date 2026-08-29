@@ -222,13 +222,18 @@ export default function AdminDashboard() {
     if (normalized && TABS.some((x) => x.id === normalized)) setTab(normalized);
   }, [searchParams]);
 
+  const marketplaceSub = searchParams.get('mkt') || 'leads';
+
   useEffect(() => {
     loadTab(tab);
   }, [tab, loadTab]);
 
   const switchTab = (id) => {
     setTab(id);
-    setSearchParams({ tab: id });
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', id);
+    if (id === 'marketplace') next.set('mkt', next.get('mkt') || 'leads');
+    setSearchParams(next);
     setTicketDetail(null);
     setUserDetail(null);
     setSelectedUserId(null);
@@ -659,7 +664,11 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {tab === 'marketplace' && <AdminMarketplacePanel />}
+      {tab === 'marketplace' && (
+        <AdminMarketplacePanel
+          initialSub={['overview', 'settings', 'leads', 'disputes', 'installers', 'wallets'].includes(marketplaceSub) ? marketplaceSub : 'leads'}
+        />
+      )}
       {tab === 'integrations' && <AdminIntegrationsPanel />}
 
       {tab === 'team' && <TeamWorkspacePanel />}

@@ -20,8 +20,8 @@ const SUBTABS = [
   { id: 'wallets', label: 'Wallets' },
 ];
 
-export default function AdminMarketplacePanel() {
-  const [sub, setSub] = useState('overview');
+export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
+  const [sub, setSub] = useState(initialSub);
   const [metrics, setMetrics] = useState(null);
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -150,6 +150,12 @@ export default function AdminMarketplacePanel() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (initialSub && initialSub !== sub) {
+      setSub(initialSub);
+    }
+  }, [initialSub]);
 
   const openLead = async (id) => {
     try {

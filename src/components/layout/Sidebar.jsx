@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { API_BASE } from '../../config.js';
 import { isAdminRole } from '../../lib/auth.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const EXPANDED_WIDTH = 260;
 const COLLAPSED_WIDTH = 72;
@@ -12,30 +12,14 @@ export default function Sidebar({
   collapsed = false,
   showBanner,
 }) {
-  const [userRole, setUserRole] = useState('');
+  const { user, refreshUserData } = useAuth();
+  const userRole = user?.role || '';
   const leadsCount = null;
   const isAdmin = isAdminRole(userRole);
 
   useEffect(() => {
-    const token = localStorage.getItem('solar_token');
-    if (!token) return undefined;
-    let cancelled = false;
-
-    fetch(`${API_BASE}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.user) {
-          setUserRole(data.user.role || '');
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    refreshUserData();
+  }, [refreshUserData]);
 
   const handleMobileClose = () => {
     if (typeof onMobileClose === 'function') onMobileClose();
@@ -81,6 +65,18 @@ export default function Sidebar({
     ...(isAdmin
       ? [
           {
+            title: 'ADMIN',
+            items: [
+              { name: 'Admin Console', path: '/admin', icon: 'admin_panel_settings', badge: 'Operator' },
+              {
+                name: 'Marketplace Approvals',
+                path: '/admin?tab=marketplace&mkt=leads',
+                icon: 'fact_check',
+                hint: 'Review homeowner forms',
+              },
+            ],
+          },
+          {
             title: 'AI VOICE CALLING',
             items: [
               { name: 'Dashboard', path: '/ai-calling', icon: 'smart_toy' },
@@ -100,7 +96,7 @@ export default function Sidebar({
         { name: 'Billing', path: '/billing', icon: 'receipt_long' },
         { name: 'Support', path: '/support', icon: 'support_agent' },
         ...(isAdmin
-          ? [{ name: 'Admin', path: '/admin', icon: 'admin_panel_settings', badge: 'Operator' }]
+          ? []
           : []),
         { name: 'Export CSV', action: 'export', icon: 'download' },
       ],
