@@ -12,6 +12,7 @@ import {
   validateEmailWithVerifalia,
   lookupPhoneWithTwilio,
   isMissingField,
+  isPlaceholderOwnerName,
   hasAnyContact,
   scoreContactQuality,
   emptyContactDetails,
@@ -22,6 +23,7 @@ import {
   isSameStreetProperty,
   looksLikeStreetAddress,
   fetchRentcastPropertyByAddress,
+  fetchRentcastPropertyNearCoords,
   parseCoordinatePropertyId,
 } from './coordinateService.js';
 
@@ -413,6 +415,80 @@ export function toLockedPreview(details) {
   };
 }
 
+/** Apply a RentCast parcel record into live enrichment fields (owner, value, type, etc.). */
+async function applyRentcastRecordToEnrichment(prop, ctx) {
+  if (!prop) return ctx;
+
+  cacheRentcastRecord(prop);
+  ctx.rentcastPropUsed = prop;
+  ctx.address = prop.formattedAddress || ctx.address;
+  ctx.lat = parseFloat(prop.latitude) || ctx.lat;
+  ctx.lng = parseFloat(prop.longitude) || ctx.lng;
+
+  if (prop.city && prop.state && prop.zipCode) {
+    ctx.locationInfo = {
+      standardized: ctx.address,
+      city: prop.city,
+      state: prop.state,
+      zip: prop.zipCode,
+    };
+  } else {
+    ctx.locationInfo = await standardizeAddress(ctx.address);
+    ctx.address = ctx.locationInfo.standardized || ctx.address;
+    if (!ctx.locationInfo.city && prop.city) ctx.locationInfo.city = prop.city;
+    if (!ctx.locationInfo.state && prop.state) ctx.locationInfo.state = prop.state;
+    if (!ctx.locationInfo.zip && prop.zipCode) ctx.locationInfo.zip = prop.zipCode;
+  }
+
+  ctx.propertyType = prop.propertyType || ctx.propertyType;
+  ctx.yearBuilt = prop.yearBuilt || ctx.yearBuilt;
+  ctx.stories = prop.features?.floorCount ? prop.features.floorCount : ctx.stories;
+
+  if (prop.squareFootage) ctx.livingArea = `${prop.squareFootage} sq ft`;
+  if (prop.lotSize) ctx.lotSize = `${prop.lotSize} sq ft`;
+
+  const lastSaleAmt = prop.lastSalePrice || 0;
+  const assessments = prop.taxAssessments || {};
+  const years = Object.keys(assessments).sort((a, b) => b - a);
+  const latestAssessment = years.length > 0 ? assessments[years[0]] : null;
+  const taxAssessed = latestAssessment ? latestAssessment.value : Math.floor(lastSaleAmt * 0.75);
+
+  ctx.propVal = lastSaleAmt || (latestAssessment ? Math.floor(latestAssessment.value / 0.75) : 0);
+  if (ctx.propVal > 0 && ctx.propVal < 10000 && latestAssessment?.value) {
+    ctx.propVal = Math.floor(latestAssessment.value);
+  }
+  if (ctx.propVal > 0 && ctx.propVal < 10000 && lastSaleAmt > ctx.propVal) {
+    ctx.propVal = lastSaleAmt;
+  }
+
+  const lastSaleRecDate = prop.lastSaleDate
+    ? new Date(prop.lastSaleDate).toLocaleDateString()
+    : 'Not Available';
+
+  let ownerNameResolved = 'Not Available';
+  if (prop.owner?.names?.length) {
+    ownerNameResolved = prop.owner.names[0];
+  }
+  if (ownerNameResolved !== 'Not Available' && isCorporateOwner(ownerNameResolved)) {
+    ownerNameResolved = await resolveCorporateOwner(ownerNameResolved);
+  }
+
+  ctx.propertyDetails = {
+    ownerName: ownerNameResolved,
+    ownerOccupied:
+      prop.ownerOccupied === true ? 'Yes' : prop.ownerOccupied === false ? 'No' : 'Not Available',
+    mailingAddress:
+      prop.owner?.mailingAddress?.formattedAddress || ctx.address,
+    propertyValue: ctx.propVal ? `$${ctx.propVal.toLocaleString('en-US')}` : 'Not Available',
+    taxAssessedValue: taxAssessed ? `$${taxAssessed.toLocaleString('en-US')}` : 'Not Available',
+    parcelNumber: prop.assessorID || 'Not Available',
+    lastSaleDate: lastSaleRecDate,
+    lastSalePrice: lastSaleAmt ? `$${lastSaleAmt.toLocaleString('en-US')}` : 'Not Available',
+  };
+  console.log(`[RentCast] Loaded details for ${ctx.propertyDetails.ownerName}`);
+  return ctx;
+}
+
 export async function retrievePropertyDetails(id, providedLat, providedLng, rentcastRecord = null, options = {}) {
   const skipContacts = !!options.skipContacts;
   const bypassCache = !!options.bypassCache;
@@ -432,8 +508,14 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
   if (!bypassCache && !skipContacts) {
     const cached = getCachedEnrichment(id, lat, lng);
     if (cached) {
-      console.log(`[Enrichment Cache] HIT for ${id}`);
-      return cached;
+      const hasOwner = !isPlaceholderOwnerName(cached.propertyData?.ownerName);
+      const hasContact =
+        !isMissingField(cached.contact?.phone) || !isMissingField(cached.contact?.email);
+      if (hasOwner || hasContact) {
+        console.log(`[Enrichment Cache] HIT for ${id}`);
+        return cached;
+      }
+      console.log(`[Enrichment Cache] Ignoring empty cache for ${id}`);
     }
   }
 
@@ -468,19 +550,62 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
   let contactDetails = {};
   let rentcastPropUsed = rentcastRecord || null;
 
+  const snapshotEnrichmentCtx = () => ({
+    address,
+    lat,
+    lng,
+    locationInfo,
+    propertyType,
+    yearBuilt,
+    livingArea,
+    lotSize,
+    stories,
+    propVal,
+    propertyDetails,
+    rentcastPropUsed,
+  });
+  const restoreEnrichmentCtx = (ctx) => {
+    address = ctx.address;
+    lat = ctx.lat;
+    lng = ctx.lng;
+    locationInfo = ctx.locationInfo;
+    propertyType = ctx.propertyType;
+    yearBuilt = ctx.yearBuilt;
+    livingArea = ctx.livingArea;
+    lotSize = ctx.lotSize;
+    stories = ctx.stories;
+    propVal = ctx.propVal;
+    propertyDetails = ctx.propertyDetails;
+    rentcastPropUsed = ctx.rentcastPropUsed;
+  };
+
   // Coordinate pins from address search carry the searched street in the id/hint.
   if (!rentcastPropUsed && addressHint && looksLikeStreetAddress(addressHint)) {
     try {
-      const prop = await fetchRentcastPropertyByAddress(addressHint);
+      let prop = await fetchRentcastPropertyByAddress(addressHint);
+      if (!prop && /,\s*USA$/i.test(addressHint)) {
+        prop = await fetchRentcastPropertyByAddress(addressHint.replace(/,\s*USA$/i, '').trim());
+      }
       if (prop) {
-        rentcastPropUsed = prop;
-        cacheRentcastRecord(prop);
-        address = prop.formattedAddress || address;
-        lat = parseFloat(prop.latitude) || lat;
-        lng = parseFloat(prop.longitude) || lng;
+        const ctx = snapshotEnrichmentCtx();
+        await applyRentcastRecordToEnrichment(prop, ctx);
+        restoreEnrichmentCtx(ctx);
       }
     } catch (err) {
       console.warn('[Property Enrichment] RentCast lookup from address hint failed:', err.message || err);
+    }
+  }
+
+  if (!rentcastPropUsed && addressHint && lat && lng && looksLikeStreetAddress(addressHint)) {
+    try {
+      const near = await fetchRentcastPropertyNearCoords(lat, lng, { radiusMiles: 0.08, limit: 1 });
+      if (near && isSameStreetProperty(addressHint, near.formattedAddress || near.addressLine1)) {
+        const ctx = snapshotEnrichmentCtx();
+        await applyRentcastRecordToEnrichment(near, ctx);
+        restoreEnrichmentCtx(ctx);
+      }
+    } catch (err) {
+      console.warn('[Property Enrichment] RentCast near-coords fallback failed:', err.message || err);
     }
   }
 
@@ -527,71 +652,9 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
       }
 
       if (prop) {
-        cacheRentcastRecord(prop);
-        rentcastPropUsed = prop;
-        address = prop.formattedAddress;
-        lat = parseFloat(prop.latitude);
-        lng = parseFloat(prop.longitude);
-
-        if (prop.city && prop.state && prop.zipCode) {
-          locationInfo = {
-            standardized: address,
-            city: prop.city,
-            state: prop.state,
-            zip: prop.zipCode
-          };
-          console.log('[Address Standardization] Skipped Geocode — RentCast city/state/zip present');
-        } else {
-          locationInfo = await standardizeAddress(address);
-          address = locationInfo.standardized || address;
-          if (!locationInfo.city && prop.city) locationInfo.city = prop.city;
-          if (!locationInfo.state && prop.state) locationInfo.state = prop.state;
-          if (!locationInfo.zip && prop.zipCode) locationInfo.zip = prop.zipCode;
-        }
-        
-        propertyType = prop.propertyType || propertyType;
-        yearBuilt = prop.yearBuilt || yearBuilt;
-        stories = prop.features && prop.features.floorCount ? prop.features.floorCount : stories;
-
-        if (prop.squareFootage) livingArea = `${prop.squareFootage} sq ft`;
-        if (prop.lotSize) lotSize = `${prop.lotSize} sq ft`;
-
-        const lastSaleAmt = prop.lastSalePrice || 0;
-        const assessments = prop.taxAssessments || {};
-        const years = Object.keys(assessments).sort((a, b) => b - a);
-        const latestAssessment = years.length > 0 ? assessments[years[0]] : null;
-        const taxAssessed = latestAssessment ? latestAssessment.value : Math.floor(lastSaleAmt * 0.75);
-
-        propVal = lastSaleAmt || (latestAssessment ? Math.floor(latestAssessment.value / 0.75) : 0);
-        if (propVal > 0 && propVal < 10000 && latestAssessment?.value) {
-          propVal = Math.floor(latestAssessment.value);
-        }
-        if (propVal > 0 && propVal < 10000 && lastSaleAmt > propVal) {
-          propVal = lastSaleAmt;
-        }
-        
-        const lastSaleRecDate = prop.lastSaleDate ? new Date(prop.lastSaleDate).toLocaleDateString() : 'Not Available';
-
-        let ownerNameResolved = 'Not Available';
-        if (prop.owner && prop.owner.names && prop.owner.names.length > 0) {
-          ownerNameResolved = prop.owner.names[0];
-        }
-        
-        if (ownerNameResolved !== 'Not Available' && isCorporateOwner(ownerNameResolved)) {
-          ownerNameResolved = await resolveCorporateOwner(ownerNameResolved);
-        }
-
-        propertyDetails = {
-          ownerName: ownerNameResolved,
-          ownerOccupied: prop.ownerOccupied === true ? 'Yes' : prop.ownerOccupied === false ? 'No' : 'Not Available',
-          mailingAddress: prop.owner && prop.owner.mailingAddress ? prop.owner.mailingAddress.formattedAddress : address,
-          propertyValue: propVal ? `$${propVal.toLocaleString('en-US')}` : 'Not Available',
-          taxAssessedValue: taxAssessed ? `$${taxAssessed.toLocaleString('en-US')}` : 'Not Available',
-          parcelNumber: prop.assessorID || 'Not Available',
-          lastSaleDate: lastSaleRecDate,
-          lastSalePrice: lastSaleAmt ? `$${lastSaleAmt.toLocaleString('en-US')}` : 'Not Available'
-        };
-        console.log(`[RentCast Detail API] Loaded details for ${propertyDetails.ownerName}`);
+        const ctx = snapshotEnrichmentCtx();
+        await applyRentcastRecordToEnrichment(prop, ctx);
+        restoreEnrichmentCtx(ctx);
       }
     } catch (err) {
       console.error('[RentCast Detail API] Error:', err);
@@ -640,6 +703,17 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
       `[Property Enrichment] Keeping searched address "${addressHint}" instead of mismatched "${address}"`,
     );
     address = addressHint;
+  }
+
+  if ((!locationInfo.city || !locationInfo.zip) && address && looksLikeStreetAddress(address)) {
+    const geo = await standardizeAddress(address);
+    locationInfo = {
+      standardized: geo.standardized || locationInfo.standardized || address,
+      city: locationInfo.city || geo.city || '',
+      state: locationInfo.state || geo.state || '',
+      zip: locationInfo.zip || geo.zip || '',
+    };
+    if (geo.standardized) address = geo.standardized;
   }
 
   let roofTiltDeg = 20;

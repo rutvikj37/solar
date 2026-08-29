@@ -13,6 +13,7 @@ import {
   assertAddressMatchesSearch,
   looksLikeStreetAddress,
   parseCoordinatePropertyId,
+  buildCoordinatePropertyId,
 } from '../services/coordinateService.js';
 import {
   getFallbackZipCoords,
@@ -84,8 +85,12 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     !looksLikeStreetAddress(expectedAddress) ||
     assertAddressMatchesSearch(expectedAddress, cachedEnrichment?.address).ok;
 
-  if (cachedEnrichment && hasUsableEnrichedContacts(cachedEnrichment) && cacheMatchesSearch) {
-    console.log(`[Lead Generate] Reusing enrichment cache (skip Tracerfy) for ${propertyId}`);
+  const cacheHasOwner = !isPlaceholderOwnerName(cachedEnrichment?.propertyData?.ownerName);
+  const cacheHasContacts =
+    !isMissingField(cachedEnrichment?.contact?.phone) ||
+    !isMissingField(cachedEnrichment?.contact?.email);
+  if (cachedEnrichment && (cacheHasOwner || cacheHasContacts) && cacheMatchesSearch) {
+    console.log(`[Lead Generate] Reusing enrichment cache for ${propertyId}`);
     full = cachedEnrichment;
   } else {
     full = await retrievePropertyDetails(
@@ -820,25 +825,48 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
     !solar.totalRoofArea ||
     solar.totalRoofArea === 'Not Available';
 
+  const needsPropertyBackfill =
+    isPlaceholderOwnerName(lead.owner_name) &&
+    isPlaceholderOwnerName(propertyExtra?.ownerName);
+
+  const needsContactBackfill =
+    isMissingField(lead.phone) && isMissingField(lead.email);
+
   const lat = parseFloat(lead.latitude);
   const lng = parseFloat(lead.longitude);
 
-  if (needsSolarBackfill && !Number.isNaN(lat) && !Number.isNaN(lng) && lat && lng) {
+  const needsEnrichmentBackfill =
+    (needsSolarBackfill || needsPropertyBackfill || needsContactBackfill) &&
+    !Number.isNaN(lat) &&
+    !Number.isNaN(lng) &&
+    lat &&
+    lng;
+
+  if (needsEnrichmentBackfill) {
     try {
-      console.log(`[Lead Detail] Backfilling solar-only for lead #${id} @ ${lat},${lng}`);
-      const targetId = `coordinate-${lat.toFixed(5)}-${lng.toFixed(5)}`;
-      const details = await retrievePropertyDetails(targetId, lat, lng, null, { skipContacts: true, bypassCache: true });
+      console.log(
+        `[Lead Detail] Backfilling lead #${id} @ ${lat},${lng} ` +
+          `(solar=${needsSolarBackfill} property=${needsPropertyBackfill} contact=${needsContactBackfill})`,
+      );
+      const targetId = buildCoordinatePropertyId(lat, lng, lead.address);
+      const details = await retrievePropertyDetails(targetId, lat, lng, null, {
+        skipContacts: !needsContactBackfill,
+        bypassCache: needsPropertyBackfill || needsContactBackfill,
+        addressHint: lead.address,
+      });
       delete details._locationInfo;
-      solar = details.solar || solar;
+      if (needsSolarBackfill) {
+        solar = details.solar || solar;
+      }
       propertyExtra = {
         ...(propertyExtra || {}),
         ...(details.propertyData || {}),
-        livingArea: details.livingArea,
-        lotSize: details.lotSize,
-        stories: details.stories,
-        propertyType: details.propertyType,
-        yearBuilt: details.yearBuilt,
-        aiLeadScore: details.aiLeadScore || propertyExtra?.aiLeadScore || null
+        livingArea: details.livingArea || propertyExtra?.livingArea,
+        lotSize: details.lotSize || propertyExtra?.lotSize,
+        stories: details.stories || propertyExtra?.stories,
+        propertyType: details.propertyType || propertyExtra?.propertyType,
+        yearBuilt: details.yearBuilt || propertyExtra?.yearBuilt,
+        aiLeadScore: details.aiLeadScore || propertyExtra?.aiLeadScore || null,
       };
 
       const roofAreaNum = (() => {
@@ -860,10 +888,29 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
         propVal = Number(lead.property_value);
       }
 
+      const ownerName = !isPlaceholderOwnerName(details.propertyData?.ownerName)
+        ? details.propertyData.ownerName
+        : lead.owner_name;
+      const phone = !isMissingField(details.contact?.phone) ? details.contact.phone : lead.phone;
+      const email = !isMissingField(details.contact?.email) ? details.contact.email : lead.email;
+      const phoneType = details.contact?.phoneType || lead.phone_type || 'Not Available';
+      const emailStatus = details.contact?.emailStatus || lead.email_status || 'Not Available';
+      const mailingAddress =
+        details.propertyData?.mailingAddress || lead.mailing_address || lead.address;
+      const ownerOccupied =
+        details.propertyData?.ownerOccupied === 'Yes'
+          ? 1
+          : details.propertyData?.ownerOccupied === 'No'
+            ? 0
+            : lead.owner_occupied;
+      const parcelId = details.propertyData?.parcelNumber || lead.parcel_id;
+
       await db.query(
         `UPDATE leads SET
            solar_json = ?, property_json = ?, image_url = COALESCE(?, image_url),
            roof_size = ?, solar_potential = ?, estimated_savings = ?,
+           owner_name = ?, phone = ?, phone_type = ?, email = ?, email_status = ?,
+           mailing_address = ?, owner_occupied = ?, parcel_id = ?,
            property_value = CASE WHEN ? > 10000 OR property_value IS NULL OR property_value < 10000 THEN ? ELSE property_value END
          WHERE id = ? AND user_id = ?`,
         [
@@ -873,13 +920,29 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
           roofAreaNum || lead.roof_size,
           details.solar?.potential || lead.solar_potential,
           savingsNum || lead.estimated_savings,
+          ownerName,
+          phone,
+          phoneType,
+          email,
+          emailStatus,
+          mailingAddress,
+          ownerOccupied,
+          parcelId,
           propVal,
           propVal,
           id,
-          req.user.id
-        ]
+          req.user.id,
+        ],
       );
 
+      lead.owner_name = ownerName;
+      lead.phone = phone;
+      lead.phone_type = phoneType;
+      lead.email = email;
+      lead.email_status = emailStatus;
+      lead.mailing_address = mailingAddress;
+      lead.owner_occupied = ownerOccupied;
+      lead.parcel_id = parcelId;
       lead.roof_size = roofAreaNum || lead.roof_size;
       lead.solar_potential = details.solar?.potential || lead.solar_potential;
       lead.estimated_savings = savingsNum || lead.estimated_savings;
@@ -894,7 +957,7 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
         if (!Number.isNaN(detailLat) && !Number.isNaN(detailLng)) {
           await db.query(
             'UPDATE leads SET latitude = ?, longitude = ? WHERE id = ?',
-            [detailLat, detailLng, id]
+            [detailLat, detailLng, id],
           );
           lead.latitude = detailLat;
           lead.longitude = detailLng;
@@ -902,7 +965,7 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
         }
       }
     } catch (enrichErr) {
-      console.error(`[Lead Detail] Solar backfill failed for #${id}:`, enrichErr.message || enrichErr);
+      console.error(`[Lead Detail] Enrichment backfill failed for #${id}:`, enrichErr.message || enrichErr);
     }
   }
 
