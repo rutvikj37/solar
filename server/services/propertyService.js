@@ -17,7 +17,13 @@ import {
   emptyContactDetails,
   enrichOwnerContacts
 } from './contactEnrichmentService.js';
-import { resolvePropertyCoordinates, isSameStreetProperty, looksLikeStreetAddress, fetchRentcastPropertyByAddress } from './coordinateService.js';
+import {
+  resolvePropertyCoordinates,
+  isSameStreetProperty,
+  looksLikeStreetAddress,
+  fetchRentcastPropertyByAddress,
+  parseCoordinatePropertyId,
+} from './coordinateService.js';
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -410,11 +416,12 @@ export function toLockedPreview(details) {
 export async function retrievePropertyDetails(id, providedLat, providedLng, rentcastRecord = null, options = {}) {
   const skipContacts = !!options.skipContacts;
   const bypassCache = !!options.bypassCache;
-  const addressHint = String(options.addressHint || '').trim();
+  const parsedCoord = parseCoordinatePropertyId(id);
+  const addressHint = String(options.addressHint || parsedCoord?.address || '').trim();
 
   let address = addressHint;
-  let lat = parseFloat(providedLat) || 0;
-  let lng = parseFloat(providedLng) || 0;
+  let lat = parseFloat(providedLat) || parsedCoord?.lat || 0;
+  let lng = parseFloat(providedLng) || parsedCoord?.lng || 0;
   let propertyType = 'Not Available';
   let yearBuilt = 'Not Available';
   let livingArea = 'Not Available';
@@ -616,7 +623,23 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
   }
 
   if (!address) {
-    address = `Property at ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    if (addressHint && looksLikeStreetAddress(addressHint)) {
+      address = addressHint;
+    } else {
+      address = `Property at ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  }
+
+  // Keep the searched street identity when enrichment couldn't fetch a matching parcel record.
+  if (
+    addressHint &&
+    looksLikeStreetAddress(addressHint) &&
+    !isSameStreetProperty(addressHint, address)
+  ) {
+    console.warn(
+      `[Property Enrichment] Keeping searched address "${addressHint}" instead of mismatched "${address}"`,
+    );
+    address = addressHint;
   }
 
   let roofTiltDeg = 20;

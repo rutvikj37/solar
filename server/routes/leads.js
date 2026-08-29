@@ -7,7 +7,13 @@ import { checkLeadCreditAccess } from './billing.js';
 import { trackedFetch } from '../services/apiUsage.js';
 import { cacheRentcastRecords, getCachedRentcastRecord, normalizeAddress } from '../services/rentcastCache.js';
 import { getZipFromCoords } from '../services/leadService.js';
-import { normalizeDetailsCoordinates, ensureLeadCoordinates, assertAddressMatchesSearch, looksLikeStreetAddress } from '../services/coordinateService.js';
+import {
+  normalizeDetailsCoordinates,
+  ensureLeadCoordinates,
+  assertAddressMatchesSearch,
+  looksLikeStreetAddress,
+  parseCoordinatePropertyId,
+} from '../services/coordinateService.js';
 import {
   getFallbackZipCoords,
   isSingleFamilyType,
@@ -56,28 +62,47 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
 
   const packageRecord = creditCheck.packageRecord || packages[0] || null;
 
+  const parsedCoord = parseCoordinatePropertyId(propertyId);
+  const addressHint =
+    detail?.expectedAddress ||
+    detail?.searchQuery ||
+    detail?.address ||
+    parsedCoord?.address ||
+    null;
+  const enrichLat = detail?.lat ?? parsedCoord?.lat;
+  const enrichLng = detail?.lng ?? parsedCoord?.lng;
+
   const cached = getCachedRentcastRecord(propertyId);
-  const cachedEnrichment = getCachedEnrichment(propertyId, detail?.lat, detail?.lng);
+  const cachedEnrichment = getCachedEnrichment(propertyId, enrichLat, enrichLng);
+
+  // Accuracy gate: if the user searched a street address, never unlock a different parcel.
+  const expectedAddress = addressHint || detail?.expectedAddress || detail?.searchQuery || null;
+
   let full;
-  if (cachedEnrichment && hasUsableEnrichedContacts(cachedEnrichment)) {
+  const cacheMatchesSearch =
+    !expectedAddress ||
+    !looksLikeStreetAddress(expectedAddress) ||
+    assertAddressMatchesSearch(expectedAddress, cachedEnrichment?.address).ok;
+
+  if (cachedEnrichment && hasUsableEnrichedContacts(cachedEnrichment) && cacheMatchesSearch) {
     console.log(`[Lead Generate] Reusing enrichment cache (skip Tracerfy) for ${propertyId}`);
     full = cachedEnrichment;
   } else {
-    // Prefer enrichment cache when present; only force contacts path once per property.
     full = await retrievePropertyDetails(
       propertyId,
-      detail?.lat,
-      detail?.lng,
+      enrichLat,
+      enrichLng,
       cached,
-      { skipContacts: false, bypassCache: false }
+      {
+        skipContacts: false,
+        bypassCache: false,
+        addressHint,
+      },
     );
   }
   if (!full?.address) {
     return res.status(400).json({ error: 'Could not resolve this property' });
   }
-
-  // Accuracy gate: if the user searched a street address, never unlock a different parcel.
-  const expectedAddress = detail?.expectedAddress || detail?.searchQuery || null;
   if (expectedAddress && looksLikeStreetAddress(expectedAddress)) {
     const gate = assertAddressMatchesSearch(expectedAddress, full.address);
     if (!gate.ok) {

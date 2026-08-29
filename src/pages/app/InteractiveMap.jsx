@@ -117,6 +117,8 @@ export default function InteractiveMap() {
   const [generatedLeadStatus, setGeneratedLeadStatus] = useState('idle');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState('');
+  const [upgradeModalTitle, setUpgradeModalTitle] = useState('Upgrade required');
+  const [showUpgradeCta, setShowUpgradeCta] = useState(true);
   const [googleMapsKey, setGoogleMapsKey] = useState('');
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [mapError, setMapError] = useState('');
@@ -869,12 +871,16 @@ export default function InteractiveMap() {
   const handleExecuteScan = () => {
     const area = resolveScanArea();
     if (!area?.zip && !area?.polygon) {
+      setUpgradeModalTitle('Action required');
+      setShowUpgradeCta(false);
       setUpgradeMessage('Search a ZIP or draw a territory on the map first.');
       setShowUpgradeModal(true);
       return;
     }
 
     if (!unlimitedCredits && leadCredits < leadsToCapture) {
+      setUpgradeModalTitle('Upgrade required');
+      setShowUpgradeCta(true);
       setUpgradeMessage(`Bulk scan requires at least ${leadsToCapture} lead credits.`);
       setShowUpgradeModal(true);
       return;
@@ -931,10 +937,14 @@ export default function InteractiveMap() {
         }
         refreshUserData();
       } else if (response.status === 402) {
+        setUpgradeModalTitle('Upgrade required');
+        setShowUpgradeCta(true);
         setUpgradeMessage(data.error || 'Not enough credits to unlock this lead.');
         setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
       } else if (response.status === 409) {
+        setUpgradeModalTitle('Address mismatch');
+        setShowUpgradeCta(false);
         setUpgradeMessage(
           data.error ||
             `Address mismatch: searched "${data.searched || ''}" but got "${data.resolved || ''}". Search again.`
@@ -942,11 +952,15 @@ export default function InteractiveMap() {
         setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
       } else {
+        setUpgradeModalTitle('Could not unlock lead');
+        setShowUpgradeCta(false);
         setUpgradeMessage(data.error || 'Could not unlock this lead. Please try again.');
         setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
       }
     } catch (err) {
+      setUpgradeModalTitle('Could not unlock lead');
+      setShowUpgradeCta(false);
       setUpgradeMessage(err.message || 'Could not unlock this lead. Please try again.');
       setShowUpgradeModal(true);
       setGeneratedLeadStatus('idle');
@@ -1167,6 +1181,8 @@ export default function InteractiveMap() {
         onClose={() => setShowUpgradeModal(false)}
         credits={leadCredits}
         message={upgradeMessage}
+        title={upgradeModalTitle}
+        showUpgradeCta={showUpgradeCta}
       />
     </>
   );
