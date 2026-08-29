@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import Sidebar, { COLLAPSED_WIDTH, EXPANDED_WIDTH } from './Sidebar';
 import TopBar from './TopBar';
-import { fetchMe } from '../../lib/auth.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const SIDEBAR_COLLAPSED_KEY = 'str_sidebar_collapsed';
 
@@ -20,7 +20,7 @@ export default function AppLayout() {
     }
   });
   const [showBanner, setShowBanner] = useState(true);
-  const [credits, setCredits] = useState(null);
+  const { credits, subscription, refreshUserData, loading: authLoading } = useAuth();
   const location = useLocation();
   const isMapPage = location.pathname === '/map';
   const isWideTablePage = location.pathname === '/my-leads';
@@ -28,14 +28,8 @@ export default function AppLayout() {
   const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
 
   useEffect(() => {
-    let cancelled = false;
-    fetchMe().then((data) => {
-      if (!cancelled && data?.credits !== undefined) setCredits(data.credits);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    refreshUserData();
+  }, [location.pathname, refreshUserData]);
 
   // Close mobile drawer on navigate
   useEffect(() => {
@@ -73,8 +67,10 @@ export default function AppLayout() {
     setMobileOpen((open) => !open);
   };
 
-  const creditsLow = credits !== null && credits <= 2;
+  const creditsLow = credits !== null && credits !== undefined && credits <= 2;
   const creditsEmpty = credits === 0;
+  const planName = subscription?.packageName;
+  const bannerCredits = authLoading ? null : credits;
 
   return (
     <div className="min-h-screen bg-deep text-on-background flex flex-col font-sans overflow-x-hidden">
@@ -83,11 +79,13 @@ export default function AppLayout() {
           <div className="flex items-center gap-1.5 select-none">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
             <span>
-              {credits === null
+              {bannerCredits === null
                 ? '1 lead unlock = 1 credit'
                 : creditsEmpty
-                  ? 'No credits remaining. Subscribe to a monthly plan to generate more leads.'
-                  : `${Number(credits).toLocaleString()} credit${credits === 1 ? '' : 's'} remaining — 1 lead = 1 credit`}
+                  ? planName
+                    ? `${planName} — no unlock credits left. Renew or upgrade to continue.`
+                    : 'No credits remaining. Subscribe to a monthly plan to generate more leads.'
+                  : `${Number(bannerCredits).toLocaleString()} credit${bannerCredits === 1 ? '' : 's'} remaining — 1 lead = 1 credit${planName ? ` · ${planName}` : ''}`}
             </span>
           </div>
           <div className="flex items-center gap-3">

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 import { BRAND_NAME } from '../../config/brand.js';
-import { authHeaders, fetchMe, isAuthError, isAdminRole, logoutToLogin } from '../../lib/auth.js';
+import { authHeaders, isAuthError, isAdminRole, logoutToLogin } from '../../lib/auth.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 export default function TopBar({
   onNavToggle,
@@ -10,31 +11,30 @@ export default function TopBar({
   sidebarCollapsed = false,
   showBanner,
 }) {
-  const [userEmail, setUserEmail] = useState('');
-  const [userName, setUserName] = useState('');
-  const [userRole, setUserRole] = useState('');
-  const [credits, setCredits] = useState(0);
-  const [activePackage, setActivePackage] = useState('Free');
-  const [hasSubscription, setHasSubscription] = useState(false);
+  const { user, credits, activePackage, subscription, unlimitedCredits, refreshUserData } = useAuth();
   const [leadsCount, setLeadsCount] = useState(0);
   const [scanUsedToday, setScanUsedToday] = useState(0);
   const [scanRemaining, setScanRemaining] = useState(0);
   const [scanTotal, setScanTotal] = useState(0);
 
   useEffect(() => {
-    fetchMe().then((data) => {
-      if (!data?.user) return;
-      setUserEmail(data.user.email || '');
-      setUserName(data.user.name || '');
-      setUserRole(data.user.role || '');
-      setCredits(data.credits !== undefined ? data.credits : 0);
-      setActivePackage(data.activePackage || data.subscription?.packageName || 'Free');
-      setHasSubscription(Boolean(data.subscription));
-      const quota = data.scanQuota || {};
-      setScanUsedToday(Number(quota.usedToday) || Number(data.creditsUsedToday) || 0);
-      setScanRemaining(Number(quota.remaining) ?? Number(data.credits) ?? 0);
-      setScanTotal(Number(quota.total) || Math.max(Number(data.credits) + Number(quota.usedToday || data.creditsUsedToday || 0), 0));
-    });
+    refreshUserData();
+  }, [refreshUserData]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/auth/me`, { headers: authHeaders(), cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const quota = data.scanQuota || {};
+        setScanUsedToday(Number(quota.usedToday) || Number(data.creditsUsedToday) || 0);
+        setScanRemaining(Number(quota.remaining) ?? Number(data.credits) ?? 0);
+        setScanTotal(
+          Number(quota.total) ||
+            Math.max(Number(data.credits) + Number(quota.usedToday || data.creditsUsedToday || 0), 0),
+        );
+      })
+      .catch(console.error);
 
     fetch(`${API_BASE}/api/leads`, { headers: authHeaders() })
       .then((res) => {
@@ -48,13 +48,24 @@ export default function TopBar({
         if (Array.isArray(data)) setLeadsCount(data.length);
       })
       .catch(console.error);
-  }, []);
+  }, [credits]);
 
   const handleLogout = () => logoutToLogin();
 
+  const userEmail = user?.email || '';
+  const userName = user?.name || '';
+  const userRole = user?.role || '';
   const userInitial = userName.trim() ? userName.trim().charAt(0).toUpperCase() : '?';
   const topPosition = showBanner ? 'top-9' : 'top-0';
-  const isAdmin = isAdminRole(userRole);
+  const isAdmin = isAdminRole(userRole) || unlimitedCredits;
+  const hasSubscription = Boolean(subscription);
+  const planLabel = isAdmin
+    ? 'ADMIN'
+    : hasSubscription
+      ? subscription?.packageName || activePackage
+      : activePackage === 'Free'
+        ? 'FREE'
+        : activePackage;
 
   const navToggleLabel = mobileNavOpen
     ? 'Close navigation'
@@ -106,7 +117,7 @@ export default function TopBar({
 
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-[10px] font-bold tracking-wider text-primary">
           <span className="uppercase">
-            {isAdmin ? 'ADMIN' : hasSubscription ? activePackage : activePackage === 'Free' ? 'FREE' : activePackage}
+            {planLabel}
           </span>
           <span className="text-on-surface font-mono tabular-nums ml-0.5">
             | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} CREDITS`}

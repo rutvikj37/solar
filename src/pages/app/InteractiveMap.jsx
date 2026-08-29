@@ -935,7 +935,7 @@ export default function InteractiveMap() {
         if (data.detail) {
           setSelectedProperty({ ...data.detail, unlocked: true, leadId: data.leadId });
         }
-        refreshUserData();
+        await refreshUserData();
       } else if (response.status === 402) {
         setUpgradeModalTitle('Upgrade required');
         setShowUpgradeCta(true);

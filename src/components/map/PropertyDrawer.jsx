@@ -457,24 +457,33 @@ export default function PropertyDrawer({
             </button>
             <div className="grid grid-cols-2 gap-2">
               <Link
+                to={
+                  unlocked && displayProperty.leadId
+                    ? `/lead/${displayProperty.leadId}`
+                    : '/my-leads'
+                }
+                className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-primary/30 bg-primary/10 text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/20 transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">visibility</span>
+                {unlocked && displayProperty.leadId ? 'View lead details' : 'My leads'}
+              </Link>
+              <Link
                 to="/marketplace"
                 className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-200 hover:bg-white/10 transition-colors"
               >
                 <span className="material-symbols-outlined text-sm">gavel</span>
                 Marketplace bids
               </Link>
+            </div>
+            {unlocked && displayProperty.leadId && (
               <Link
-                to={
-                  unlocked && displayProperty.leadId
-                    ? `/lead/${displayProperty.leadId}?proposal=1`
-                    : '/my-leads'
-                }
-                className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-200 hover:bg-white/10 transition-colors"
+                to={`/lead/${displayProperty.leadId}?proposal=1`}
+                className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-200 hover:bg-white/10 transition-colors w-full"
               >
                 <span className="material-symbols-outlined text-sm">description</span>
-                {unlocked ? 'Create quotation' : 'My leads'}
+                Create quotation
               </Link>
-            </div>
+            )}
           </div>
         </>
       )}

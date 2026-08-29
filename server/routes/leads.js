@@ -41,6 +41,15 @@ const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 };
 
+async function getRemainingCredits(userId, adminBypass) {
+  if (adminBypass) return 9999;
+  const [rows] = await db.query(
+    'SELECT remaining_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
+    [userId],
+  );
+  return rows[0]?.remaining_leads ?? 0;
+}
+
 // Generate Lead & Deduct Credits
 router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   const { propertyId, detail } = req.body;
@@ -193,7 +202,9 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
       message: 'Lead already generated',
       leadId: row.id,
       detail: { ...full, unlocked: true, leadId: row.id },
-      unlocked: true
+      unlocked: true,
+      creditsRemaining: await getRemainingCredits(req.user.id, adminBypass),
+      creditDeducted: false,
     });
   }
 
@@ -258,7 +269,9 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     leadId: leadResult.insertId,
     adminBypass,
     detail: { ...full, unlocked: true, leadId: leadResult.insertId },
-    unlocked: true
+    unlocked: true,
+    creditsRemaining: await getRemainingCredits(req.user.id, adminBypass),
+    creditDeducted: !adminBypass && !!packageRecord,
   });
 }));
 
