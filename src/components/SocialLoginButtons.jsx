@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   completeGoogleRedirectIfPresent,
+  detectCoopHeader,
   signInWithGoogle,
 } from "../lib/socialAuth.js";
 import { API_BASE } from "../config.js";
@@ -35,6 +36,7 @@ export default function SocialLoginButtons({
 }) {
   const [busy, setBusy] = useState(false);
   const [available, setAvailable] = useState(null);
+  const [coopWarning, setCoopWarning] = useState(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -61,6 +63,21 @@ export default function SocialLoginButtons({
     };
   }, []);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    detectCoopHeader().then((coop) => {
+      if (!cancelled && coop === "same-origin") {
+        setCoopWarning(
+          "Google sign-in is blocked by server security headers (COOP: same-origin). " +
+            "Your host must send Cross-Origin-Opener-Policy: same-origin-allow-popups. See DEPLOY.md.",
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Finish Google redirect sign-in when returning from accounts.google.com
   React.useEffect(() => {
     let alive = true;
@@ -71,7 +88,11 @@ export default function SocialLoginButtons({
         if (!alive) return;
         if (data) onSuccess?.(data);
       } catch (err) {
-        if (alive) onError?.(err?.message || "Google sign-in failed");
+        if (!alive) return;
+        const msg = String(err?.message || "");
+        // Benign: no redirect in progress (normal page load).
+        if (/no redirect|redirect result/i.test(msg)) return;
+        onError?.(msg || "Google sign-in failed");
       } finally {
         if (alive) setBusy(false);
       }
@@ -105,6 +126,9 @@ export default function SocialLoginButtons({
           Social login is not configured. Add VITE_FIREBASE_* values to .env and restart Vite, or
           configure Firebase Admin in server/.env.
         </p>
+      )}
+      {coopWarning && (
+        <p className="text-[11px] text-red-300/90 leading-relaxed">{coopWarning}</p>
       )}
       <div className="relative flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-glass-stroke" />

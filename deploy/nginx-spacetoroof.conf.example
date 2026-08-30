@@ -1,0 +1,47 @@
+# Example nginx config for spacetoroof.com (static dist + API proxy)
+
+# Replace paths and upstream ports for your server.
+
+server {
+    listen 443 ssl http2;
+    server_name spacetoroof.com www.spacetoroof.com;
+
+    root /var/www/spacetoroof/dist;
+    index index.html;
+
+    # REQUIRED for Firebase Google sign-in (signInWithPopup).
+    # Do NOT use same-origin — it blocks window.closed and breaks OAuth popups.
+    add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:5002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /media-stream {
+        proxy_pass http://127.0.0.1:5002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # Optional: same-host Firebase auth handler (enables redirect sign-in).
+    # Also set FIREBASE_AUTH_DOMAIN=spacetoroof.com and FIREBASE_AUTH_PROXY=1 on Node,
+    # or proxy here instead of Node:
+    #
+    # location /__/auth/ {
+    #     proxy_pass https://solar-9ac1f.firebaseapp.com/__/auth/;
+    #     proxy_set_header Host solar-9ac1f.firebaseapp.com;
+    #     proxy_ssl_server_name on;
+    #     add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
+    # }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

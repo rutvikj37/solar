@@ -252,6 +252,12 @@ router.get(
     if (!cfg) {
       return res.json({ configured: false });
     }
+    const requestHost = String(req.hostname || '').toLowerCase();
+    const authDomain = String(cfg.authDomain || '').toLowerCase();
+    const sameSiteAuth =
+      Boolean(requestHost && authDomain) &&
+      (authDomain === requestHost || authDomain.startsWith(`${requestHost}:`));
+
     return res.json({
       configured: true,
       apiKey: cfg.apiKey,
@@ -260,6 +266,9 @@ router.get(
       storageBucket: cfg.storageBucket,
       messagingSenderId: cfg.messagingSenderId,
       appId: cfg.appId,
+      /** redirect when /__/auth is proxied on this host; popup otherwise */
+      signInMethod: sameSiteAuth ? 'redirect' : 'popup',
+      coopHeaderRequired: 'same-origin-allow-popups',
     });
   }),
 );
@@ -314,59 +323,68 @@ router.post(
     const signInProvider = decoded.firebase?.sign_in_provider || "firebase";
     const authProvider = String(signInProvider).replace(/\.com$/, "");
 
-    let [users] = await db.query("SELECT * FROM users WHERE firebase_uid = ?", [
-      firebaseUid,
-    ]);
-    let user = users[0];
+    let user;
     let isNewUser = false;
 
-    if (!user) {
-      [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+    try {
+      let [users] = await db.query("SELECT * FROM users WHERE firebase_uid = ?", [
+        firebaseUid,
+      ]);
       user = users[0];
 
-      if (user) {
-        if (user.password_hash && user.firebase_uid && user.firebase_uid !== firebaseUid) {
-          return res.status(409).json({
-            error:
-              "An account with this email already exists. Sign in with your password first.",
-          });
-        }
-        if (user.password_hash && !user.firebase_uid) {
-          return res.status(409).json({
-            error:
-              "An account with this email already exists. Sign in with your password first.",
-          });
-        }
-        await db.query(
-          "UPDATE users SET firebase_uid = ?, auth_provider = COALESCE(auth_provider, ?), email_verified = 1 WHERE id = ?",
-          [firebaseUid, authProvider, user.id],
-        );
-        user.firebase_uid = firebaseUid;
-        user.auth_provider = user.auth_provider || authProvider;
-      } else {
-        const [result] = await db.query(
-          `INSERT INTO users (name, email, password_hash, company_name, firebase_uid, auth_provider, email_verified)
+      if (!user) {
+        [users] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+        user = users[0];
+
+        if (user) {
+          if (user.password_hash && user.firebase_uid && user.firebase_uid !== firebaseUid) {
+            return res.status(409).json({
+              error:
+                "An account with this email already exists. Sign in with your password first.",
+            });
+          }
+          if (user.password_hash && !user.firebase_uid) {
+            return res.status(409).json({
+              error:
+                "An account with this email already exists. Sign in with your password first.",
+            });
+          }
+          await db.query(
+            "UPDATE users SET firebase_uid = ?, auth_provider = COALESCE(auth_provider, ?), email_verified = 1 WHERE id = ?",
+            [firebaseUid, authProvider, user.id],
+          );
+          user.firebase_uid = firebaseUid;
+          user.auth_provider = user.auth_provider || authProvider;
+        } else {
+          const [result] = await db.query(
+            `INSERT INTO users (name, email, password_hash, company_name, firebase_uid, auth_provider, email_verified)
          VALUES (?, ?, NULL, NULL, ?, ?, 1)`,
-          [name, email, firebaseUid, authProvider],
-        );
-        const userId = result.insertId;
-        const initialCredits = 5;
-        await db.query(
-          "INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status) VALUES (?, ?, ?, ?, ?)",
-          [userId, "Free", initialCredits, initialCredits, "active"],
-        );
-        user = {
-          id: userId,
-          name,
-          email,
-          company_name: null,
-          role: "solar_company",
-          account_status: "active",
-          firebase_uid: firebaseUid,
-          auth_provider: authProvider,
-        };
-        isNewUser = true;
+            [name, email, firebaseUid, authProvider],
+          );
+          const userId = result.insertId;
+          const initialCredits = 5;
+          await db.query(
+            "INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status) VALUES (?, ?, ?, ?, ?)",
+            [userId, "Free", initialCredits, initialCredits, "active"],
+          );
+          user = {
+            id: userId,
+            name,
+            email,
+            company_name: null,
+            role: "solar_company",
+            account_status: "active",
+            firebase_uid: firebaseUid,
+            auth_provider: authProvider,
+          };
+          isNewUser = true;
+        }
       }
+    } catch (dbErr) {
+      console.error("[auth/firebase] database error:", dbErr.message || dbErr);
+      return res.status(503).json({
+        error: "Sign-in service is temporarily unavailable. Please try again in a moment.",
+      });
     }
 
     if (user.account_status === "suspended") {

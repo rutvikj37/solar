@@ -35,7 +35,9 @@ Alternatively, set `STATIC_FRONTEND_DIR` to the built `dist/` path and let the N
 
 ### Reverse proxy headers (required for Google sign-in)
 
-Firebase Auth needs `Cross-Origin-Opener-Policy: same-origin-allow-popups` on HTML responses. Do **not** use `same-origin` alone — it triggers console errors (`window.closed` blocked) and can break OAuth popups.
+Firebase Auth needs `Cross-Origin-Opener-Policy: same-origin-allow-popups` on **HTML** responses. Do **not** use `same-origin` alone — it triggers console errors (`Cross-Origin-Opener-Policy policy would block the window.closed call`) and breaks OAuth popups.
+
+The frontend build copies `public/_headers` into `dist/_headers` for hosts that read it (Netlify, Cloudflare Pages). **nginx does not read `_headers`** — you must set the header in nginx (see [`deploy/nginx-spacetoroof.conf.example`](deploy/nginx-spacetoroof.conf.example)).
 
 **nginx** (inside the `server` block that serves `dist/`):
 
@@ -43,7 +45,14 @@ Firebase Auth needs `Cross-Origin-Opener-Policy: same-origin-allow-popups` on HT
 add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
 ```
 
-If a security template already sets `Cross-Origin-Opener-Policy: same-origin`, replace or remove that line.
+If a security template already sets `Cross-Origin-Opener-Policy: same-origin`, **remove or replace** that line. After deploy, verify:
+
+```bash
+curl -sI https://spacetoroof.com/ | grep -i cross-origin-opener
+# Expected: Cross-Origin-Opener-Policy: same-origin-allow-popups
+```
+
+The login page shows a red warning if it detects `same-origin` COOP.
 
 **Apache** (requires `mod_headers`):
 
@@ -51,13 +60,21 @@ If a security template already sets `Cross-Origin-Opener-Policy: same-origin`, r
 Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
 ```
 
-Google sign-in prefers `signInWithPopup` (requires the COOP header above). Full-page redirect is only a fallback when the popup is blocked.
+Google sign-in uses `signInWithPopup` when `authDomain` is `*.firebaseapp.com`. Full-page redirect is used when `authDomain` matches your site host (custom domain + `/__/auth` proxy).
 
-### Why redirect alone fails on spacetoroof.com
+**Firebase SDK:** Use `firebase@^12.18.0` or newer. Versions 12.17.0–12.17.1 show `Database is closing/hidden` on the login page when the Google popup backgrounds the tab (IndexedDB bug). Rebuild after `npm install`.
 
-`authDomain` is `solar-9ac1f.firebaseapp.com` while the app is on `spacetoroof.com`. Modern Chrome/Safari/Firefox block that cross-site storage, so after Google the user returns to `/login` and `getRedirectResult()` is `null`.
+### Custom-domain Firebase auth (optional, for redirect sign-in)
 
-To make **redirect** work long-term (optional), proxy Firebase helper paths on the same host and set `authDomain` to `spacetoroof.com`:
+When the app is on `spacetoroof.com` but Firebase `authDomain` is `solar-9ac1f.firebaseapp.com`, redirect sign-in loses the session on modern browsers. To use redirect on your domain:
+
+1. **Proxy** `/__/auth/` to Firebase (nginx example in [`deploy/nginx-spacetoroof.conf.example`](deploy/nginx-spacetoroof.conf.example)), **or** set on the Node server:
+   - `FIREBASE_AUTH_PROXY=1`
+   - `FIREBASE_AUTH_PROXY_HOST=solar-9ac1f.firebaseapp.com` (optional; defaults from `FIREBASE_PROJECT_ID`)
+2. Set **`FIREBASE_AUTH_DOMAIN=spacetoroof.com`** in `server/.env` (and `VITE_FIREBASE_AUTH_DOMAIN=spacetoroof.com` before `npm run build`).
+3. In Google Cloud Console → Credentials → OAuth 2.0 Web client, add authorized redirect URI:
+   `https://spacetoroof.com/__/auth/handler`
+4. Rebuild frontend and restart API.
 
 **nginx** (transparent proxy — no 302):
 
@@ -66,14 +83,13 @@ location /__/auth/ {
   proxy_pass https://solar-9ac1f.firebaseapp.com/__/auth/;
   proxy_set_header Host solar-9ac1f.firebaseapp.com;
   proxy_ssl_server_name on;
+  add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
 }
 ```
 
-Then in Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web client, add:
+### Why redirect alone fails without the proxy
 
-`https://spacetoroof.com/__/auth/handler`
-
-And set `VITE_FIREBASE_AUTH_DOMAIN=spacetoroof.com` (and the same in server Firebase web config) before rebuilding the frontend.
+`authDomain` defaults to `solar-9ac1f.firebaseapp.com` while the app is on `spacetoroof.com`. Modern Chrome/Safari/Firefox block that cross-site storage, so after Google the user returns to `/login` and `getRedirectResult()` is `null`. Popup sign-in works once COOP is `same-origin-allow-popups`; redirect needs the proxy + custom `authDomain` above.
 
 ## Health check
 

@@ -1,6 +1,19 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth';
 import { API_BASE } from '../config.js';
+
+let configMeta = { signInMethod: 'popup', authDomain: '' };
+
+function normalizeHost(host) {
+  return String(host || '').replace(/^www\./, '').toLowerCase();
+}
+
+function resolveSignInMethod(authDomain) {
+  if (typeof window === 'undefined') return 'popup';
+  const domain = normalizeHost(authDomain);
+  const host = normalizeHost(window.location.hostname);
+  return domain && host && domain === host ? 'redirect' : 'popup';
+}
 
 function configFromEnv() {
   const cfg = {
@@ -11,7 +24,13 @@ function configFromEnv() {
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     appId: import.meta.env.VITE_FIREBASE_APP_ID,
   };
-  if (cfg.apiKey && cfg.projectId && cfg.appId) return cfg;
+  if (cfg.apiKey && cfg.projectId && cfg.appId) {
+    configMeta = {
+      signInMethod: resolveSignInMethod(cfg.authDomain),
+      authDomain: cfg.authDomain || '',
+    };
+    return cfg;
+  }
   return null;
 }
 
@@ -28,6 +47,10 @@ export function isFirebaseConfigured() {
   return Boolean(resolvedConfig);
 }
 
+export function getFirebaseConfigMeta() {
+  return configMeta;
+}
+
 async function fetchConfigFromServer() {
   const res = await fetch(`${API_BASE}/api/auth/firebase-config`, { cache: 'no-store' });
   const data = await res.json();
@@ -36,6 +59,10 @@ async function fetchConfigFromServer() {
       'Social login is not configured. Add VITE_FIREBASE_* values to .env and restart Vite.',
     );
   }
+  configMeta = {
+    signInMethod: data.signInMethod || 'popup',
+    authDomain: data.authDomain || '',
+  };
   return {
     apiKey: data.apiKey,
     authDomain: data.authDomain,
@@ -56,6 +83,8 @@ export async function ensureFirebaseAuth() {
       }
       app = getApps().length ? getApps()[0] : initializeApp(resolvedConfig);
       auth = getAuth(app);
+      // Avoid IndexedDB "Database is closing/hidden" when auth popup backgrounds this tab (firebase <12.18).
+      await setPersistence(auth, browserLocalPersistence);
       return auth;
     })();
   }

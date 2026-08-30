@@ -48,9 +48,10 @@ async function fetchWebConfigFromFirebase() {
     throw new Error(cfg.error?.message || `Firebase web config failed (${cfgRes.status})`);
   }
 
+  const authDomainOverride = String(process.env.FIREBASE_AUTH_DOMAIN || '').trim();
   return {
     apiKey: cfg.apiKey,
-    authDomain: cfg.authDomain,
+    authDomain: authDomainOverride || cfg.authDomain,
     projectId: cfg.projectId,
     storageBucket: cfg.storageBucket,
     messagingSenderId: cfg.messagingSenderId,

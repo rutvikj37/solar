@@ -12,6 +12,8 @@ import { migrateSchema } from './schema.js';
 import { ensurePlatformCrmSettingsLoaded } from './services/crm/platformCrmSettings.js';
 import { ensurePlatformEmailSettingsLoaded } from './services/email/platformEmailSettings.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { coopHeadersMiddleware, COOP_ALLOW_POPUPS } from './middleware/coopHeaders.js';
+import { mountFirebaseAuthProxy } from './routes/firebaseAuthProxy.js';
 import { handleMediaStreamConnection } from './services/ai-calling/realtimeVoiceAgent.js';
 
 import authRoutes from './routes/auth.js';
@@ -159,6 +161,7 @@ app.use(
     crossOriginEmbedderPolicy: false,
   })
 );
+app.use(coopHeadersMiddleware);
 app.use((_req, res, next) => {
   res.setHeader('X-XSS-Protection', '0');
   res.setHeader(
@@ -167,6 +170,9 @@ app.use((_req, res, next) => {
   );
   next();
 });
+
+// Firebase /__/auth/* proxy must run before express.json() (no body parsing).
+mountFirebaseAuthProxy(app);
 
 app.use(
   cors({
@@ -271,7 +277,14 @@ app.use('/api/marketplace/admin', marketplaceAdminRoutes);
 // Optional bundled frontend (Docker / single-process deploy). Helmet above sets COOP for HTML/JS.
 const staticFrontendDir = String(process.env.STATIC_FRONTEND_DIR || '').trim();
 if (staticFrontendDir && fs.existsSync(staticFrontendDir)) {
-  app.use(express.static(staticFrontendDir, { index: false }));
+  app.use(
+    express.static(staticFrontendDir, {
+      index: false,
+      setHeaders(res) {
+        res.setHeader('Cross-Origin-Opener-Policy', COOP_ALLOW_POPUPS);
+      },
+    }),
+  );
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path === '/health') return next();
     res.sendFile(path.join(staticFrontendDir, 'index.html'), (err) => {

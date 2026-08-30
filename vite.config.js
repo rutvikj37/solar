@@ -1,9 +1,35 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+const COOP_HEADER = 'same-origin-allow-popups'
+
+/** Ensure dist/_headers includes COOP for nginx/Netlify static deploys. */
+function ensureCoopHeadersInDist() {
+  return {
+    name: 'ensure-coop-headers',
+    closeBundle() {
+      const distDir = path.join(__dirname, 'dist')
+      const headersPath = path.join(distDir, '_headers')
+      const line = `  Cross-Origin-Opener-Policy: ${COOP_HEADER}`
+      if (fs.existsSync(headersPath)) {
+        const content = fs.readFileSync(headersPath, 'utf8')
+        if (!content.includes(COOP_HEADER)) {
+          fs.appendFileSync(headersPath, `\n/*\n${line}\n`)
+          console.log('[build] Appended COOP header to dist/_headers')
+        }
+        return
+      }
+      fs.mkdirSync(distDir, { recursive: true })
+      fs.writeFileSync(headersPath, `/*\n${line}\n`)
+      console.log('[build] Wrote dist/_headers with COOP header')
+    },
+  }
+}
 
 const securityHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -13,7 +39,7 @@ const securityHeaders = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-XSS-Protection': '0',
   // Firebase Auth (redirect return from accounts.google.com). Do not use same-origin.
-  'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+  'Cross-Origin-Opener-Policy': COOP_HEADER,
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=*, usb=()',
   'Content-Security-Policy': [
     "default-src 'self'",
@@ -32,7 +58,7 @@ const securityHeaders = {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ensureCoopHeadersInDist()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
