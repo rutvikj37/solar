@@ -274,9 +274,13 @@ export default function MyLeads() {
             <span className="material-symbols-outlined text-sm">assignment</span>
             Pipeline CRM
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">Leads CRM</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-on-surface tracking-tight">
+            Leads CRM – {viewMode === 'kanban' ? 'Kanban View' : 'List View'}
+          </h1>
           <p className="text-xs text-on-surface-variant max-w-2xl">
-            List or Kanban pipeline — drag stages, open Lead 360 for outreach, appointments, and proposals. Existing automations stay intact.
+            {viewMode === 'kanban'
+              ? 'Drag and drop leads across stages to update pipeline.'
+              : 'Manage all your leads in one place and take action at the right time.'}
           </p>
         </div>
 
@@ -483,7 +487,7 @@ export default function MyLeads() {
           )}
 
           {/* Table / Kanban view */}
-          <section className="glass-card rounded-2xl overflow-hidden border border-glass-stroke flex flex-col min-h-[min(70vh,720px)]">
+          <section className="crm-panel overflow-hidden flex flex-col min-h-[min(70vh,720px)]">
             {filteredLeads.length === 0 ? (
               <LeadEmptyState hasFilters={hasActiveFilters} onClearFilters={clearFilters} />
             ) : viewMode === 'kanban' ? (

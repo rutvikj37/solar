@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
-import KpiCard from '../../components/ai-calling/KpiCard';
 
 const API = API_BASE;
 
@@ -137,9 +136,9 @@ export default function Appointments() {
     <>
       <div className="mb-stack-lg flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Appointments</h2>
+          <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-on-surface">Appointments</h2>
           <p className="text-on-surface-variant text-sm mt-1">
-            Site surveys and visits from unlocked leads.
+            Manage and track all your scheduled appointments.
           </p>
         </div>
         <button
@@ -153,14 +152,35 @@ export default function Appointments() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <KpiCard icon="today" label="Today" value={kpis.today} color="amber" />
-        <KpiCard icon="date_range" label="This Week" value={kpis.thisWeek} color="sky" />
-        <KpiCard icon="event_upcoming" label="Upcoming" value={kpis.upcoming} color="teal" />
+        <div className="crm-kpi p-4">
+          <div className="w-9 h-9 rounded-lg bg-primary/15 text-primary flex items-center justify-center mb-3">
+            <span className="material-symbols-outlined">today</span>
+          </div>
+          <p className="text-[11px] font-semibold text-on-surface-variant">Today&apos;s Appointments</p>
+          <p className="text-2xl font-black text-on-surface mt-1">{kpis.today}</p>
+          <p className="text-[11px] text-on-surface-variant mt-1">{kpis.today} upcoming today</p>
+        </div>
+        <div className="crm-kpi p-4">
+          <div className="w-9 h-9 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center mb-3">
+            <span className="material-symbols-outlined">date_range</span>
+          </div>
+          <p className="text-[11px] font-semibold text-on-surface-variant">This Week</p>
+          <p className="text-2xl font-black text-on-surface mt-1">{kpis.thisWeek}</p>
+          <p className="text-[11px] text-on-surface-variant mt-1">Scheduled this week</p>
+        </div>
+        <div className="crm-kpi p-4">
+          <div className="w-9 h-9 rounded-lg bg-orange-500/15 text-orange-400 flex items-center justify-center mb-3">
+            <span className="material-symbols-outlined">event_upcoming</span>
+          </div>
+          <p className="text-[11px] font-semibold text-on-surface-variant">Upcoming</p>
+          <p className="text-2xl font-black text-on-surface mt-1">{kpis.upcoming}</p>
+          <p className="text-[11px] text-on-surface-variant mt-1">Beyond this week</p>
+        </div>
       </div>
 
-      <div className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">
+      <div className="crm-panel overflow-hidden">
         <div className="px-5 py-4 border-b border-glass-stroke flex items-center justify-between gap-3">
-          <h3 className="font-bold text-white text-sm">All Appointments</h3>
+          <h3 className="font-bold text-on-surface text-sm">All Appointments</h3>
           <p className="text-[11px] text-on-surface-variant">{appointments.length} total</p>
         </div>
         <div className="overflow-x-auto">

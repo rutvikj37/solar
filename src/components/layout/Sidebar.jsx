@@ -136,7 +136,7 @@ export default function Sidebar({
         style={{
           ['--sidebar-w']: `${collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH}px`,
         }}
-        className={`z-50 flex flex-col bg-deep/95 backdrop-blur-xl border-r border-glass-stroke transition-[transform,width] duration-300 ease-out
+        className={`app-sidebar z-50 flex flex-col bg-deep/95 backdrop-blur-xl border-r border-glass-stroke transition-[transform,width] duration-300 ease-out
           w-[260px] lg:w-[var(--sidebar-w)] lg:shrink-0
           fixed left-0 ${topStyle} ${heightStyle}
           ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}

@@ -4,6 +4,7 @@ import { API_BASE } from '../../config.js';
 import { BRAND_NAME } from '../../config/brand.js';
 import { authHeaders, isAuthError, isAdminRole, logoutToLogin } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useTheme } from '../../context/ThemeContext.jsx';
 
 export default function TopBar({
   onNavToggle,
@@ -12,6 +13,7 @@ export default function TopBar({
   showBanner,
 }) {
   const { user, credits, activePackage, subscription, unlimitedCredits, refreshUserData } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [leadsCount, setLeadsCount] = useState(0);
   const [scanUsedToday, setScanUsedToday] = useState(0);
   const [scanRemaining, setScanRemaining] = useState(0);
@@ -74,7 +76,7 @@ export default function TopBar({
       : 'Collapse sidebar';
 
   return (
-    <header className={`fixed ${topPosition} left-0 right-0 h-16 bg-deep/98 border-b border-glass-stroke flex justify-between items-center px-6 z-40 transition-all`}>
+    <header className={`app-topbar fixed ${topPosition} left-0 right-0 h-16 bg-deep/98 border-b border-glass-stroke flex justify-between items-center px-6 z-40 transition-all`}>
       
       {/* Left side: single nav toggle + brand logo */}
       <div className="flex items-center gap-3 sm:gap-4">
@@ -153,6 +155,19 @@ export default function TopBar({
         </div>
 
         {/* Action Icons */}
+        {/* Action Icons */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="text-on-surface-variant hover:text-on-surface transition-colors p-1"
+          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+        >
+          <span className="material-symbols-outlined text-[20px]">
+            {theme === 'light' ? 'dark_mode' : 'light_mode'}
+          </span>
+        </button>
+
         <Link to="/profile" className="text-on-surface-variant hover:text-on-surface transition-colors p-1" title="Settings">
           <span className="material-symbols-outlined text-[20px]">settings</span>
         </Link>

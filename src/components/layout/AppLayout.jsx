@@ -131,7 +131,7 @@ export default function AppLayout() {
           />
 
           <main
-            className={`flex-1 min-w-0 min-h-0 ${
+            className={`app-main-canvas flex-1 min-w-0 min-h-0 ${
               isMapPage
                 ? 'relative overflow-hidden p-0'
                 : isWideTablePage

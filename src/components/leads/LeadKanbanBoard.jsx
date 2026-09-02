@@ -50,8 +50,8 @@ export default function LeadKanbanBoard({
         return (
           <div
             key={stage}
-            className={`shrink-0 w-[280px] flex flex-col rounded-2xl border bg-surface-container-low/40 ${
-              isOver ? 'border-primary/50 bg-primary/5' : 'border-glass-stroke'
+            className={`shrink-0 w-[280px] flex flex-col rounded-2xl border crm-panel ${
+              isOver ? 'border-primary/50 ring-2 ring-primary/20' : 'border-glass-stroke'
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -96,7 +96,7 @@ export default function LeadKanbanBoard({
                       setDragId(null);
                       setOverStage(null);
                     }}
-                    className={`rounded-xl border border-glass-stroke bg-surface-elevated/90 overflow-hidden cursor-grab active:cursor-grabbing hover:border-primary/40 transition-all shadow-sm ${
+                    className={`rounded-xl border border-glass-stroke bg-surface-elevated overflow-hidden cursor-grab active:cursor-grabbing hover:border-primary/40 transition-all shadow-sm ${
                       dragging ? 'opacity-50 scale-[0.98]' : ''
                     } ${busy ? 'opacity-60 pointer-events-none' : ''}`}
                   >

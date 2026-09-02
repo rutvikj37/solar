@@ -13,6 +13,18 @@
     <meta name="description" content="SpaceToRoof.com — AI solar intelligence for residential installers." />
     <meta property="og:title" content="SpaceToRoof.com | AI Solar Intelligence" />
     <meta property="og:description" content="AI-powered property intelligence for residential solar companies." />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('str_theme');
+          if (t !== 'light' && t !== 'dark') t = 'dark';
+          document.documentElement.classList.remove('light', 'dark');
+          document.documentElement.classList.add(t);
+          document.documentElement.dataset.theme = t;
+          document.documentElement.style.colorScheme = t;
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=optional" rel="stylesheet" />

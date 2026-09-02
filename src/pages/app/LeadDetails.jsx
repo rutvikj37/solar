@@ -99,7 +99,7 @@ function SpecRow({ label, value }) {
 
 function Card({ title, children, action = null, className = '' }) {
   return (
-    <div className={`glass-card rounded-xl p-5 border border-glass-stroke ${className}`}>
+    <div className={`crm-panel p-5 ${className}`}>
       {(title || action) && (
         <div className="flex items-start justify-between gap-3 mb-3">
           {title ? (
@@ -875,7 +875,7 @@ export default function LeadDetails() {
         </div>
 
         {/* Lead 360 header — mockup layout */}
-        <div className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">
+        <div className="crm-panel overflow-hidden">
           <div className="p-4 sm:p-5 space-y-4">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="w-full lg:w-44 h-36 lg:h-auto rounded-xl overflow-hidden bg-[#0B1220] border border-glass-stroke shrink-0">
@@ -1872,62 +1872,80 @@ export default function LeadDetails() {
 
         {activeTab === 'notes' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card title="Internal Notes" className="lg:col-span-2">
-              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 mb-3 flex gap-2 items-start">
-                <span className="material-symbols-outlined text-amber-300 text-base">visibility_off</span>
-                <p className="text-[11px] text-amber-100/90 leading-relaxed">
-                  Internal only — these notes are not shared with the homeowner.
+            <div className="crm-panel p-5 lg:col-span-2 space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-on-surface">Internal Notes</h3>
+                <p className="text-[12px] text-on-surface-variant mt-0.5">
+                  Add and manage notes visible only to your team.
                 </p>
               </div>
-              <textarea
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[120px]"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Add a note about this lead…"
-              />
-              <button
-                type="button"
-                onClick={handleSaveNote}
-                disabled={busy === 'note'}
-                className="mt-3 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold"
-              >
-                {busy === 'note' ? 'Saving…' : 'Add Note'}
-              </button>
-              <div className="mt-5 space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
+              <div className="rounded-xl border border-glass-stroke bg-surface-container-low/40 p-3 space-y-3">
+                <textarea
+                  className="w-full bg-transparent border-0 text-on-surface min-h-[100px] text-sm focus:outline-none resize-y"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Add a new internal note..."
+                />
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-glass-stroke">
+                  <div className="flex gap-1 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-lg">format_size</span>
+                    <span className="material-symbols-outlined text-lg">format_list_bulleted</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveNote}
+                    disabled={busy === 'note'}
+                    className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs"
+                  >
+                    {busy === 'note' ? 'Saving…' : 'Add Note'}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-0 divide-y divide-glass-stroke">
                 {activities.filter((a) => a.type === 'note').length === 0 && (
-                  <p className="text-[11px] text-on-surface-variant">No notes yet.</p>
+                  <p className="text-[12px] text-on-surface-variant py-4">No notes yet.</p>
                 )}
                 {activities
                   .filter((a) => a.type === 'note')
                   .map((a) => (
-                    <div key={a.id} className="p-3 rounded-lg bg-white/5 border border-glass-stroke">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-primary uppercase">Internal Note</span>
-                        <span className="text-[10px] text-on-surface-variant">
-                          {new Date(a.created_at).toLocaleString()}
-                        </span>
+                    <div key={a.id} className="py-4 flex gap-3">
+                      <span className="w-9 h-9 rounded-full bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center shrink-0">
+                        YOU
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-on-surface">You</span>
+                          <span className="text-[10px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                            Internal Note
+                          </span>
+                          <span className="text-[10px] text-on-surface-variant ml-auto">
+                            {new Date(a.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-on-surface whitespace-pre-wrap break-words">{a.content}</p>
                       </div>
-                      <p className="text-white whitespace-pre-wrap break-words">{a.content}</p>
                     </div>
                   ))}
               </div>
-            </Card>
-            <Card title="Privacy">
-              <div className="flex gap-2 items-start">
-                <span className="material-symbols-outlined text-primary text-xl">lock</span>
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  These notes are visible only to team members with access to this lead. Use Follow Ups for timed
-                  reminders.
-                </p>
+            </div>
+            <div className="crm-panel p-5 h-fit">
+              <div className="flex gap-3 items-start">
+                <span className="material-symbols-outlined text-on-surface-variant text-2xl">lock</span>
+                <div>
+                  <h4 className="text-sm font-bold text-on-surface">Internal Only</h4>
+                  <p className="text-[12px] text-on-surface-variant leading-relaxed mt-1">
+                    These notes are visible only to team members and won&apos;t be shared with the customer.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setTab('followups')}
-                className="mt-4 text-[11px] font-bold text-primary hover:underline"
+                className="mt-4 text-[12px] font-bold text-primary hover:underline"
               >
                 Open Follow Ups →
               </button>
-            </Card>
+            </div>
           </div>
         )}
 

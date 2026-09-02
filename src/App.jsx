@@ -7,6 +7,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import ProtectedRoute from "./components/layout/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import FullPageLoader from "./components/layout/FullPageLoader";
@@ -97,21 +98,22 @@ function AuthenticatedLayout() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <PageTransitionLoader />
-        <Suspense fallback={<FullPageLoader />}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/auth/action" element={<FirebaseAuthActionPage />} />
-            <Route
-              path="/complete-profile"
-              element={
-                <ProtectedRoute>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <PageTransitionLoader />
+          <Suspense fallback={<FullPageLoader />}>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/auth/action" element={<FirebaseAuthActionPage />} />
+              <Route
+                path="/complete-profile"
+                element={
+                  <ProtectedRoute>
                   <CompleteProfilePage />
                 </ProtectedRoute>
               }
@@ -187,6 +189,7 @@ export default function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

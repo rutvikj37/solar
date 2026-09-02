@@ -106,7 +106,7 @@
   body {
     @apply bg-deep text-on-background antialiased;
     font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
-    color-scheme: dark;
+    color-scheme: inherit;
   }
 
   h1,
@@ -380,4 +380,172 @@
     page-break-inside: avoid;
     break-inside: avoid;
   }
+}
+
+/* ── Light theme (app shell + CRM) ───────────────────────────────────────── */
+html.light {
+  color-scheme: light;
+
+  --color-on-background: oklch(0.22 0.04 260);
+  --color-background: oklch(0.97 0.008 250);
+  --color-surface: oklch(0.99 0.005 250);
+  --color-surface-dim: oklch(0.94 0.01 250);
+  --color-surface-bright: oklch(1 0.002 250);
+  --color-surface-variant: oklch(0.92 0.012 255);
+  --color-surface-elevated: oklch(1 0.002 250);
+  --color-surface-container-lowest: oklch(1 0 0);
+  --color-surface-container-low: oklch(0.97 0.008 250);
+  --color-surface-container: oklch(0.955 0.01 250);
+  --color-surface-container-high: oklch(0.93 0.012 255);
+  --color-surface-container-highest: oklch(0.9 0.014 255);
+  --color-on-surface: oklch(0.22 0.04 260);
+  --color-on-surface-variant: oklch(0.42 0.03 255);
+  --color-text-primary: oklch(0.18 0.04 260);
+  --color-text-secondary: oklch(0.4 0.03 255);
+  --color-foreground: oklch(0.22 0.04 260);
+  --color-card: oklch(1 0.002 250);
+  --color-card-foreground: oklch(0.22 0.04 260);
+  --color-muted: oklch(0.93 0.012 255);
+  --color-muted-foreground: oklch(0.45 0.03 255);
+  --color-deep: oklch(0.96 0.01 250);
+  --color-glass: oklch(0.22 0.04 260 / 4%);
+  --color-glass-stroke: oklch(0.35 0.03 260 / 14%);
+  --color-glass-border: oklch(0.35 0.03 260 / 14%);
+  --color-outline: oklch(0.55 0.025 255);
+  --color-outline-variant: oklch(0.35 0.03 260 / 14%);
+  --color-border: oklch(0.35 0.03 260 / 12%);
+  --color-input: oklch(0.35 0.03 260 / 14%);
+  --color-inverse-surface: oklch(0.22 0.04 260);
+  --color-inverse-on-surface: oklch(0.96 0.01 250);
+  --color-primary: oklch(0.52 0.18 253);
+  --color-primary-glow: oklch(0.58 0.16 235);
+  --color-on-primary: oklch(0.99 0.002 250);
+  --color-primary-container: oklch(0.9 0.05 253);
+  --color-on-primary-container: oklch(0.28 0.1 253);
+  --color-secondary: oklch(0.5 0.12 200);
+  --color-secondary-container: oklch(0.9 0.04 200);
+  --color-on-secondary: oklch(0.99 0.002 250);
+  --color-on-secondary-container: oklch(0.25 0.05 200);
+  --color-ring: oklch(0.52 0.18 253);
+}
+
+html.light .glass-card {
+  background: oklch(1 0.002 250 / 92%);
+  border: 1px solid oklch(0.35 0.03 260 / 12%);
+  box-shadow:
+    0 18px 40px -28px oklch(0.35 0.04 260 / 35%),
+    inset 0 1px 0 0 oklch(1 0 0 / 80%);
+}
+
+html.light .glass-card:hover {
+  border-color: color-mix(in oklab, var(--color-primary) 35%, transparent);
+  background: oklch(1 0.002 250);
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: oklch(0.94 0.01 250);
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: oklch(0.78 0.02 255);
+}
+
+/* Soften dark-only utility patterns used across CRM / shell */
+html.light .text-white {
+  color: var(--color-on-surface);
+}
+html.light .bg-primary .text-white,
+html.light .bg-primary.text-white,
+html.light [class*="bg-primary"] .text-white,
+html.light .text-on-primary {
+  color: var(--color-on-primary);
+}
+
+html.light .text-slate-200,
+html.light .text-slate-300 {
+  color: oklch(0.38 0.03 255);
+}
+html.light .text-slate-400,
+html.light .text-slate-500 {
+  color: oklch(0.5 0.025 255);
+}
+
+html.light .bg-white\/5,
+html.light .bg-white\/\[0\.02\],
+html.light .bg-white\/\[0\.03\] {
+  background-color: oklch(0.3 0.04 260 / 0.05);
+}
+html.light .bg-white\/10,
+html.light .hover\:bg-white\/10:hover,
+html.light .hover\:bg-white\/15:hover {
+  background-color: oklch(0.3 0.04 260 / 0.08);
+}
+html.light .border-white\/5,
+html.light .border-white\/10 {
+  border-color: oklch(0.35 0.03 260 / 0.12);
+}
+
+html.light .bg-\[\#0B1220\],
+html.light .bg-\[\#0F172A\] {
+  background-color: oklch(0.94 0.012 250) !important;
+}
+
+html.light select,
+html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.light textarea {
+  color-scheme: light;
+}
+
+/* Keep navy sidebar + top chrome dark (List/Kanban mockup pattern) */
+html.light .app-sidebar {
+  background: oklch(0.13 0.045 275 / 0.98) !important;
+  border-color: oklch(0.98 0.01 250 / 14%) !important;
+  color: oklch(0.98 0.005 250);
+  --color-on-surface: oklch(0.98 0.005 250);
+  --color-on-surface-variant: oklch(0.80 0.02 260);
+  --color-glass-stroke: oklch(0.98 0.01 250 / 14%);
+}
+html.light .app-sidebar .text-white,
+html.light .app-sidebar .text-slate-200,
+html.light .app-sidebar .text-slate-300,
+html.light .app-sidebar .text-slate-400,
+html.light .app-sidebar .text-slate-500 {
+  color: inherit;
+}
+html.light .app-sidebar .text-slate-400,
+html.light .app-sidebar .text-slate-500 {
+  color: oklch(0.72 0.02 260) !important;
+}
+html.light .app-sidebar .text-white {
+  color: oklch(0.98 0.005 250) !important;
+}
+
+html.light .app-topbar {
+  background: oklch(1 0.002 250 / 0.96) !important;
+  border-color: oklch(0.35 0.03 260 / 12%) !important;
+}
+html.light .app-topbar .text-white {
+  color: oklch(0.22 0.04 260) !important;
+}
+html.light .app-main-canvas {
+  background: oklch(0.965 0.008 250);
+}
+
+/* CRM mockup surfaces */
+.crm-panel {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-glass-stroke);
+  border-radius: 0.875rem;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 8%);
+}
+html.light .crm-panel {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
+}
+html.light .crm-kpi {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.875rem;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
 }
