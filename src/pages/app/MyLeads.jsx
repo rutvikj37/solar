@@ -28,6 +28,7 @@ import {
   getStatusLabel,
   getLeadScore,
   getSolarScore,
+  getOverdueFollowUps,
 } from '../../lib/leads.js';
 import {
   fetchPipelineStages,
@@ -148,6 +149,7 @@ export default function MyLeads() {
   }, [searchTerm, filterTab, sortKey, sortDir]);
 
   const stats = useMemo(() => computeLeadStats(leads, summary), [leads, summary]);
+  const overdueLeads = useMemo(() => getOverdueFollowUps(leads), [leads]);
 
   const filteredLeads = useMemo(
     () => sortLeads(filterLeads(leads, { searchTerm, filterTab }), { key: sortKey, direction: sortDir }),
@@ -347,6 +349,28 @@ export default function MyLeads() {
             <KpiCard icon="percent" label="Win Rate" value={stats.conversion} suffix="%" color="purple" subtitle={`Avg score ${stats.avgScore}`} />
           </div>
 
+          {overdueLeads.length > 0 && (
+            <div className="mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-amber-300">
+                  {overdueLeads.length} overdue follow-up{overdueLeads.length === 1 ? '' : 's'}
+                </p>
+                <p className="text-[11px] text-on-surface-variant truncate">
+                  Next: {formatLeadValue(overdueLeads[0].owner_name, 'Lead')} —{' '}
+                  {overdueLeads[0].next_action || 'Follow up'} (
+                  {formatLeadGeneratedAt(overdueLeads[0].follow_up_at)})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilterTab('Overdue')}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/30 text-xs font-bold"
+              >
+                Show overdue
+              </button>
+            </div>
+          )}
+
           {/* Toolbar */}
           <div className="glass-card rounded-2xl border border-glass-stroke p-3 mb-3 space-y-3">
             <div className="relative w-full">
@@ -469,16 +493,18 @@ export default function MyLeads() {
             ) : (
               <>
                 <div className="flex-1 overflow-auto custom-scrollbar max-h-[calc(100vh-320px)] min-h-[420px]">
-                  <table className="w-full table-fixed border-collapse text-left min-w-[1180px]">
+                  <table className="w-full table-fixed border-collapse text-left min-w-[1280px]">
                     <colgroup>
                       <col className="w-10" />
-                      <col className="w-[20%]" />
-                      <col className="w-[18%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[12%]" />
+                      <col className="w-[16%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[6%]" />
+                      <col className="w-[6%]" />
                       <col className="w-[10%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[8%]" />
                       <col className="w-[80px]" />
                     </colgroup>
                     <thead className="sticky top-0 z-10">
@@ -512,7 +538,9 @@ export default function MyLeads() {
                             Stage <SortIcon column="status" />
                           </button>
                         </th>
+                        <th className="px-3 py-2.5">Last Activity</th>
                         <th className="px-3 py-2.5">Next Follow-up</th>
+                        <th className="px-3 py-2.5">Source</th>
                         <th className="px-3 py-2.5">
                           <button type="button" onClick={() => toggleSort('created_at')} className="inline-flex items-center gap-1 hover:text-white">
                             Created <SortIcon column="created_at" />
@@ -608,10 +636,32 @@ export default function MyLeads() {
                                 </select>
                               </div>
                             </td>
+                            <td className="px-3 py-2.5 max-w-0">
+                              {lead.last_activity_at ? (
+                                <>
+                                  <p className="text-[11px] text-slate-200 truncate capitalize">
+                                    {(lead.last_activity_type || 'activity').replace(/_/g, ' ')}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500 whitespace-nowrap">
+                                    {formatLeadGeneratedAt(lead.last_activity_at)}
+                                  </p>
+                                </>
+                              ) : (
+                                <span className="text-slate-500 text-xs">—</span>
+                              )}
+                            </td>
                             <td className="px-3 py-2.5">
                               {lead.follow_up_at ? (
                                 <>
-                                  <p className="text-[11px] text-amber-300 whitespace-nowrap">
+                                  <p
+                                    className={`text-[11px] whitespace-nowrap ${
+                                      new Date(lead.follow_up_at).getTime() < Date.now() &&
+                                      lead.status !== 'won' &&
+                                      lead.status !== 'lost'
+                                        ? 'text-amber-300 font-bold'
+                                        : 'text-amber-300/90'
+                                    }`}
+                                  >
                                     {formatLeadGeneratedAt(lead.follow_up_at)}
                                   </p>
                                   {lead.next_action ? (
@@ -623,6 +673,11 @@ export default function MyLeads() {
                               ) : (
                                 <span className="text-slate-500 text-xs">—</span>
                               )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <p className="text-[11px] text-slate-300 truncate">
+                                {formatLeadValue(lead.lead_source, '—')}
+                              </p>
                             </td>
                             <td className="px-3 py-2.5">
                               <p className="text-[11px] text-slate-400 whitespace-nowrap" title={generatedAt || undefined}>
@@ -651,6 +706,14 @@ export default function MyLeads() {
                                     <span className="material-symbols-outlined text-base">mail</span>
                                   </Link>
                                 ) : null}
+                                <Link
+                                  to={`/lead/${lead.id}?tab=outreach`}
+                                  className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
+                                  title="SMS / Outreach"
+                                  aria-label={`Outreach ${ownerName}`}
+                                >
+                                  <span className="material-symbols-outlined text-base">sms</span>
+                                </Link>
                                 <Link
                                   to={`/lead/${lead.id}`}
                                   className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-[11px] font-bold hover:bg-primary/20 transition-all whitespace-nowrap"

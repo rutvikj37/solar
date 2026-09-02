@@ -12,17 +12,21 @@ async function assertLeadOwnership(leadId, userId, role) {
   return fetchLeadForUser(leadId, userId, role);
 }
 
-// List appointments
+// List appointments (optional ?leadId=)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT a.*, l.owner_name, l.address, l.phone, l.email
+    const leadId = req.query.leadId ? Number(req.query.leadId) : null;
+    const params = [req.user.id];
+    let sql = `SELECT a.*, l.owner_name, l.address, l.phone, l.email
        FROM appointments a
        LEFT JOIN leads l ON l.id = a.lead_id
-       WHERE a.user_id = ?
-       ORDER BY a.scheduled_at ASC`,
-      [req.user.id]
-    );
+       WHERE a.user_id = ?`;
+    if (leadId) {
+      sql += ' AND a.lead_id = ?';
+      params.push(leadId);
+    }
+    sql += ' ORDER BY a.scheduled_at ASC';
+    const [rows] = await db.query(sql, params);
     res.json(rows);
   } catch (error) {
     console.error('List appointments error:', error);

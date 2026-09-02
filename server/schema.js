@@ -1246,4 +1246,14 @@ export async function migrateSchema() {
       INDEX idx_pe_session (proposal_id, session_id, event_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // ===== LEAD CRM: conversion + source + call outcome =====
+  await ensureColumn('leads', 'lead_source', 'VARCHAR(100) NULL');
+  await ensureColumn('leads', 'sale_system_size_kw', 'DECIMAL(8,2) NULL');
+  await ensureColumn('leads', 'sale_value', 'DECIMAL(12,2) NULL');
+  await ensureColumn('leads', 'sale_equipment', 'VARCHAR(255) NULL');
+  await ensureColumn('leads', 'sale_financing', 'VARCHAR(100) NULL');
+  await ensureColumn('leads', 'sale_closed_at', 'DATETIME NULL');
+  await ensureColumn('leads', 'sale_rep_name', 'VARCHAR(255) NULL');
+  await ensureColumn('leads', 'call_outcome', 'VARCHAR(40) NULL');
 }

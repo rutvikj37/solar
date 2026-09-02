@@ -289,9 +289,24 @@ router.get('/pipeline/summary', authenticateToken, asyncHandler(async (req, res)
   res.json(summary);
 }));
 
-// Get User Leads
+// Get User Leads (enriched with last activity for CRM list)
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
-  const [leads] = await db.query('SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+  const [leads] = await db.query(
+    `SELECT l.*,
+       la.type AS last_activity_type,
+       la.created_at AS last_activity_at,
+       la.content AS last_activity_content
+     FROM leads l
+     LEFT JOIN lead_activities la ON la.id = (
+       SELECT id FROM lead_activities
+       WHERE lead_id = l.id
+       ORDER BY created_at DESC
+       LIMIT 1
+     )
+     WHERE l.user_id = ?
+     ORDER BY l.created_at DESC`,
+    [req.user.id],
+  );
   res.json(leads);
 }));
 
@@ -1133,12 +1148,26 @@ router.post('/:id/activities', authenticateToken, asyncHandler(async (req, res) 
   res.status(201).json({ activities });
 }));
 
-// Update Lead status
+// Update Lead status / follow-up / conversion
 router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, notes, followUpAt, nextAction, conversationNotes } = req.body;
+  const {
+    status,
+    notes,
+    followUpAt,
+    nextAction,
+    conversationNotes,
+    leadSource,
+    callOutcome,
+    saleSystemSizeKw,
+    saleValue,
+    saleEquipment,
+    saleFinancing,
+    saleClosedAt,
+    saleRepName,
+  } = req.body;
 
-  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id, l.user_id');
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id, l.user_id, l.created_at, l.status');
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
   const updates = [];
@@ -1163,14 +1192,90 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
     updates.push('conversation_notes = ?');
     params.push(conversationNotes || null);
   }
+  if (leadSource !== undefined) {
+    updates.push('lead_source = ?');
+    params.push(leadSource || null);
+  }
+  if (callOutcome !== undefined) {
+    updates.push('call_outcome = ?');
+    params.push(callOutcome || null);
+  }
+  if (saleSystemSizeKw !== undefined) {
+    updates.push('sale_system_size_kw = ?');
+    params.push(saleSystemSizeKw === null || saleSystemSizeKw === '' ? null : Number(saleSystemSizeKw));
+  }
+  if (saleValue !== undefined) {
+    updates.push('sale_value = ?');
+    params.push(saleValue === null || saleValue === '' ? null : Number(saleValue));
+  }
+  if (saleEquipment !== undefined) {
+    updates.push('sale_equipment = ?');
+    params.push(saleEquipment || null);
+  }
+  if (saleFinancing !== undefined) {
+    updates.push('sale_financing = ?');
+    params.push(saleFinancing || null);
+  }
+  if (saleClosedAt !== undefined) {
+    updates.push('sale_closed_at = ?');
+    params.push(saleClosedAt ? new Date(saleClosedAt) : null);
+  }
+  if (saleRepName !== undefined) {
+    updates.push('sale_rep_name = ?');
+    params.push(saleRepName || null);
+  }
 
   if (updates.length > 0) {
     params.push(id, lead.user_id);
     await db.query(`UPDATE leads SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
   }
 
+  // Activity breadcrumbs for conversion / call outcome
+  if (status === 'won' || (saleValue !== undefined && status === undefined)) {
+    const bits = [];
+    if (saleValue != null && saleValue !== '') bits.push(`Sale $${Number(saleValue).toLocaleString('en-US')}`);
+    if (saleSystemSizeKw != null && saleSystemSizeKw !== '') bits.push(`${saleSystemSizeKw} kW`);
+    if (saleFinancing) bits.push(String(saleFinancing));
+    await db.query(
+      `INSERT INTO lead_activities (lead_id, user_id, type, content)
+       VALUES (?, ?, 'conversion', ?)`,
+      [
+        id,
+        req.user.id,
+        bits.length
+          ? `Sale details recorded: ${bits.join(' · ')}`
+          : 'Lead marked Closed / Won — sale details updated.',
+      ],
+    );
+  }
+  if (callOutcome) {
+    await db.query(
+      `INSERT INTO lead_activities (lead_id, user_id, type, content)
+       VALUES (?, ?, 'call_outcome', ?)`,
+      [id, req.user.id, `Call outcome: ${callOutcome}`],
+    );
+  }
+
   const [updated] = await db.query('SELECT * FROM leads WHERE id = ? AND user_id = ?', [id, lead.user_id]);
-  res.json(updated[0]);
+  const row = updated[0];
+  if (row && row.status === 'won' && row.created_at) {
+    const closed = row.sale_closed_at ? new Date(row.sale_closed_at) : new Date();
+    const created = new Date(row.created_at);
+    const salesCycleDays = Math.max(
+      0,
+      Math.round((closed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+    row.conversion_summary = {
+      saleValue: row.sale_value != null ? Number(row.sale_value) : null,
+      systemSizeKw: row.sale_system_size_kw != null ? Number(row.sale_system_size_kw) : null,
+      financing: row.sale_financing || null,
+      equipment: row.sale_equipment || null,
+      closedAt: row.sale_closed_at || null,
+      salesRep: row.sale_rep_name || null,
+      salesCycleDays,
+    };
+  }
+  res.json(row);
 }));
 
 export default router;

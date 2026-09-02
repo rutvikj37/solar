@@ -18,6 +18,7 @@ import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../../utils/leadShare
 import {
   STATUS_OPTIONS,
   LOST_REASONS,
+  CALL_OUTCOMES,
   getStatusLabel,
   getLeadScore,
   getSolarScore,
@@ -145,6 +146,20 @@ export default function LeadDetails() {
   const [pipelineStages, setPipelineStages] = useState(DEFAULT_PIPELINE_STAGE_LIST);
   const [proposalEngagement, setProposalEngagement] = useState(null);
   const [proposalEvents, setProposalEvents] = useState([]);
+  const [leadAppointments, setLeadAppointments] = useState([]);
+  const [rescheduleId, setRescheduleId] = useState(null);
+  const [rescheduleAt, setRescheduleAt] = useState('');
+  const [dripCampaigns, setDripCampaigns] = useState([]);
+  const [enrollCampaignId, setEnrollCampaignId] = useState('');
+  const [callOutcome, setCallOutcome] = useState('');
+  const [saleForm, setSaleForm] = useState({
+    saleSystemSizeKw: '',
+    saleValue: '',
+    saleEquipment: '',
+    saleFinancing: '',
+    saleClosedAt: '',
+    saleRepName: '',
+  });
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
 
@@ -204,6 +219,17 @@ export default function LeadDetails() {
         );
         setNextAction(data.next_action || '');
         setConversationNotes(data.conversation_notes || '');
+        setCallOutcome(data.call_outcome || '');
+        setSaleForm({
+          saleSystemSizeKw: data.sale_system_size_kw ?? '',
+          saleValue: data.sale_value ?? '',
+          saleEquipment: data.sale_equipment || '',
+          saleFinancing: data.sale_financing || '',
+          saleClosedAt: data.sale_closed_at
+            ? new Date(data.sale_closed_at).toISOString().slice(0, 10)
+            : '',
+          saleRepName: data.sale_rep_name || '',
+        });
         setEmailBody(
           `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`,
         );
@@ -224,6 +250,24 @@ export default function LeadDetails() {
         setDripEnrollments(dripData || []);
       } catch {
         setDripEnrollments([]);
+      }
+
+      try {
+        const camps = await apiService.getDripCampaigns();
+        const list = Array.isArray(camps) ? camps : camps?.campaigns || [];
+        setDripCampaigns(list.filter((c) => String(c.status || 'active').toLowerCase() !== 'archived'));
+      } catch {
+        setDripCampaigns([]);
+      }
+
+      try {
+        const apptRes = await fetch(`${API}/api/appointments?leadId=${id}`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (apptRes.ok) setLeadAppointments(await apptRes.json());
+        else setLeadAppointments([]);
+      } catch {
+        setLeadAppointments([]);
       }
 
       try {
@@ -436,6 +480,10 @@ export default function LeadDetails() {
       setTab('details');
       return;
     }
+    if (status === 'won') {
+      setTab('details');
+      // Still allow quick status flip; sale form can be completed on Details tab
+    }
     setBusy('status');
     const res = await fetch(`${API}/api/leads/${id}`, {
       method: 'PATCH',
@@ -557,6 +605,113 @@ export default function LeadDetails() {
       setTab('appointments');
     }
     setBusy('');
+  };
+
+  const handleRescheduleAppt = async (apptId) => {
+    if (!rescheduleAt) return alert('Pick a new date/time');
+    setBusy('reschedule');
+    const res = await fetch(`${API}/api/appointments/${apptId}`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ scheduledAt: rescheduleAt, status: 'scheduled' }),
+    });
+    if (!res.ok) {
+      alert('Failed to reschedule');
+    } else {
+      setRescheduleId(null);
+      setRescheduleAt('');
+      await load();
+    }
+    setBusy('');
+  };
+
+  const handleCancelAppt = async (apptId) => {
+    if (!window.confirm('Cancel this appointment?')) return;
+    setBusy('cancel-appt');
+    const res = await fetch(`${API}/api/appointments/${apptId}`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+    if (!res.ok) alert('Failed to cancel');
+    else await load();
+    setBusy('');
+  };
+
+  const handleEnrollSequence = async () => {
+    if (!enrollCampaignId) return alert('Select a sequence');
+    if (outreachOptOut) return alert('Lead opted out of outreach');
+    setBusy('enroll');
+    try {
+      await apiService.enrollLeadsInCampaign(enrollCampaignId, { leadIds: [Number(id)] });
+      await load();
+      alert('Enrolled in sequence');
+    } catch (err) {
+      alert(err.message || 'Enrollment failed');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleCancelEnrollment = async (enrollmentId) => {
+    setBusy('unenroll');
+    try {
+      await apiService.cancelDripEnrollment(enrollmentId);
+      await load();
+    } catch (err) {
+      alert(err.message || 'Could not cancel enrollment');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleSaveCallOutcome = async () => {
+    if (!callOutcome) return alert('Select a call outcome');
+    setBusy('outcome');
+    try {
+      const res = await fetch(`${API}/api/leads/${id}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ callOutcome }),
+      });
+      if (!res.ok) throw new Error('Failed to save outcome');
+      setLead(await res.json());
+      await load();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleSaveConversion = async () => {
+    setBusy('conversion');
+    try {
+      const res = await fetch(`${API}/api/leads/${id}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          status: 'won',
+          saleSystemSizeKw: saleForm.saleSystemSizeKw,
+          saleValue: saleForm.saleValue,
+          saleEquipment: saleForm.saleEquipment,
+          saleFinancing: saleForm.saleFinancing,
+          saleClosedAt: saleForm.saleClosedAt || new Date().toISOString().slice(0, 10),
+          saleRepName: saleForm.saleRepName,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save conversion');
+      }
+      setLead(await res.json());
+      await load();
+      alert('Sale recorded — lead Closed / Won');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy('');
+    }
   };
 
   const toggleOptOut = () => {
@@ -1068,6 +1223,117 @@ export default function LeadDetails() {
                 </button>
               </div>
             </Card>
+
+            <div className="lg:col-span-2">
+              <Card title="Closed / Won — Sale details">
+                <p className="text-[11px] text-on-surface-variant mb-3">
+                  Record final sale details when converting. Saves status as Closed / Won and feeds reporting.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Final system size (kW)
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      value={saleForm.saleSystemSizeKw}
+                      onChange={(e) => setSaleForm((f) => ({ ...f, saleSystemSizeKw: e.target.value }))}
+                    />
+                  </label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Sale value ($)
+                    <input
+                      type="number"
+                      step="1"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      value={saleForm.saleValue}
+                      onChange={(e) => setSaleForm((f) => ({ ...f, saleValue: e.target.value }))}
+                    />
+                  </label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Equipment
+                    <input
+                      type="text"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      placeholder="Panels / inverter / battery"
+                      value={saleForm.saleEquipment}
+                      onChange={(e) => setSaleForm((f) => ({ ...f, saleEquipment: e.target.value }))}
+                    />
+                  </label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Financing
+                    <input
+                      type="text"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      placeholder="Cash / Loan / Lease"
+                      value={saleForm.saleFinancing}
+                      onChange={(e) => setSaleForm((f) => ({ ...f, saleFinancing: e.target.value }))}
+                    />
+                  </label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Closing date
+                    <input
+                      type="date"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      value={saleForm.saleClosedAt}
+                      onChange={(e) => setSaleForm((f) => ({ ...f, saleClosedAt: e.target.value }))}
+                    />
+                  </label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-wider">
+                    Sales representative
+                    <input
+                      type="text"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      value={saleForm.saleRepName}
+                      onChange={(e) => setSaleForm((f) => ({ ...f, saleRepName: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveConversion}
+                  disabled={busy === 'conversion'}
+                  className="mt-4 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
+                >
+                  {busy === 'conversion' ? 'Saving…' : 'Mark as Won & Save Sale'}
+                </button>
+                {(lead.status === 'won' || lead.sale_value != null) && (
+                  <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-[11px] space-y-1">
+                    <p className="font-bold text-emerald-300 uppercase tracking-wider text-[10px]">
+                      Conversion summary
+                    </p>
+                    <p className="text-white">
+                      Sale value:{' '}
+                      <span className="font-mono">
+                        {lead.sale_value != null
+                          ? `$${Number(lead.sale_value).toLocaleString('en-US')}`
+                          : '—'}
+                      </span>
+                      {' · '}
+                      System:{' '}
+                      <span className="font-mono">
+                        {lead.sale_system_size_kw != null ? `${lead.sale_system_size_kw} kW` : '—'}
+                      </span>
+                    </p>
+                    <p className="text-on-surface-variant">
+                      Sales cycle:{' '}
+                      {lead.created_at
+                        ? `${Math.max(
+                            0,
+                            Math.round(
+                              (new Date(lead.sale_closed_at || Date.now()) -
+                                new Date(lead.created_at)) /
+                                (1000 * 60 * 60 * 24),
+                            ),
+                          )} days`
+                        : '—'}
+                      {lead.sale_rep_name ? ` · Rep: ${lead.sale_rep_name}` : ''}
+                      {lead.sale_financing ? ` · ${lead.sale_financing}` : ''}
+                    </p>
+                  </div>
+                )}
+              </Card>
+            </div>
           </div>
         )}
 
@@ -1226,6 +1492,101 @@ export default function LeadDetails() {
               )}
             </Card>
 
+            <Card title="Start email sequence">
+              <p className="text-[11px] text-on-surface-variant mb-3">
+                Enroll this lead in an existing drip sequence. Sequences are managed in Drip Workflows.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                <label className="flex-1 text-[10px] text-slate-400 uppercase tracking-wider">
+                  Sequence
+                  <select
+                    value={enrollCampaignId}
+                    onChange={(e) => setEnrollCampaignId(e.target.value)}
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                    disabled={outreachOptOut}
+                  >
+                    <option value="">Select sequence…</option>
+                    {dripCampaigns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || `Campaign #${c.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleEnrollSequence}
+                  disabled={busy === 'enroll' || outreachOptOut || !enrollCampaignId}
+                  className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
+                >
+                  {busy === 'enroll' ? 'Enrolling…' : 'Start Sequence'}
+                </button>
+              </div>
+              {dripCampaigns.length === 0 && (
+                <Link to="/drip" className="inline-block mt-2 text-[11px] text-primary font-bold hover:underline">
+                  Create a drip sequence first →
+                </Link>
+              )}
+              {dripEnrollments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {dripEnrollments.map((e) => (
+                    <div
+                      key={e.id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white/5 border border-glass-stroke"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{e.campaignName}</p>
+                        <p className="text-[10px] text-on-surface-variant">
+                          Step {e.currentStep} · {e.status || 'active'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCancelEnrollment(e.id)}
+                        className="text-[10px] font-bold text-red-300 hover:text-red-200"
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card title="Call outcome">
+              <p className="text-[11px] text-on-surface-variant mb-3">
+                Log the result of a call. This is stored on the lead and in activity.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                <label className="flex-1 text-[10px] text-slate-400 uppercase tracking-wider">
+                  Outcome
+                  <select
+                    value={callOutcome}
+                    onChange={(e) => setCallOutcome(e.target.value)}
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                  >
+                    <option value="">Select…</option>
+                    {CALL_OUTCOMES.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSaveCallOutcome}
+                  disabled={busy === 'outcome' || !callOutcome}
+                  className="bg-white/10 text-white px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
+                >
+                  {busy === 'outcome' ? 'Saving…' : 'Save Outcome'}
+                </button>
+              </div>
+              {lead.call_outcome && (
+                <p className="text-[11px] text-emerald-300 mt-2">Last logged: {lead.call_outcome}</p>
+              )}
+            </Card>
+
             <Card title="WhatsApp">
               <p className="text-[11px] text-on-surface-variant mb-3">
                 Share the lead PDF and summary via WhatsApp (same share flow as before).
@@ -1243,42 +1604,122 @@ export default function LeadDetails() {
         )}
 
         {activeTab === 'appointments' && (
-          <Card title="Book Site Survey">
-            <p className="text-[11px] text-on-surface-variant mb-3">
-              Booking sets lead stage to Appointment (existing automation). Manage all appointments from the global
-              Appointments page.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-              <div className="flex-1 w-full">
-                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Date & time</label>
-                <input
-                  type="datetime-local"
-                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
-                  value={apptAt}
-                  onChange={(e) => setApptAt(e.target.value)}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleBookAppt}
-                disabled={busy === 'appt'}
-                className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold shrink-0"
-              >
-                Book Appointment
-              </button>
-              <Link
-                to="/appointments"
-                className="text-primary font-bold hover:underline py-2 shrink-0 text-center"
-              >
-                All Appointments →
-              </Link>
-              {isAdmin && (
-                <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
-                  AI Voice Calling →
-                </Link>
+          <div className="space-y-4">
+            <Card title="Upcoming & past appointments">
+              {leadAppointments.length === 0 ? (
+                <p className="text-[11px] text-on-surface-variant">No appointments for this lead yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {leadAppointments.map((a) => (
+                    <div
+                      key={a.id}
+                      className="p-3 rounded-xl border border-glass-stroke bg-white/[0.03] space-y-2"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-bold text-white">{a.title}</p>
+                          <p className="text-[11px] text-on-surface-variant">
+                            {a.scheduled_at ? new Date(a.scheduled_at).toLocaleString() : '—'}
+                            {a.location ? ` · ${a.location}` : ''}
+                          </p>
+                          <span
+                            className={`inline-block mt-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                              a.status === 'cancelled'
+                                ? 'text-red-300 border-red-500/30 bg-red-500/10'
+                                : a.status === 'completed'
+                                  ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
+                                  : 'text-primary border-primary/30 bg-primary/10'
+                            }`}
+                          >
+                            {a.status || 'scheduled'}
+                          </span>
+                        </div>
+                        {a.status !== 'cancelled' && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRescheduleId(a.id);
+                                setRescheduleAt(
+                                  a.scheduled_at
+                                    ? new Date(a.scheduled_at).toISOString().slice(0, 16)
+                                    : '',
+                                );
+                              }}
+                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-white"
+                            >
+                              Reschedule
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCancelAppt(a.id)}
+                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-500/15 text-red-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {rescheduleId === a.id && (
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-end pt-1">
+                          <input
+                            type="datetime-local"
+                            value={rescheduleAt}
+                            onChange={(e) => setRescheduleAt(e.target.value)}
+                            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRescheduleAppt(a.id)}
+                            disabled={busy === 'reschedule'}
+                            className="bg-primary text-on-primary px-3 py-2 rounded-lg text-xs font-bold"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-          </Card>
+            </Card>
+
+            <Card title="Book Site Survey">
+              <p className="text-[11px] text-on-surface-variant mb-3">
+                Booking sets lead stage to Appointment (existing automation).
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                <div className="flex-1 w-full">
+                  <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Date & time</label>
+                  <input
+                    type="datetime-local"
+                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                    value={apptAt}
+                    onChange={(e) => setApptAt(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBookAppt}
+                  disabled={busy === 'appt'}
+                  className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold shrink-0"
+                >
+                  Book Appointment
+                </button>
+                <Link
+                  to="/appointments"
+                  className="text-primary font-bold hover:underline py-2 shrink-0 text-center"
+                >
+                  All Appointments →
+                </Link>
+                {isAdmin && (
+                  <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
+                    AI Voice Calling →
+                  </Link>
+                )}
+              </div>
+            </Card>
+          </div>
         )}
 
         {activeTab === 'proposal' && (

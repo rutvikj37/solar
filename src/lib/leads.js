@@ -39,7 +39,16 @@ export const LOST_REASONS = [
   'Other',
 ];
 
-export const FILTER_TABS = ['All', 'Hot Leads', 'Qualified', 'In Progress', 'Won'];
+export const CALL_OUTCOMES = [
+  'Connected',
+  'Interested',
+  'Not Interested',
+  'Call Back',
+  'No Answer',
+  'Wrong Number',
+];
+
+export const FILTER_TABS = ['All', 'Hot Leads', 'Qualified', 'In Progress', 'Won', 'Overdue'];
 
 const IN_PROGRESS_STATUSES = ['in_progress', 'contacted', 'appointment', 'proposal', 'qualified'];
 
@@ -120,6 +129,7 @@ export function getSolarScore(lead) {
 
 export function filterLeads(leads, { searchTerm = '', filterTab = 'All' } = {}) {
   const q = searchTerm.trim().toLowerCase();
+  const now = Date.now();
   return leads.filter((lead) => {
     const matchesSearch =
       !q ||
@@ -138,8 +148,25 @@ export function filterLeads(leads, { searchTerm = '', filterTab = 'All' } = {}) 
     }
     if (filterTab === 'In Progress') return IN_PROGRESS_STATUSES.includes(lead.status);
     if (filterTab === 'Won') return lead.status === 'won';
+    if (filterTab === 'Overdue') {
+      if (!lead.follow_up_at || lead.status === 'won' || lead.status === 'lost') return false;
+      return new Date(lead.follow_up_at).getTime() < now;
+    }
     return true;
   });
+}
+
+export function getOverdueFollowUps(leads) {
+  const now = Date.now();
+  return leads
+    .filter(
+      (l) =>
+        l.follow_up_at &&
+        l.status !== 'won' &&
+        l.status !== 'lost' &&
+        new Date(l.follow_up_at).getTime() < now,
+    )
+    .sort((a, b) => new Date(a.follow_up_at) - new Date(b.follow_up_at));
 }
 
 export function computeLeadStats(leads, summary = {}) {
