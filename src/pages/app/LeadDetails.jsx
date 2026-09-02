@@ -113,6 +113,42 @@ function Card({ title, children, action = null, className = '' }) {
   );
 }
 
+/** Must live outside LeadDetails — defining it inside caused React #185 (infinite remount + setState). */
+function LeadMapBlock({
+  mapContainerRef,
+  mapReady,
+  mapError,
+  lat,
+  lng,
+  heightClass = 'h-[280px] sm:h-[340px]',
+}) {
+  return (
+    <div className="glass-card rounded-2xl overflow-hidden border border-glass-stroke">
+      <div className={`relative w-full ${heightClass} bg-[#0B1220]`}>
+        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+        {!mapReady && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0B1220]/90 pointer-events-none">
+            {mapError ? (
+              <>
+                <span className="material-symbols-outlined text-3xl text-on-surface-variant">satellite_alt</span>
+                <p className="text-[11px] text-on-surface-variant px-4 text-center">{mapError}</p>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
+                <p className="text-[11px] text-on-surface-variant">Loading Google satellite…</p>
+              </>
+            )}
+          </div>
+        )}
+        <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/65 text-[10px] text-white font-semibold backdrop-blur-sm">
+          Google Satellite · {Number.isNaN(lat) ? '—' : lat.toFixed(5)}, {Number.isNaN(lng) ? '—' : lng.toFixed(5)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -181,7 +217,7 @@ export default function LeadDetails() {
   };
 
   const mapContainerRef = useCallback((node) => {
-    setMapEl(node);
+    setMapEl((prev) => (prev === node ? prev : node));
   }, []);
 
   const token = () => localStorage.getItem('solar_token');
@@ -403,7 +439,7 @@ export default function LeadDetails() {
       if (!mapEl) {
         mapInstanceRef.current = null;
         markerRef.current = null;
-        setMapReady(false);
+        setMapReady((ready) => (ready ? false : ready));
       }
       return;
     }
@@ -455,8 +491,8 @@ export default function LeadDetails() {
         }
       }
 
-      setMapReady(true);
-      setMapError('');
+      setMapReady((ready) => (ready ? ready : true));
+      setMapError((err) => (err ? '' : err));
       setTimeout(() => {
         if (window.google?.maps?.event && mapInstanceRef.current) {
           window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
@@ -810,32 +846,6 @@ export default function LeadDetails() {
     ['Last Sale Price', propExtra.lastSalePrice],
   ];
 
-  const MapBlock = ({ heightClass = 'h-[280px] sm:h-[340px]' }) => (
-    <div className="glass-card rounded-2xl overflow-hidden border border-glass-stroke">
-      <div className={`relative w-full ${heightClass} bg-[#0B1220]`}>
-        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
-        {!mapReady && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0B1220]/90 pointer-events-none">
-            {mapError ? (
-              <>
-                <span className="material-symbols-outlined text-3xl text-on-surface-variant">satellite_alt</span>
-                <p className="text-[11px] text-on-surface-variant px-4 text-center">{mapError}</p>
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
-                <p className="text-[11px] text-on-surface-variant">Loading Google satellite…</p>
-              </>
-            )}
-          </div>
-        )}
-        <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/65 text-[10px] text-white font-semibold backdrop-blur-sm">
-          Google Satellite · {Number.isNaN(lat) ? '—' : lat.toFixed(5)}, {Number.isNaN(lng) ? '—' : lng.toFixed(5)}
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <>
       <div className="w-full max-w-6xl mx-auto space-y-4 pb-8 text-xs">
@@ -1053,7 +1063,13 @@ export default function LeadDetails() {
         {/* Tab panels — same APIs / actions as before, reorganized */}
         {activeTab === 'overview' && (
           <div className="space-y-4">
-            <MapBlock />
+            <LeadMapBlock
+              mapContainerRef={mapContainerRef}
+              mapReady={mapReady}
+              mapError={mapError}
+              lat={lat}
+              lng={lng}
+            />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { label: 'Lead Score', value: `${displayScore}/100`, accent: false },
@@ -1339,7 +1355,14 @@ export default function LeadDetails() {
 
         {activeTab === 'property' && (
           <div className="space-y-4">
-            <MapBlock heightClass="h-[300px] sm:h-[400px]" />
+            <LeadMapBlock
+              mapContainerRef={mapContainerRef}
+              mapReady={mapReady}
+              mapError={mapError}
+              lat={lat}
+              lng={lng}
+              heightClass="h-[300px] sm:h-[400px]"
+            />
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               <Card
                 title="Solar Analysis"
