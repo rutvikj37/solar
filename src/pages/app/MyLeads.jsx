@@ -24,11 +24,12 @@ import {
   sortLeads,
   getFilterTabCount,
   formatLeadValue,
-  formatSavings,
   getStatusLabel,
   getLeadScore,
   getSolarScore,
   getOverdueFollowUps,
+  getPurchaseIntent,
+  getLeadImageUrl,
 } from '../../lib/leads.js';
 import {
   fetchPipelineStages,
@@ -42,8 +43,8 @@ const API = API_BASE;
 function LoadingSkeleton() {
   return (
     <div className="space-y-3 animate-pulse">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-20 rounded-2xl bg-white/5 border border-glass-stroke" />
         ))}
       </div>
@@ -340,13 +341,21 @@ export default function MyLeads() {
         <LoadingSkeleton />
       ) : (
         <>
-          {/* KPI row */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
+          {/* KPI row — mockup: Total / New / Appointments / Proposals / Closed Won / Conversion */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-4">
             <KpiCard icon="groups" label="Total Leads" value={stats.total} color="blue" />
-            <KpiCard icon="local_fire_department" label="Hot Leads" value={stats.hot} color="green" subtitle="Score 85+" />
-            <KpiCard icon="trending_up" label="In Pipeline" value={stats.inPipeline} color="amber" />
+            <KpiCard icon="fiber_new" label="New" value={stats.newThisWeek} color="sky" subtitle="Last 7 days" />
+            <KpiCard icon="event" label="Appointments" value={stats.appointments} color="amber" />
+            <KpiCard icon="description" label="Proposals Sent" value={stats.proposalsSent} color="indigo" />
             <KpiCard icon="emoji_events" label="Closed Won" value={stats.won} color="teal" />
-            <KpiCard icon="percent" label="Win Rate" value={stats.conversion} suffix="%" color="purple" subtitle={`Avg score ${stats.avgScore}`} />
+            <KpiCard
+              icon="percent"
+              label="Conversion"
+              value={stats.conversion}
+              suffix="%"
+              color="green"
+              subtitle={`Avg score ${stats.avgScore}`}
+            />
           </div>
 
           {overdueLeads.length > 0 && (
@@ -493,23 +502,10 @@ export default function MyLeads() {
             ) : (
               <>
                 <div className="flex-1 overflow-auto custom-scrollbar max-h-[calc(100vh-320px)] min-h-[420px]">
-                  <table className="w-full table-fixed border-collapse text-left min-w-[1280px]">
-                    <colgroup>
-                      <col className="w-10" />
-                      <col className="w-[16%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[6%]" />
-                      <col className="w-[6%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[11%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[80px]" />
-                    </colgroup>
+                  <table className="w-full border-collapse text-left min-w-[1480px]">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-surface-container-low/95 backdrop-blur-md text-[10px] font-bold uppercase tracking-widest text-on-surface-variant border-b border-glass-stroke">
-                        <th className="px-3 py-2.5 text-center">
+                        <th className="px-3 py-3 text-center w-10">
                           <input
                             type="checkbox"
                             checked={
@@ -521,47 +517,51 @@ export default function MyLeads() {
                             aria-label="Select all leads"
                           />
                         </th>
-                        <th className="px-3 py-2.5">
+                        <th className="px-3 py-3 min-w-[220px]">
                           <button type="button" onClick={() => toggleSort('owner_name')} className="inline-flex items-center gap-1 hover:text-white">
                             Lead / Property <SortIcon column="owner_name" />
                           </button>
                         </th>
-                        <th className="px-3 py-2.5">Address</th>
-                        <th className="px-3 py-2.5">
+                        <th className="px-3 py-3">
                           <button type="button" onClick={() => toggleSort('lead_score')} className="inline-flex items-center gap-1 hover:text-white">
-                            Lead <SortIcon column="lead_score" />
+                            Lead Score <SortIcon column="lead_score" />
                           </button>
                         </th>
-                        <th className="px-3 py-2.5">Solar</th>
-                        <th className="px-3 py-2.5">
+                        <th className="px-3 py-3">Solar Score</th>
+                        <th className="px-3 py-3">
                           <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-white">
                             Stage <SortIcon column="status" />
                           </button>
                         </th>
-                        <th className="px-3 py-2.5">Last Activity</th>
-                        <th className="px-3 py-2.5">Next Follow-up</th>
-                        <th className="px-3 py-2.5">Source</th>
-                        <th className="px-3 py-2.5">
+                        <th className="px-3 py-3">Purchase Intent</th>
+                        <th className="px-3 py-3">Last Activity</th>
+                        <th className="px-3 py-3">Next Follow-up</th>
+                        <th className="px-3 py-3">Assigned To</th>
+                        <th className="px-3 py-3">Lead Source</th>
+                        <th className="px-3 py-3">
                           <button type="button" onClick={() => toggleSort('created_at')} className="inline-flex items-center gap-1 hover:text-white">
                             Created <SortIcon column="created_at" />
                           </button>
                         </th>
-                        <th className="px-3 py-2.5 text-right">Actions</th>
+                        <th className="px-3 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-glass-stroke/60">
                       {paginatedLeads.map((lead) => {
                         const ownerName = formatLeadValue(lead.owner_name, 'Unassigned Lead');
                         const address = formatLeadValue(lead.address, 'No address');
-                        const phone = formatLeadValue(lead.phone);
-                        const email = formatLeadValue(lead.email);
-                        const savings = formatSavings(lead.estimated_savings);
                         const generatedAt = formatLeadGeneratedAt(lead.created_at);
                         const leadScore = getLeadScore(lead);
                         const solarScore = getSolarScore(lead);
+                        const intent = getPurchaseIntent(lead);
+                        const img = getLeadImageUrl(lead);
+                        const assignee =
+                          formatLeadValue(lead.assigned_to_name, null) ||
+                          formatLeadValue(lead.owner_user_name, null) ||
+                          'You';
                         return (
                           <tr key={lead.id} className="hover:bg-white/[0.03] transition-colors group align-middle">
-                            <td className="px-3 py-2.5 text-center">
+                            <td className="px-3 py-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={selectedIds.includes(lead.id)}
@@ -570,10 +570,18 @@ export default function MyLeads() {
                                 aria-label={`Select ${ownerName}`}
                               />
                             </td>
-                            <td className="px-3 py-2.5 max-w-0">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <LeadAvatar name={lead.owner_name} score={leadScore} size="sm" />
-                                <div className="min-w-0 flex-1 overflow-hidden">
+                            <td className="px-3 py-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-[#0B1220] border border-glass-stroke shrink-0">
+                                  {img ? (
+                                    <img src={img} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <LeadAvatar name={lead.owner_name} score={leadScore} size="sm" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
                                   <Link
                                     to={`/lead/${lead.id}`}
                                     className="text-sm font-semibold text-white truncate block hover:text-primary transition-colors leading-tight"
@@ -581,28 +589,16 @@ export default function MyLeads() {
                                   >
                                     {ownerName}
                                   </Link>
-                                  <p className="text-[11px] text-slate-300 font-mono truncate mt-0.5" title={phone !== '—' ? phone : undefined}>
-                                    {phone}
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 truncate" title={email !== '—' ? email : undefined}>
-                                    {email}
+                                  <p className="text-[11px] text-slate-400 truncate mt-0.5" title={address}>
+                                    {address}
                                   </p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-2.5 max-w-0">
-                              <p className="text-xs text-slate-200 truncate" title={address !== 'No address' ? address : undefined}>
-                                {address}
-                              </p>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">ID #{lead.id}</p>
-                              {savings ? (
-                                <p className="text-[10px] text-emerald-400/90 font-mono mt-0.5">{savings}</p>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2.5">
+                            <td className="px-3 py-3">
                               <LeadScoreBadge score={leadScore} showBar />
                             </td>
-                            <td className="px-3 py-2.5">
+                            <td className="px-3 py-3">
                               {solarScore != null ? (
                                 <span className="inline-flex items-center justify-center min-w-[2.25rem] h-8 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold font-mono">
                                   {solarScore}
@@ -611,7 +607,7 @@ export default function MyLeads() {
                                 <span className="text-slate-500 text-xs">—</span>
                               )}
                             </td>
-                            <td className="px-3 py-2.5">
+                            <td className="px-3 py-3">
                               <div className="flex flex-col gap-1 min-w-0">
                                 <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
                                 <select
@@ -636,7 +632,12 @@ export default function MyLeads() {
                                 </select>
                               </div>
                             </td>
-                            <td className="px-3 py-2.5 max-w-0">
+                            <td className="px-3 py-3">
+                              <p className="text-[11px] text-slate-300 max-w-[140px] truncate" title={intent}>
+                                {intent}
+                              </p>
+                            </td>
+                            <td className="px-3 py-3 max-w-[140px]">
                               {lead.last_activity_at ? (
                                 <>
                                   <p className="text-[11px] text-slate-200 truncate capitalize">
@@ -650,7 +651,7 @@ export default function MyLeads() {
                                 <span className="text-slate-500 text-xs">—</span>
                               )}
                             </td>
-                            <td className="px-3 py-2.5">
+                            <td className="px-3 py-3">
                               {lead.follow_up_at ? (
                                 <>
                                   <p
@@ -665,7 +666,7 @@ export default function MyLeads() {
                                     {formatLeadGeneratedAt(lead.follow_up_at)}
                                   </p>
                                   {lead.next_action ? (
-                                    <p className="text-[10px] text-slate-400 truncate mt-0.5" title={lead.next_action}>
+                                    <p className="text-[10px] text-slate-400 truncate mt-0.5 max-w-[120px]" title={lead.next_action}>
                                       {lead.next_action}
                                     </p>
                                   ) : null}
@@ -674,18 +675,21 @@ export default function MyLeads() {
                                 <span className="text-slate-500 text-xs">—</span>
                               )}
                             </td>
-                            <td className="px-3 py-2.5">
-                              <p className="text-[11px] text-slate-300 truncate">
+                            <td className="px-3 py-3">
+                              <p className="text-[11px] text-slate-300 truncate max-w-[100px]">{assignee}</p>
+                            </td>
+                            <td className="px-3 py-3">
+                              <p className="text-[11px] text-slate-300 truncate max-w-[100px]">
                                 {formatLeadValue(lead.lead_source, '—')}
                               </p>
                             </td>
-                            <td className="px-3 py-2.5">
+                            <td className="px-3 py-3">
                               <p className="text-[11px] text-slate-400 whitespace-nowrap" title={generatedAt || undefined}>
                                 {generatedAt || '—'}
                               </p>
                             </td>
-                            <td className="px-3 py-2.5 text-right">
-                              <div className="inline-flex items-center gap-1 justify-end">
+                            <td className="px-3 py-3 text-right">
+                              <div className="inline-flex items-center gap-0.5 justify-end">
                                 {lead.phone && lead.phone !== 'Not Available' ? (
                                   <a
                                     href={`tel:${lead.phone}`}
@@ -696,30 +700,29 @@ export default function MyLeads() {
                                     <span className="material-symbols-outlined text-base">call</span>
                                   </a>
                                 ) : null}
-                                {lead.email && lead.email !== 'Not Available' ? (
-                                  <Link
-                                    to={`/lead/${lead.id}?tab=outreach`}
-                                    className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
-                                    title="Email"
-                                    aria-label={`Email ${ownerName}`}
-                                  >
-                                    <span className="material-symbols-outlined text-base">mail</span>
-                                  </Link>
-                                ) : null}
                                 <Link
                                   to={`/lead/${lead.id}?tab=outreach`}
                                   className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
-                                  title="SMS / Outreach"
-                                  aria-label={`Outreach ${ownerName}`}
+                                  title="SMS"
+                                  aria-label={`SMS ${ownerName}`}
                                 >
                                   <span className="material-symbols-outlined text-base">sms</span>
                                 </Link>
                                 <Link
-                                  to={`/lead/${lead.id}`}
-                                  className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-[11px] font-bold hover:bg-primary/20 transition-all whitespace-nowrap"
+                                  to={`/lead/${lead.id}?tab=outreach`}
+                                  className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
+                                  title="Email"
+                                  aria-label={`Email ${ownerName}`}
                                 >
-                                  Open
-                                  <span className="material-symbols-outlined text-sm">chevron_right</span>
+                                  <span className="material-symbols-outlined text-base">mail</span>
+                                </Link>
+                                <Link
+                                  to={`/lead/${lead.id}`}
+                                  className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
+                                  title="More"
+                                  aria-label={`Open ${ownerName}`}
+                                >
+                                  <span className="material-symbols-outlined text-base">more_horiz</span>
                                 </Link>
                               </div>
                             </td>

@@ -171,15 +171,48 @@ export function getOverdueFollowUps(leads) {
 
 export function computeLeadStats(leads, summary = {}) {
   const total = leads.length;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const newThisWeek = leads.filter((l) => new Date(l.created_at || 0).getTime() >= weekAgo).length;
   const hot = leads.filter((l) => getLeadScore(l) >= 85).length;
   const inPipeline = leads.filter((l) => IN_PROGRESS_STATUSES.includes(l.status)).length;
+  const appointments = summary.appointment || leads.filter((l) => l.status === 'appointment').length;
+  const proposalsSent = summary.proposal || leads.filter((l) => l.status === 'proposal').length;
   const won = summary.won || leads.filter((l) => l.status === 'won').length;
   const avgScore = total
     ? Math.round(leads.reduce((sum, l) => sum + getLeadScore(l), 0) / total)
     : 0;
-  const conversion = total ? Math.round((won / total) * 100) : 0;
+  const conversion = total ? Math.round((won / total) * 1000) / 10 : 0;
 
-  return { total, hot, inPipeline, won, avgScore, conversion };
+  return {
+    total,
+    hot,
+    inPipeline,
+    won,
+    avgScore,
+    conversion,
+    newThisWeek,
+    appointments,
+    proposalsSent,
+  };
+}
+
+export function getPurchaseIntent(lead) {
+  const pe = lead?.propertyExtra || parseMaybeJson(lead?.property_json);
+  const raw =
+    pe?.purchaseTimeline ||
+    pe?.purchaseIntent ||
+    pe?.aiLeadScore?.breakdown?.purchaseIntent?.detail ||
+    null;
+  if (raw) return String(raw);
+  const score = getLeadScore(lead);
+  if (score >= 85) return '0-3 months / High';
+  if (score >= 70) return '3-6 months / Medium';
+  if (score >= 50) return '6-12 months / Medium';
+  return '12+ months / Low';
+}
+
+export function getLeadImageUrl(lead) {
+  return lead?.image_url || lead?.imageUrl || null;
 }
 
 export function sortLeads(leads, { key = 'created_at', direction = 'desc' } = {}) {

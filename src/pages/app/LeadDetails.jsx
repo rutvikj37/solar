@@ -23,6 +23,7 @@ import {
   getLeadScore,
   getSolarScore,
   getNextBestAction,
+  getLeadImageUrl,
 } from '../../lib/leads.js';
 import {
   fetchPipelineStages,
@@ -30,20 +31,23 @@ import {
   stagesToStatusConfig,
   DEFAULT_PIPELINE_STAGE_LIST,
 } from '../../lib/pipelineApi.js';
+import LeadFollowUpsPanel from '../../components/leads/LeadFollowUpsPanel.jsx';
+import EmailSequenceBuilder from '../../components/leads/EmailSequenceBuilder.jsx';
 
 const API = API_BASE;
 const GMAPS_SCRIPT_ID = 'google-maps-script';
 
 const LEAD_TABS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'details', label: 'Lead Details' },
-  { id: 'property', label: 'Property' },
+  { id: 'details', label: 'Details' },
   { id: 'outreach', label: 'Outreach' },
   { id: 'appointments', label: 'Appointments' },
   { id: 'proposal', label: 'Proposal' },
   { id: 'activity', label: 'Activity' },
   { id: 'notes', label: 'Notes' },
+  { id: 'followups', label: 'Follow Ups' },
   { id: 'files', label: 'Files' },
+  { id: 'property', label: 'Property' },
 ];
 
 function money(n) {
@@ -551,15 +555,17 @@ export default function LeadDetails() {
     setBusy('');
   };
 
-  const handleSaveFollowUp = async () => {
+  const handleSaveFollowUp = async (overrides = null) => {
     setBusy('followup');
+    const nextFollow = overrides?.followUpAt !== undefined ? overrides.followUpAt : followUpAt;
+    const nextAct = overrides?.nextAction !== undefined ? overrides.nextAction : nextAction;
     try {
       const res = await fetch(`${API}/api/leads/${id}`, {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
-          followUpAt: followUpAt || null,
-          nextAction,
+          followUpAt: nextFollow || null,
+          nextAction: nextAct,
           conversationNotes,
         }),
       });
@@ -567,7 +573,12 @@ export default function LeadDetails() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to save follow-up');
       }
-      setLead(await res.json());
+      const updated = await res.json();
+      setLead(updated);
+      setFollowUpAt(
+        updated.follow_up_at ? new Date(updated.follow_up_at).toISOString().slice(0, 16) : '',
+      );
+      setNextAction(updated.next_action || '');
     } catch (err) {
       alert(err.message || 'Failed to save follow-up');
     } finally {
@@ -796,6 +807,10 @@ export default function LeadDetails() {
   const displayName = lead.owner_name || 'Not Available';
   const displayScore = getLeadScore(lead);
   const solarScore = getSolarScore(lead);
+  const leadImage = getLeadImageUrl(lead);
+  const lastActivityLabel = lead.last_activity_at
+    ? formatLeadGeneratedAt(lead.last_activity_at)
+    : formatLeadGeneratedAt(lead.updated_at) || '—';
   const solar = lead.solar || {};
   const propExtra = lead.propertyExtra || {};
   const lat = parseFloat(lead.latitude);
@@ -859,32 +874,80 @@ export default function LeadDetails() {
           </Link>
         </div>
 
-        {/* Lead 360 header */}
-        <div className="glass-card rounded-2xl border border-glass-stroke p-4 sm:p-5 space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-headline-lg text-2xl font-bold text-white truncate">{displayName}</h2>
-                <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
+        {/* Lead 360 header — mockup layout */}
+        <div className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">
+          <div className="p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="w-full lg:w-44 h-36 lg:h-auto rounded-xl overflow-hidden bg-[#0B1220] border border-glass-stroke shrink-0">
+                {leadImage ? (
+                  <img src={leadImage} alt="" className="w-full h-full object-cover min-h-[9rem]" />
+                ) : (
+                  <div className="w-full h-full min-h-[9rem] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-4xl text-on-surface-variant">home</span>
+                  </div>
+                )}
               </div>
-              <p className="text-on-surface-variant break-words">{lead.address}</p>
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-glass-stroke text-[11px] font-bold text-white">
-                  Lead Score <span className="font-mono text-primary">{displayScore}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] font-bold text-emerald-300">
-                  Solar Score <span className="font-mono">{solarScore != null ? solarScore : '—'}</span>
-                </span>
-                {formatLeadGeneratedAt(lead.created_at) && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-primary/90">
-                    <span className="material-symbols-outlined text-sm">schedule</span>
-                    Generated {formatLeadGeneratedAt(lead.created_at)}
+
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-headline-lg text-2xl font-bold text-white truncate">{displayName}</h2>
+                  <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
+                </div>
+                <p className="text-on-surface-variant break-words text-sm">{lead.address}</p>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/30 text-[11px] font-bold text-sky-300">
+                    Lead Score <span className="font-mono">{displayScore}</span>
                   </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[11px] font-bold text-emerald-300">
+                    Solar Score <span className="font-mono">{solarScore != null ? solarScore : '—'}</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
+                    <p className="text-[9px] uppercase tracking-wider text-slate-500">Stage</p>
+                    <p className="text-white font-semibold mt-0.5">{stageLabel(lead.status)}</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
+                    <p className="text-[9px] uppercase tracking-wider text-slate-500">Owner</p>
+                    <p className="text-white font-semibold mt-0.5">You</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
+                    <p className="text-[9px] uppercase tracking-wider text-slate-500">Last activity</p>
+                    <p className="text-white font-semibold mt-0.5">{lastActivityLabel}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:w-64 shrink-0">
+                {nba ? (
+                  <div className="rounded-xl border border-primary/30 bg-primary/10 p-3.5 h-full flex flex-col">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Next Action</p>
+                    <p className="text-sm font-bold text-white">{nba.title}</p>
+                    <p className="text-[11px] text-on-surface-variant mt-1 flex-1">{nba.detail}</p>
+                    {proposalEngagement?.viewCount > 0 && (
+                      <p className="text-[10px] text-amber-300 mt-2">
+                        Proposal viewed {proposalEngagement.viewCount} time
+                        {proposalEngagement.viewCount === 1 ? '' : 's'}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={runNbaCta}
+                      className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:brightness-110"
+                    >
+                      {nba.ctaLabel}
+                      <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-glass-stroke bg-white/5 p-3.5 text-[11px] text-on-surface-variant">
+                    No next action suggested.
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 items-center shrink-0">
+            <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-glass-stroke">
               {phoneOk && (
                 <a
                   href={`tel:${lead.phone}`}
@@ -901,6 +964,14 @@ export default function LeadDetails() {
               >
                 <span className="material-symbols-outlined text-base">mail</span>
                 Email
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('outreach')}
+                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs"
+              >
+                <span className="material-symbols-outlined text-base">sms</span>
+                SMS
               </button>
               <button
                 type="button"
@@ -937,7 +1008,7 @@ export default function LeadDetails() {
                 {showShareMenu && (
                   <div
                     role="menu"
-                    className="absolute right-0 top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-[#0F172A] shadow-xl overflow-hidden"
+                    className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-[#0F172A] shadow-xl overflow-hidden"
                   >
                     <button
                       type="button"
@@ -975,7 +1046,7 @@ export default function LeadDetails() {
                   setTab('proposal');
                   setShowProposalModal(true);
                 }}
-                className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110"
+                className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110 ml-auto"
               >
                 <span className="material-symbols-outlined text-base">picture_as_pdf</span>
                 Create & send proposal
@@ -1000,46 +1071,25 @@ export default function LeadDetails() {
                 ))}
               </select>
             </div>
-          </div>
 
-          {shareError && <p className="text-[11px] text-red-400">{shareError}</p>}
+            {shareError && <p className="text-[11px] text-red-400">{shareError}</p>}
 
-          {/* Next Best Action */}
-          {nba && (
-            <div className="rounded-xl border border-primary/30 bg-primary/10 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">
-                  Next Best Action
-                </p>
-                <p className="text-sm font-bold text-white">{nba.title}</p>
-                <p className="text-[11px] text-on-surface-variant mt-0.5">{nba.detail}</p>
+            {dripEnrollments.length > 0 && (
+              <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">
+                <span className="material-symbols-outlined text-primary text-base">reorder</span>
+                <span className="text-xs font-bold text-white">Active Drip:</span>
+                {dripEnrollments.map((e) => (
+                  <Link
+                    key={e.id}
+                    to="/drip"
+                    className="px-2 py-1 rounded-lg bg-white/10 text-primary text-[10px] font-bold hover:bg-white/15"
+                  >
+                    {e.campaignName} · Step {e.currentStep}
+                  </Link>
+                ))}
               </div>
-              <button
-                type="button"
-                onClick={runNbaCta}
-                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:brightness-110"
-              >
-                {nba.ctaLabel}
-                <span className="material-symbols-outlined text-sm">arrow_forward</span>
-              </button>
-            </div>
-          )}
-
-          {dripEnrollments.length > 0 && (
-            <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">
-              <span className="material-symbols-outlined text-primary text-base">reorder</span>
-              <span className="text-xs font-bold text-white">Active Drip:</span>
-              {dripEnrollments.map((e) => (
-                <Link
-                  key={e.id}
-                  to="/drip"
-                  className="px-2 py-1 rounded-lg bg-white/10 text-primary text-[10px] font-bold hover:bg-white/15"
-                >
-                  {e.campaignName} · Step {e.currentStep}
-                </Link>
-              ))}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -1397,45 +1447,53 @@ export default function LeadDetails() {
 
         {activeTab === 'outreach' && (
           <div className="space-y-4">
-            <Card
-              title="Outreach controls"
-              action={
-                <button
-                  type="button"
-                  onClick={toggleOptOut}
-                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${
-                    outreachOptOut
-                      ? 'bg-red-500/15 text-red-300 border-red-500/30'
-                      : 'bg-white/5 text-on-surface-variant border-glass-stroke'
-                  }`}
-                >
-                  {outreachOptOut ? 'Opted out' : 'Allow outreach · Opt out'}
-                </button>
-              }
-            >
-              <p className="text-[11px] text-on-surface-variant mb-3">
-                Send from your connected mailbox. Drip sequences stay on Drip Workflows — enrollments still show above.
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] text-on-surface-variant">
+                Build a sequence or send a one-off email. Opt-out and call outcomes stay available below.
               </p>
-              {dripEnrollments.length > 0 ? (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {dripEnrollments.map((e) => (
-                    <Link
-                      key={e.id}
-                      to="/drip"
-                      className="px-2 py-1 rounded-lg bg-primary/15 text-primary text-[10px] font-bold"
-                    >
-                      {e.campaignName} · Step {e.currentStep}
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <Link to="/drip" className="text-[11px] text-primary font-bold hover:underline">
-                  Open Drip Workflows to start a sequence →
-                </Link>
-              )}
-            </Card>
+              <button
+                type="button"
+                onClick={toggleOptOut}
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${
+                  outreachOptOut
+                    ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                    : 'bg-white/5 text-on-surface-variant border-glass-stroke'
+                }`}
+              >
+                {outreachOptOut ? 'Opted out' : 'Allow outreach · Opt out'}
+              </button>
+            </div>
 
-            <Card title="Send Email">
+            <EmailSequenceBuilder
+              leadId={id}
+              leadName={displayName}
+              address={lead.address || ''}
+              campaigns={dripCampaigns}
+              enrollments={dripEnrollments}
+              optOut={outreachOptOut}
+              busy={busy}
+              onSaved={async () => {
+                await load();
+              }}
+              onEnrollExisting={async (campaignId) => {
+                setEnrollCampaignId(campaignId);
+                if (!campaignId) return;
+                if (outreachOptOut) return alert('Lead opted out of outreach');
+                setBusy('enroll');
+                try {
+                  await apiService.enrollLeadsInCampaign(campaignId, { leadIds: [Number(id)] });
+                  await load();
+                  alert('Enrolled in sequence');
+                } catch (err) {
+                  alert(err.message || 'Enrollment failed');
+                } finally {
+                  setBusy('');
+                }
+              }}
+              onCancelEnrollment={handleCancelEnrollment}
+            />
+
+            <Card title="Send one-off email">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <span className="text-[10px] text-on-surface-variant font-semibold text-right ml-auto">
                   {emailQuota?.unlimited
@@ -1455,9 +1513,6 @@ export default function LeadDetails() {
                 <p className="text-[11px] text-red-300">Outreach paused for this lead (opt-out).</p>
               ) : emailIntegration?.connected ? (
                 <>
-                  <p className="text-[11px] text-on-surface-variant leading-relaxed mb-2">
-                    Emails send from your inbox. Replies come back to you. Uses your plan email quota.
-                  </p>
                   <textarea
                     className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
                     value={emailBody}
@@ -1491,20 +1546,8 @@ export default function LeadDetails() {
               ) : (
                 <>
                   <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                    Connect your mailbox in Integrations to send from your inbox. Replies come back to you.
+                    Connect your mailbox in Integrations to send from your inbox.
                   </p>
-                  {emailMsg && (
-                    <p
-                      className={`text-[11px] mt-2 ${
-                        emailMsg.toLowerCase().includes('connected') ||
-                        emailMsg.toLowerCase().includes('success')
-                          ? 'text-green-400'
-                          : 'text-red-400'
-                      }`}
-                    >
-                      {emailMsg}
-                    </p>
-                  )}
                   <Link
                     to="/integrations#email"
                     className="inline-flex w-full items-center justify-center bg-primary text-on-primary py-3 rounded-xl font-bold text-sm hover:brightness-110 mt-3"
@@ -1515,71 +1558,7 @@ export default function LeadDetails() {
               )}
             </Card>
 
-            <Card title="Start email sequence">
-              <p className="text-[11px] text-on-surface-variant mb-3">
-                Enroll this lead in an existing drip sequence. Sequences are managed in Drip Workflows.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-                <label className="flex-1 text-[10px] text-slate-400 uppercase tracking-wider">
-                  Sequence
-                  <select
-                    value={enrollCampaignId}
-                    onChange={(e) => setEnrollCampaignId(e.target.value)}
-                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
-                    disabled={outreachOptOut}
-                  >
-                    <option value="">Select sequence…</option>
-                    {dripCampaigns.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name || `Campaign #${c.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={handleEnrollSequence}
-                  disabled={busy === 'enroll' || outreachOptOut || !enrollCampaignId}
-                  className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
-                >
-                  {busy === 'enroll' ? 'Enrolling…' : 'Start Sequence'}
-                </button>
-              </div>
-              {dripCampaigns.length === 0 && (
-                <Link to="/drip" className="inline-block mt-2 text-[11px] text-primary font-bold hover:underline">
-                  Create a drip sequence first →
-                </Link>
-              )}
-              {dripEnrollments.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {dripEnrollments.map((e) => (
-                    <div
-                      key={e.id}
-                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white/5 border border-glass-stroke"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate">{e.campaignName}</p>
-                        <p className="text-[10px] text-on-surface-variant">
-                          Step {e.currentStep} · {e.status || 'active'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCancelEnrollment(e.id)}
-                        className="text-[10px] font-bold text-red-300 hover:text-red-200"
-                      >
-                        Stop
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-
             <Card title="Call outcome">
-              <p className="text-[11px] text-on-surface-variant mb-3">
-                Log the result of a call. This is stored on the lead and in activity.
-              </p>
               <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <label className="flex-1 text-[10px] text-slate-400 uppercase tracking-wider">
                   Outcome
@@ -1609,21 +1588,19 @@ export default function LeadDetails() {
                 <p className="text-[11px] text-emerald-300 mt-2">Last logged: {lead.call_outcome}</p>
               )}
             </Card>
-
-            <Card title="WhatsApp">
-              <p className="text-[11px] text-on-surface-variant mb-3">
-                Share the lead PDF and summary via WhatsApp (same share flow as before).
-              </p>
-              <button
-                type="button"
-                onClick={handleShareWhatsApp}
-                disabled={busy === 'share-wa' || outreachOptOut}
-                className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold disabled:opacity-50"
-              >
-                {busy === 'share-wa' ? 'Opening…' : 'Share to WhatsApp'}
-              </button>
-            </Card>
           </div>
+        )}
+
+        {activeTab === 'followups' && (
+          <LeadFollowUpsPanel
+            lead={lead}
+            followUpAt={followUpAt}
+            nextAction={nextAction}
+            onFollowUpAtChange={setFollowUpAt}
+            onNextActionChange={setNextAction}
+            onSave={handleSaveFollowUp}
+            busy={busy === 'followup'}
+          />
         )}
 
         {activeTab === 'appointments' && (
@@ -1747,32 +1724,77 @@ export default function LeadDetails() {
 
         {activeTab === 'proposal' && (
           <div className="space-y-4">
-            <Card title="Proposal">
-              <p className="text-[11px] text-on-surface-variant mb-4">
-                Create and send proposals with the existing proposal builder. Public sign still marks the lead Won.
-              </p>
-              <div className="flex flex-wrap gap-2">
+            <Card title="Proposal status">
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                    proposalEngagement?.signedAt
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                      : proposalEngagement?.viewCount > 0
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : proposalEngagement
+                          ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                          : 'bg-white/5 text-slate-400 border-glass-stroke'
+                  }`}
+                >
+                  {proposalEngagement?.signedAt
+                    ? 'Accepted'
+                    : proposalEngagement?.viewCount > 0
+                      ? `Viewed ${proposalEngagement.viewCount}×`
+                      : proposalEngagement
+                        ? 'Sent'
+                        : 'Not created'}
+                </span>
+                {proposalEngagement?.summary && (
+                  <p className="text-sm text-white font-semibold">{proposalEngagement.summary}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 mb-2 text-[10px] text-on-surface-variant">
+                <span className="px-2 py-1 rounded-lg bg-white/5">1. Configure</span>
+                <span className="material-symbols-outlined text-sm">chevron_right</span>
+                <span className="px-2 py-1 rounded-lg bg-white/5">2. Review</span>
+                <span className="material-symbols-outlined text-sm">chevron_right</span>
+                <span className="px-2 py-1 rounded-lg bg-white/5">3. Send & track</span>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   type="button"
                   onClick={() => setShowProposalModal(true)}
                   className="bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg text-xs flex items-center gap-1.5"
                 >
                   <span className="material-symbols-outlined text-base">picture_as_pdf</span>
-                  Create & send proposal
+                  {proposalEngagement ? 'Create / resend proposal' : 'Create & send proposal'}
                 </button>
                 <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
               </div>
             </Card>
 
-            <Card title="Proposal tracking">
+            <Card title="Engagement tracking">
               {proposalEngagement ? (
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-primary/25 bg-primary/10 p-3">
-                    <p className="text-sm font-bold text-white">{proposalEngagement.summary}</p>
-                    {proposalEngagement.viewCount > 0 && (
-                      <p className="text-[11px] text-amber-300 mt-1">
-                        High engagement — recommended: follow up today.
+                  <div className="rounded-xl border border-primary/25 bg-primary/10 p-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-white">
+                        Viewed {proposalEngagement.viewCount || 0} time
+                        {(proposalEngagement.viewCount || 0) === 1 ? '' : 's'}
                       </p>
+                      {proposalEngagement.viewCount > 0 && (
+                        <p className="text-[11px] text-amber-300 mt-1">
+                          High engagement — recommended: follow up today.
+                        </p>
+                      )}
+                    </div>
+                    {proposalEngagement.viewCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNextAction('Follow up — proposal viewed');
+                          setTab('followups');
+                        }}
+                        className="bg-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold"
+                      >
+                        Follow Up
+                      </button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
@@ -1819,18 +1841,6 @@ export default function LeadDetails() {
                       ))}
                     </div>
                   )}
-                  {proposalEngagement.viewCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNextAction('Follow up — proposal viewed');
-                        setTab('details');
-                      }}
-                      className="bg-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold"
-                    >
-                      Follow Up
-                    </button>
-                  )}
                 </div>
               ) : (
                 <p className="text-[11px] text-on-surface-variant">
@@ -1863,13 +1873,17 @@ export default function LeadDetails() {
         {activeTab === 'notes' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card title="Internal Notes" className="lg:col-span-2">
-              <p className="text-[11px] text-on-surface-variant mb-3">
-                Add and manage notes visible only to your team.
-              </p>
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 mb-3 flex gap-2 items-start">
+                <span className="material-symbols-outlined text-amber-300 text-base">visibility_off</span>
+                <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                  Internal only — these notes are not shared with the homeowner.
+                </p>
+              </div>
               <textarea
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[120px]"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+                placeholder="Add a note about this lead…"
               />
               <button
                 type="button"
@@ -1879,7 +1893,10 @@ export default function LeadDetails() {
               >
                 {busy === 'note' ? 'Saving…' : 'Add Note'}
               </button>
-              <div className="mt-5 space-y-3 max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="mt-5 space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
+                {activities.filter((a) => a.type === 'note').length === 0 && (
+                  <p className="text-[11px] text-on-surface-variant">No notes yet.</p>
+                )}
                 {activities
                   .filter((a) => a.type === 'note')
                   .map((a) => (
@@ -1899,9 +1916,17 @@ export default function LeadDetails() {
               <div className="flex gap-2 items-start">
                 <span className="material-symbols-outlined text-primary text-xl">lock</span>
                 <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  These notes are visible only to team members with access to this lead.
+                  These notes are visible only to team members with access to this lead. Use Follow Ups for timed
+                  reminders.
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setTab('followups')}
+                className="mt-4 text-[11px] font-bold text-primary hover:underline"
+              >
+                Open Follow Ups →
+              </button>
             </Card>
           </div>
         )}

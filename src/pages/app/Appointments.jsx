@@ -1,22 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
+import KpiCard from '../../components/ai-calling/KpiCard';
 
 const API = API_BASE;
+
+const EMPTY_FORM = {
+  title: 'Site Survey',
+  leadId: '',
+  scheduledAt: '',
+  durationMinutes: 60,
+  location: '',
+  notes: '',
+  type: 'Site Survey',
+};
 
 export default function Appointments() {
   const [appointments, setAppointments] = useState([]);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({
-    title: 'Site Survey',
-    leadId: '',
-    scheduledAt: '',
-    durationMinutes: 60,
-    location: '',
-    notes: ''
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
 
   const token = () => localStorage.getItem('solar_token');
@@ -30,7 +35,7 @@ export default function Appointments() {
     try {
       const [aRes, lRes] = await Promise.all([
         fetch(`${API}/api/appointments`, { headers: { Authorization: `Bearer ${t}` } }),
-        fetch(`${API}/api/leads`, { headers: { Authorization: `Bearer ${t}` } })
+        fetch(`${API}/api/leads`, { headers: { Authorization: `Bearer ${t}` } }),
       ]);
       if (aRes.ok) setAppointments(await aRes.json());
       if (lRes.ok) setLeads(await lRes.json());
@@ -44,6 +49,28 @@ export default function Appointments() {
   useEffect(() => {
     load();
   }, [navigate]);
+
+  const kpis = useMemo(() => {
+    const now = Date.now();
+    const startToday = new Date();
+    startToday.setHours(0, 0, 0, 0);
+    const endToday = new Date(startToday);
+    endToday.setHours(23, 59, 59, 999);
+    const endWeek = new Date(startToday);
+    endWeek.setDate(endWeek.getDate() + 7);
+
+    const active = appointments.filter((a) => a.status === 'scheduled');
+    const today = active.filter((a) => {
+      const t = new Date(a.scheduled_at).getTime();
+      return t >= startToday.getTime() && t <= endToday.getTime();
+    }).length;
+    const thisWeek = active.filter((a) => {
+      const t = new Date(a.scheduled_at).getTime();
+      return t > endToday.getTime() && t <= endWeek.getTime();
+    }).length;
+    const upcoming = active.filter((a) => new Date(a.scheduled_at).getTime() > endWeek.getTime()).length;
+    return { today, thisWeek, upcoming };
+  }, [appointments]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -60,8 +87,8 @@ export default function Appointments() {
           scheduledAt: form.scheduledAt,
           durationMinutes: Number(form.durationMinutes) || 60,
           location: form.location,
-          notes: form.notes
-        })
+          notes: form.notes,
+        }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -71,7 +98,8 @@ export default function Appointments() {
       if (created.emailSent) {
         alert('Appointment booked. Confirmation email sent to the lead.');
       }
-      setForm({ title: 'Site Survey', leadId: '', scheduledAt: '', durationMinutes: 60, location: '', notes: '' });
+      setForm(EMPTY_FORM);
+      setShowModal(false);
       await load();
     } catch (err) {
       alert(err.message);
@@ -83,10 +111,17 @@ export default function Appointments() {
   const handleCancel = async (id) => {
     const t = token();
     if (!window.confirm('Cancel this appointment?')) return;
-    await fetch(`${API}/api/appointments/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${t}` }
+    const res = await fetch(`${API}/api/appointments/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+      body: JSON.stringify({ status: 'cancelled' }),
     });
+    if (!res.ok) {
+      await fetch(`${API}/api/appointments/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${t}` },
+      });
+    }
     await load();
   };
 
@@ -100,150 +135,228 @@ export default function Appointments() {
 
   return (
     <>
-      <div className="mb-stack-lg">
-        <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Appointments</h2>
-        <p className="text-on-surface-variant text-sm mt-1">Book site surveys and track visits from unlocked leads.</p>
+      <div className="mb-stack-lg flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <h2 className="font-headline-lg text-2xl md:text-headline-lg font-bold text-primary">Appointments</h2>
+          <p className="text-on-surface-variant text-sm mt-1">
+            Site surveys and visits from unlocked leads.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-1.5 bg-primary text-on-primary px-4 py-2.5 rounded-xl text-xs font-bold hover:brightness-110 shadow-lg shadow-primary/20"
+        >
+          <span className="material-symbols-outlined text-base">add</span>
+          Create New Appointment
+        </button>
       </div>
 
-      {(() => {
-        const now = Date.now();
-        const upcoming = appointments.filter(
-          (a) => a.status === 'scheduled' && new Date(a.scheduled_at).getTime() >= now,
-        ).length;
-        const scheduled = appointments.filter((a) => a.status === 'scheduled').length;
-        const past = appointments.filter(
-          (a) => a.status !== 'scheduled' || new Date(a.scheduled_at).getTime() < now,
-        ).length;
-        return (
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="glass-card rounded-xl p-4 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Upcoming</p>
-              <p className="text-2xl font-black text-primary mt-1">{upcoming}</p>
-            </div>
-            <div className="glass-card rounded-xl p-4 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Scheduled</p>
-              <p className="text-2xl font-black text-white mt-1">{scheduled}</p>
-            </div>
-            <div className="glass-card rounded-xl p-4 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Past / other</p>
-              <p className="text-2xl font-black text-slate-300 mt-1">{past}</p>
-            </div>
-          </div>
-        );
-      })()}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <KpiCard icon="today" label="Today" value={kpis.today} color="amber" />
+        <KpiCard icon="date_range" label="This Week" value={kpis.thisWeek} color="sky" />
+        <KpiCard icon="event_upcoming" label="Upcoming" value={kpis.upcoming} color="teal" />
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-        <form onSubmit={handleCreate} className="glass-card rounded-xl p-6 space-y-4 text-xs lg:col-span-1">
-          <h3 className="font-bold text-white text-sm">Schedule Appointment</h3>
-          <div>
-            <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Title</label>
-            <input
-              className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              required
-            />
-          </div>
-          <div>
-            <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Lead</label>
-            <select
-              className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
-              value={form.leadId}
-              onChange={(e) => setForm({ ...form, leadId: e.target.value })}
-            >
-              <option value="">No linked lead</option>
-              {leads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.owner_name || 'Lead'} — {l.address?.slice(0, 40)}
-                </option>
+      <div className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">
+        <div className="px-5 py-4 border-b border-glass-stroke flex items-center justify-between gap-3">
+          <h3 className="font-bold text-white text-sm">All Appointments</h3>
+          <p className="text-[11px] text-on-surface-variant">{appointments.length} total</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[900px]">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-widest text-on-surface-variant border-b border-glass-stroke">
+                <th className="px-4 py-3">Date & Time</th>
+                <th className="px-4 py-3">Lead / Customer</th>
+                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Created By</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-glass-stroke/60">
+              {appointments.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-xs text-on-surface-variant">
+                    No appointments yet. Create one to book a site survey.
+                  </td>
+                </tr>
+              )}
+              {appointments.map((a) => (
+                <tr key={a.id} className="text-xs hover:bg-white/[0.03]">
+                  <td className="px-4 py-3 text-slate-200 whitespace-nowrap">
+                    {a.scheduled_at ? new Date(a.scheduled_at).toLocaleString() : '—'}
+                    <span className="block text-[10px] text-slate-500">{a.duration_minutes || 60} min</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-white font-semibold truncate max-w-[180px]">
+                      {a.owner_name || '—'}
+                    </p>
+                    {a.address && (
+                      <p className="text-[10px] text-slate-500 truncate max-w-[180px]">{a.address}</p>
+                    )}
+                    {a.lead_id && (
+                      <Link to={`/lead/${a.lead_id}`} className="text-primary text-[10px] font-bold hover:underline">
+                        View lead
+                      </Link>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-white font-semibold">{a.title}</td>
+                  <td className="px-4 py-3 text-slate-300">
+                    {a.title?.toLowerCase().includes('consult')
+                      ? 'Consultation'
+                      : a.title?.toLowerCase().includes('install')
+                        ? 'Install'
+                        : 'Site Survey'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                        a.status === 'cancelled'
+                          ? 'text-red-300 border-red-500/30 bg-red-500/10'
+                          : a.status === 'completed'
+                            ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
+                            : 'text-primary border-primary/30 bg-primary/10'
+                      }`}
+                    >
+                      {a.status || 'scheduled'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-400">You</td>
+                  <td className="px-4 py-3 text-right">
+                    {a.status !== 'cancelled' && (
+                      <button
+                        type="button"
+                        onClick={() => handleCancel(a.id)}
+                        className="text-red-400 hover:text-red-300 text-[10px] font-bold uppercase"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </td>
+                </tr>
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">When</label>
-            <input
-              type="datetime-local"
-              className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
-              value={form.scheduledAt}
-              onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
-              required
-            />
-          </div>
-          <div>
-            <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Duration (min)</label>
-            <input
-              type="number"
-              className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
-              value={form.durationMinutes}
-              onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Location</label>
-            <input
-              className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
-              value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })}
-              placeholder="Property address"
-            />
-          </div>
-          <div>
-            <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Notes</label>
-            <textarea
-              className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[80px]"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full bg-primary text-on-primary py-2.5 rounded-lg font-bold hover:opacity-90 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Book Appointment'}
-          </button>
-        </form>
-
-        <div className="lg:col-span-2 glass-card rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-glass-stroke">
-            <h3 className="font-bold text-white text-sm">Upcoming & Recent</h3>
-          </div>
-          <div className="divide-y divide-glass-stroke">
-            {appointments.length === 0 && (
-              <p className="p-6 text-xs text-on-surface-variant">No appointments yet. Book a site survey from a lead.</p>
-            )}
-            {appointments.map((a) => (
-              <div key={a.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div>
-                  <p className="font-semibold text-white">{a.title}</p>
-                  <p className="text-on-surface-variant mt-1">
-                    {new Date(a.scheduled_at).toLocaleString()} · {a.duration_minutes} min
-                  </p>
-                  <p className="text-on-surface-variant mt-0.5">
-                    {a.owner_name || '—'} {a.address ? `· ${a.address}` : ''}
-                  </p>
-                  {a.lead_id && (
-                    <Link to={`/lead/${a.lead_id}`} className="text-primary hover:underline mt-1 inline-block">
-                      View lead
-                    </Link>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-bold uppercase">
-                    {a.status}
-                  </span>
-                  <button
-                    onClick={() => handleCancel(a.id)}
-                    className="text-red-400 hover:text-red-300 text-[10px] font-bold uppercase"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg glass-card rounded-2xl border border-glass-stroke p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-white">Create New Appointment</h3>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="p-1 rounded-lg text-on-surface-variant hover:text-white"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="space-y-3 text-xs">
+              <div>
+                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Title</label>
+                <input
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Lead</label>
+                <select
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  value={form.leadId}
+                  onChange={(e) => setForm({ ...form, leadId: e.target.value })}
+                >
+                  <option value="">No linked lead</option>
+                  {leads.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.owner_name || 'Lead'} — {l.address?.slice(0, 40)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">When</label>
+                <input
+                  type="datetime-local"
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  value={form.scheduledAt}
+                  onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Duration (min)</label>
+                  <input
+                    type="number"
+                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                    value={form.durationMinutes}
+                    onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Type</label>
+                  <select
+                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                    value={form.type}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        type: e.target.value,
+                        title: form.title === EMPTY_FORM.title || !form.title ? e.target.value : form.title,
+                      })
+                    }
+                  >
+                    <option>Site Survey</option>
+                    <option>Consultation</option>
+                    <option>Install Check</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Location</label>
+                <input
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  value={form.location}
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                  placeholder="Property address"
+                />
+              </div>
+              <div>
+                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Notes</label>
+                <textarea
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[80px]"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 bg-white/10 text-white py-2.5 rounded-lg font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 bg-primary text-on-primary py-2.5 rounded-lg font-bold hover:opacity-90 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Book Appointment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
