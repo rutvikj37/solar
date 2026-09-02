@@ -14,6 +14,7 @@ import {
   fetchEmailIntegration,
 } from '../../lib/emailIntegrations.js';
 import { fetchMe, isAdminRole, peekAuthSessionCache, getToken } from '../../lib/auth.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../../utils/leadSharePdf.js';
 import {
   STATUS_OPTIONS,
@@ -156,6 +157,7 @@ function LeadMapBlock({
 export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -805,6 +807,10 @@ export default function LeadDetails() {
   }
 
   const displayName = lead.owner_name || 'Not Available';
+  const assigneeLabel =
+    (authUser?.name && String(authUser.name).trim()) ||
+    (authUser?.email && String(authUser.email).trim()) ||
+    '—';
   const displayScore = getLeadScore(lead);
   const solarScore = getSolarScore(lead);
   const leadImage = getLeadImageUrl(lead);
@@ -874,8 +880,8 @@ export default function LeadDetails() {
           </Link>
         </div>
 
-        {/* Lead 360 header — mockup layout */}
-        <div className="crm-panel overflow-hidden">
+        {/* Lead 360 header + tabs (single stack so actions never cover the tab bar) */}
+        <div className="crm-panel lead-360-shell relative z-0 overflow-visible">
           <div className="p-4 sm:p-5 space-y-4">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="w-full lg:w-44 h-36 lg:h-auto rounded-xl overflow-hidden bg-[#0B1220] border border-glass-stroke shrink-0">
@@ -908,8 +914,10 @@ export default function LeadDetails() {
                     <p className="text-white font-semibold mt-0.5">{stageLabel(lead.status)}</p>
                   </div>
                   <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
-                    <p className="text-[9px] uppercase tracking-wider text-slate-500">Owner</p>
-                    <p className="text-white font-semibold mt-0.5">You</p>
+                    <p className="text-[9px] uppercase tracking-wider text-slate-500">Assignee</p>
+                    <p className="text-white font-semibold mt-0.5 truncate" title={assigneeLabel}>
+                      {assigneeLabel}
+                    </p>
                   </div>
                   <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
                     <p className="text-[9px] uppercase tracking-wider text-slate-500">Last activity</p>
@@ -1090,24 +1098,27 @@ export default function LeadDetails() {
               </div>
             )}
           </div>
-        </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 overflow-x-auto custom-scrollbar border-b border-glass-stroke pb-px">
-          {LEAD_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`shrink-0 px-3.5 py-2.5 text-[11px] font-bold border-b-2 transition-colors ${
-                activeTab === t.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-on-surface-variant hover:text-white'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+          {/* Tabs — inside the same shell, below actions (no overlap / stacking) */}
+          <nav
+            className="lead-360-tabs relative z-10 flex gap-1 overflow-x-auto custom-scrollbar border-t border-glass-stroke px-2 sm:px-3 pt-1"
+            aria-label="Lead sections"
+          >
+            {LEAD_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`shrink-0 px-3.5 py-2.5 text-[11px] font-bold border-b-2 transition-colors ${
+                  activeTab === t.id
+                    ? 'border-primary text-primary bg-primary/10 rounded-t-md'
+                    : 'border-transparent text-on-surface-variant hover:text-white'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
 
         {/* Tab panels — same APIs / actions as before, reorganized */}
@@ -1600,6 +1611,7 @@ export default function LeadDetails() {
             onNextActionChange={setNextAction}
             onSave={handleSaveFollowUp}
             busy={busy === 'followup'}
+            assigneeName={assigneeLabel}
           />
         )}
 
@@ -1910,11 +1922,11 @@ export default function LeadDetails() {
                   .map((a) => (
                     <div key={a.id} className="py-4 flex gap-3">
                       <span className="w-9 h-9 rounded-full bg-primary text-on-primary text-[11px] font-bold flex items-center justify-center shrink-0">
-                        YOU
+                        {(assigneeLabel || 'U').slice(0, 2).toUpperCase()}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-on-surface">You</span>
+                          <span className="text-xs font-bold text-on-surface">{assigneeLabel}</span>
                           <span className="text-[10px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10">
                             Internal Note
                           </span>

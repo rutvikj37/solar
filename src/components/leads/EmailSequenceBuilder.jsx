@@ -52,7 +52,8 @@ function dayLabel(step, idx, steps) {
 }
 
 /**
- * Mockup-aligned Create Email Sequence — saves via /api/drip.
+ * Create Email Sequence — saves via /api/drip and enrolls this lead.
+ * Template presets are editable starters (not fake lead data).
  */
 export default function EmailSequenceBuilder({
   leadId,
@@ -66,9 +67,9 @@ export default function EmailSequenceBuilder({
   onCancelEnrollment,
   busy = '',
 }) {
-  const [seqName, setSeqName] = useState('Proposal Follow Up');
+  const [seqName, setSeqName] = useState('');
   const [templatePick, setTemplatePick] = useState(TEMPLATES[0].id);
-  const [steps, setSteps] = useState([blankStep(1), blankStep(2), blankStep(3)]);
+  const [steps, setSteps] = useState(() => [blankStep(1)]);
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [enrollId, setEnrollId] = useState('');
@@ -175,6 +176,7 @@ export default function EmailSequenceBuilder({
                 className="mt-1.5 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 text-on-surface text-sm"
                 value={seqName}
                 onChange={(e) => setSeqName(e.target.value)}
+                placeholder="e.g. Proposal follow-up"
               />
             </label>
             <label className="text-[11px] font-semibold text-on-surface-variant">

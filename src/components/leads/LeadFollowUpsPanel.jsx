@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 const PRIORITIES = ['High', 'Medium', 'Low'];
 
 /**
- * Mockup-aligned Follow Ups board for Lead 360.
+ * Follow Ups board for Lead 360 — driven by lead.follow_up_at / next_action.
  */
 export default function LeadFollowUpsPanel({
   lead,
@@ -15,6 +15,7 @@ export default function LeadFollowUpsPanel({
   busy = false,
   priority: priorityProp,
   onPriorityChange,
+  assigneeName = '',
 }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -48,6 +49,7 @@ export default function LeadFollowUpsPanel({
   }, [followTs, isCompleted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = [];
+  const relatedAssignee = (assigneeName && String(assigneeName).trim()) || '—';
   if (lead?.follow_up_at || (lead?.next_action && !String(lead.next_action).startsWith('[Done]'))) {
     const metaMatch = String(lead.next_action || '').match(/^\[(High|Medium|Low)\]\s*(.*)$/i);
     const rowPriority = metaMatch ? metaMatch[1] : 'Medium';
@@ -61,7 +63,7 @@ export default function LeadFollowUpsPanel({
       relatedAddress: lead.address || '',
       priority: rowPriority,
       status: overdue ? 'Pending' : 'Pending',
-      createdBy: 'You',
+      createdBy: relatedAssignee,
     });
   }
   if (isCompleted) {
@@ -74,7 +76,7 @@ export default function LeadFollowUpsPanel({
       relatedAddress: lead.address || '',
       priority: 'Low',
       status: 'Completed',
-      createdBy: 'You',
+      createdBy: relatedAssignee,
     });
   }
 

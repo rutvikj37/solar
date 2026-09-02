@@ -12,7 +12,7 @@ import {
 } from '../../lib/leads.js';
 
 /**
- * Mockup-style Kanban: property thumb, dual scores, next action, drag-drop.
+ * Kanban board: property thumb, dual scores, next action, drag-drop.
  */
 export default function LeadKanbanBoard({
   leads,

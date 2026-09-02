@@ -345,7 +345,7 @@ export default function MyLeads() {
         <LoadingSkeleton />
       ) : (
         <>
-          {/* KPI row — mockup: Total / New / Appointments / Proposals / Closed Won / Conversion */}
+          {/* KPI row — computed from /api/leads */}
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-4">
             <KpiCard icon="groups" label="Total Leads" value={stats.total} color="blue" />
             <KpiCard icon="fiber_new" label="New" value={stats.newThisWeek} color="sky" subtitle="Last 7 days" />
