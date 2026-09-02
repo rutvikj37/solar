@@ -1197,4 +1197,53 @@ export async function migrateSchema() {
       INDEX idx_email_log_source (source)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // ===== LEAD CRM: custom pipeline stages + proposal engagement =====
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_pipeline_settings (
+      user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+      stages_json JSON NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await ensureColumn('proposals', 'sent_at', 'DATETIME NULL');
+  await ensureColumn('proposals', 'first_viewed_at', 'DATETIME NULL');
+  await ensureColumn(
+    'proposals',
+    'financing_viewed_at',
+    'DATETIME NULL',
+  );
+  await ensureColumn(
+    'proposals',
+    'equipment_viewed_at',
+    'DATETIME NULL',
+  );
+  await ensureColumn(
+    'proposals',
+    'downloaded_at',
+    'DATETIME NULL',
+  );
+  await ensureColumn(
+    'proposals',
+    'download_count',
+    'INT UNSIGNED NOT NULL DEFAULT 0',
+  );
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS proposal_events (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      proposal_id INT UNSIGNED NOT NULL,
+      lead_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      event_type VARCHAR(40) NOT NULL,
+      session_id VARCHAR(64) NULL,
+      meta JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_pe_proposal (proposal_id),
+      INDEX idx_pe_lead (lead_id),
+      INDEX idx_pe_type (event_type),
+      INDEX idx_pe_session (proposal_id, session_id, event_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }

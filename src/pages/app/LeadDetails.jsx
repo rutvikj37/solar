@@ -23,6 +23,12 @@ import {
   getSolarScore,
   getNextBestAction,
 } from '../../lib/leads.js';
+import {
+  fetchPipelineStages,
+  stagesToStatusOptions,
+  stagesToStatusConfig,
+  DEFAULT_PIPELINE_STAGE_LIST,
+} from '../../lib/pipelineApi.js';
 
 const API = API_BASE;
 const GMAPS_SCRIPT_ID = 'google-maps-script';
@@ -136,8 +142,18 @@ export default function LeadDetails() {
   const [isAdmin, setIsAdmin] = useState(() => isAdminRole(peekAuthSessionCache(getToken())?.role));
   const [lostReason, setLostReason] = useState('');
   const [outreachOptOut, setOutreachOptOut] = useState(false);
+  const [pipelineStages, setPipelineStages] = useState(DEFAULT_PIPELINE_STAGE_LIST);
+  const [proposalEngagement, setProposalEngagement] = useState(null);
+  const [proposalEvents, setProposalEvents] = useState([]);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
+
+  const statusOptions = useMemo(
+    () => stagesToStatusOptions(pipelineStages) || STATUS_OPTIONS,
+    [pipelineStages],
+  );
+  const statusConfigMap = useMemo(() => stagesToStatusConfig(pipelineStages), [pipelineStages]);
+  const stageLabel = (key) => statusConfigMap[key]?.label || getStatusLabel(key);
 
   const tabParam = searchParams.get('tab') || 'overview';
   const activeTab = LEAD_TABS.some((t) => t.id === tabParam) ? tabParam : 'overview';
@@ -224,6 +240,30 @@ export default function LeadDetails() {
         else setEmailQuota(null);
       } catch {
         setEmailQuota(null);
+      }
+
+      try {
+        const stagesData = await fetchPipelineStages();
+        if (stagesData?.stages?.length) setPipelineStages(stagesData.stages);
+      } catch {
+        /* keep defaults */
+      }
+
+      try {
+        const propRes = await fetch(`${API}/api/proposals/lead/${id}`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (propRes.ok) {
+          const propData = await propRes.json();
+          setProposalEngagement(propData.engagement || null);
+          setProposalEvents(propData.events || []);
+        } else {
+          setProposalEngagement(null);
+          setProposalEvents([]);
+        }
+      } catch {
+        setProposalEngagement(null);
+        setProposalEvents([]);
       }
     } catch (error) {
       console.error(error);
@@ -660,7 +700,7 @@ export default function LeadDetails() {
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-headline-lg text-2xl font-bold text-white truncate">{displayName}</h2>
-                <LeadStatusBadge status={lead.status} />
+                <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
               </div>
               <p className="text-on-surface-variant break-words">{lead.address}</p>
               <div className="flex flex-wrap gap-2">
@@ -785,9 +825,12 @@ export default function LeadDetails() {
                 className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
                 aria-label="Change pipeline stage"
               >
-                {STATUS_OPTIONS.map((s) => (
+                {!statusOptions.includes(lead.status || 'new') && lead.status ? (
+                  <option value={lead.status}>{lead.status}</option>
+                ) : null}
+                {statusOptions.map((s) => (
                   <option key={s} value={s}>
-                    {getStatusLabel(s)}
+                    {stageLabel(s)}
                   </option>
                 ))}
               </select>
@@ -961,9 +1004,12 @@ export default function LeadDetails() {
                   disabled={busy === 'status'}
                   className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
                 >
-                  {STATUS_OPTIONS.map((s) => (
+                  {!statusOptions.includes(lead.status || 'new') && lead.status ? (
+                    <option value={lead.status}>{lead.status}</option>
+                  ) : null}
+                  {statusOptions.map((s) => (
                     <option key={s} value={s}>
-                      {getStatusLabel(s)}
+                      {stageLabel(s)}
                     </option>
                   ))}
                 </select>
@@ -1236,22 +1282,99 @@ export default function LeadDetails() {
         )}
 
         {activeTab === 'proposal' && (
-          <Card title="Proposal">
-            <p className="text-[11px] text-on-surface-variant mb-4">
-              Create and send proposals with the existing proposal builder. Public sign still marks the lead Won.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setShowProposalModal(true)}
-                className="bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg text-xs flex items-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-base">picture_as_pdf</span>
-                Create & send proposal
-              </button>
-              <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
-            </div>
-          </Card>
+          <div className="space-y-4">
+            <Card title="Proposal">
+              <p className="text-[11px] text-on-surface-variant mb-4">
+                Create and send proposals with the existing proposal builder. Public sign still marks the lead Won.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowProposalModal(true)}
+                  className="bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg text-xs flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+                  Create & send proposal
+                </button>
+                <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
+              </div>
+            </Card>
+
+            <Card title="Proposal tracking">
+              {proposalEngagement ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-primary/25 bg-primary/10 p-3">
+                    <p className="text-sm font-bold text-white">{proposalEngagement.summary}</p>
+                    {proposalEngagement.viewCount > 0 && (
+                      <p className="text-[11px] text-amber-300 mt-1">
+                        High engagement — recommended: follow up today.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <p className="text-on-surface-variant uppercase text-[9px]">Status</p>
+                      <p className="text-white font-bold capitalize">{proposalEngagement.status}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <p className="text-on-surface-variant uppercase text-[9px]">Views</p>
+                      <p className="text-white font-bold font-mono">{proposalEngagement.viewCount}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <p className="text-on-surface-variant uppercase text-[9px]">Downloads</p>
+                      <p className="text-white font-bold font-mono">{proposalEngagement.downloadCount}</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <p className="text-on-surface-variant uppercase text-[9px]">Financing</p>
+                      <p className="text-white font-bold">
+                        {proposalEngagement.financingViewedAt ? 'Viewed' : '—'}
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <p className="text-on-surface-variant uppercase text-[9px]">Equipment</p>
+                      <p className="text-white font-bold">
+                        {proposalEngagement.equipmentViewedAt ? 'Viewed' : '—'}
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white/5">
+                      <p className="text-on-surface-variant uppercase text-[9px]">Accepted</p>
+                      <p className="text-white font-bold">
+                        {proposalEngagement.signedAt ? 'Yes' : '—'}
+                      </p>
+                    </div>
+                  </div>
+                  {proposalEvents.length > 0 && (
+                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                      {proposalEvents.slice(0, 12).map((ev) => (
+                        <div key={ev.id} className="flex justify-between gap-2 text-[10px]">
+                          <span className="text-primary font-bold uppercase">{ev.event_type.replace(/_/g, ' ')}</span>
+                          <span className="text-on-surface-variant">
+                            {new Date(ev.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {proposalEngagement.viewCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNextAction('Follow up — proposal viewed');
+                        setTab('details');
+                      }}
+                      className="bg-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold"
+                    >
+                      Follow Up
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[11px] text-on-surface-variant">
+                  No proposal yet. Create one to start tracking opens, financing views, and acceptance.
+                </p>
+              )}
+            </Card>
+          </div>
         )}
 
         {activeTab === 'activity' && (

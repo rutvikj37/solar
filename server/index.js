@@ -35,6 +35,7 @@ import dripRoutes from './routes/drip.js';
 import teamRoutes from './routes/team.js';
 import aiCallingRoutes from './routes/ai-calling.js';
 import proposalRoutes from './routes/proposals.js';
+import pipelineRoutes from './routes/pipeline.js';
 import marketplaceRoutes from './routes/marketplace.js';
 import marketplaceAdminRoutes from './routes/marketplace-admin.js';
 import { startDialerWorker, stopDialerWorker } from './services/ai-calling/dialerWorker.js';
@@ -271,6 +272,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/ai-calling', aiCallingRoutes);
 app.use('/api/proposals', proposalRoutes);
+app.use('/api/pipeline', pipelineRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/marketplace/admin', marketplaceAdminRoutes);
 

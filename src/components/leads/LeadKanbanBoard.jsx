@@ -12,13 +12,27 @@ import {
 } from '../../lib/leads.js';
 
 /**
- * Drag-and-drop Kanban. Writes the same status keys via onStatusChange —
- * no new API contract.
+ * Drag-and-drop Kanban. Writes the same status keys via onStatusChange.
+ * Optional `stages` / `statusConfigMap` for custom pipeline labels & order.
  */
-export default function LeadKanbanBoard({ leads, onStatusChange, busyId = null }) {
+export default function LeadKanbanBoard({
+  leads,
+  onStatusChange,
+  busyId = null,
+  stages = null,
+  statusConfigMap = null,
+}) {
   const [dragId, setDragId] = useState(null);
   const [overStage, setOverStage] = useState(null);
-  const groups = groupLeadsByStage(leads);
+  const stageKeys = stages?.length
+    ? [...stages].sort((a, b) => a.order - b.order).map((s) => s.key)
+    : PIPELINE_STAGES;
+  const groups = groupLeadsByStage(leads, stageKeys);
+  const labelFor = (key) => {
+    if (statusConfigMap?.[key]?.label) return statusConfigMap[key].label;
+    const fromStages = stages?.find((s) => s.key === key);
+    return fromStages?.label || getStatusLabel(key);
+  };
 
   const handleDrop = async (stage) => {
     setOverStage(null);
@@ -31,7 +45,7 @@ export default function LeadKanbanBoard({ leads, onStatusChange, busyId = null }
 
   return (
     <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2 min-h-[min(70vh,640px)]">
-      {PIPELINE_STAGES.map((stage) => {
+      {stageKeys.map((stage) => {
         const columnLeads = groups[stage] || [];
         const isOver = overStage === stage;
         return (
@@ -52,10 +66,10 @@ export default function LeadKanbanBoard({ leads, onStatusChange, busyId = null }
           >
             <div className="px-3 py-2.5 border-b border-glass-stroke flex items-center justify-between gap-2 sticky top-0 bg-surface-container-low/90 backdrop-blur-md rounded-t-2xl z-[1]">
               <div className="min-w-0">
-                <p className="text-[11px] font-bold text-white truncate">{getStatusLabel(stage)}</p>
+                <p className="text-[11px] font-bold text-white truncate">{labelFor(stage)}</p>
                 <p className="text-[10px] text-on-surface-variant font-mono">{columnLeads.length} leads</p>
               </div>
-              <LeadStatusBadge status={stage} size="xs" />
+              <LeadStatusBadge status={stage} size="xs" configMap={statusConfigMap} />
             </div>
 
             <div className="flex-1 p-2 space-y-2 overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)] min-h-[360px]">
@@ -94,7 +108,10 @@ export default function LeadKanbanBoard({ leads, onStatusChange, busyId = null }
                         {name}
                       </Link>
                       {leadScore >= 85 && (
-                        <span className="material-symbols-outlined text-amber-400 text-base shrink-0" title="High priority">
+                        <span
+                          className="material-symbols-outlined text-amber-400 text-base shrink-0"
+                          title="High priority"
+                        >
                           local_fire_department
                         </span>
                       )}
@@ -126,7 +143,9 @@ export default function LeadKanbanBoard({ leads, onStatusChange, busyId = null }
                       >
                         Open
                       </Link>
-                      <span className="material-symbols-outlined text-on-surface-variant text-sm">drag_indicator</span>
+                      <span className="material-symbols-outlined text-on-surface-variant text-sm">
+                        drag_indicator
+                      </span>
                     </div>
                   </div>
                 );

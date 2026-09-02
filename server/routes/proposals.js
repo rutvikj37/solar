@@ -25,8 +25,149 @@ const publicSignLimiter = rateLimit({
   message: { error: 'Too many signature attempts' },
 });
 
+const publicEventLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many tracking requests' },
+});
+
+const TRACKABLE_EVENTS = new Set([
+  'opened',
+  'viewed',
+  'financing_viewed',
+  'equipment_viewed',
+  'downloaded',
+  'accepted',
+]);
+
 function randomSlug() {
   return `prop_${Date.now()}_${crypto.randomBytes(16).toString('hex')}`;
+}
+
+function buildEngagement(proposal, eventCounts = {}) {
+  const viewCount = Number(proposal.view_count || 0);
+  return {
+    status: proposal.status,
+    viewCount,
+    downloadCount: Number(proposal.download_count || 0),
+    sentAt: proposal.sent_at || proposal.created_at || null,
+    firstViewedAt: proposal.first_viewed_at || null,
+    lastViewedAt: proposal.viewed_at || null,
+    financingViewedAt: proposal.financing_viewed_at || null,
+    equipmentViewedAt: proposal.equipment_viewed_at || null,
+    downloadedAt: proposal.downloaded_at || null,
+    signedAt: proposal.signed_at || null,
+    events: {
+      opened: Number(eventCounts.opened || 0),
+      viewed: Number(eventCounts.viewed || viewCount || 0),
+      financing_viewed: Number(eventCounts.financing_viewed || 0),
+      equipment_viewed: Number(eventCounts.equipment_viewed || 0),
+      downloaded: Number(eventCounts.downloaded || proposal.download_count || 0),
+      accepted: Number(eventCounts.accepted || (proposal.status === 'signed' ? 1 : 0)),
+    },
+    summary:
+      viewCount > 0
+        ? `Viewed ${viewCount} time${viewCount === 1 ? '' : 's'}`
+        : proposal.status === 'sent'
+          ? 'Sent — waiting for open'
+          : proposal.status === 'signed'
+            ? 'Accepted / signed'
+            : 'Not viewed yet',
+  };
+}
+
+async function loadEventCounts(proposalId) {
+  const [rows] = await db.query(
+    `SELECT event_type, COUNT(*) AS cnt
+     FROM proposal_events
+     WHERE proposal_id = ?
+     GROUP BY event_type`,
+    [proposalId],
+  );
+  return Object.fromEntries(rows.map((r) => [r.event_type, Number(r.cnt)]));
+}
+
+async function recordProposalEvent(proposal, eventType, { sessionId = null, meta = null } = {}) {
+  if (!TRACKABLE_EVENTS.has(eventType)) {
+    return { ok: false, error: 'Invalid event type' };
+  }
+
+  const sid = sessionId ? String(sessionId).slice(0, 64) : null;
+
+  // Deduplicate once-per-session for section views / opened
+  if (sid && ['opened', 'financing_viewed', 'equipment_viewed'].includes(eventType)) {
+    const [dup] = await db.query(
+      `SELECT id FROM proposal_events
+       WHERE proposal_id = ? AND event_type = ? AND session_id = ?
+       LIMIT 1`,
+      [proposal.id, eventType, sid],
+    );
+    if (dup.length) {
+      const [fresh] = await db.query('SELECT * FROM proposals WHERE id = ? LIMIT 1', [proposal.id]);
+      return { ok: true, deduped: true, proposal: fresh[0] };
+    }
+  }
+
+  await db.query(
+    `INSERT INTO proposal_events (proposal_id, lead_id, user_id, event_type, session_id, meta)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      proposal.id,
+      proposal.lead_id,
+      proposal.user_id,
+      eventType,
+      sid,
+      meta ? JSON.stringify(meta) : null,
+    ],
+  );
+
+  if (eventType === 'opened' || eventType === 'viewed') {
+    await db.query(
+      `UPDATE proposals SET
+         view_count = view_count + 1,
+         viewed_at = NOW(),
+         first_viewed_at = COALESCE(first_viewed_at, NOW()),
+         status = IF(status = 'sent', 'viewed', status)
+       WHERE id = ?`,
+      [proposal.id],
+    );
+    if (eventType === 'opened') {
+      await db.query(
+        `INSERT INTO lead_activities (lead_id, user_id, type, content)
+         VALUES (?, ?, 'proposal_opened', ?)`,
+        [
+          proposal.lead_id,
+          proposal.user_id,
+          'Homeowner opened the proposal link.',
+        ],
+      );
+    }
+  } else if (eventType === 'financing_viewed') {
+    await db.query(
+      `UPDATE proposals SET financing_viewed_at = COALESCE(financing_viewed_at, NOW()) WHERE id = ?`,
+      [proposal.id],
+    );
+  } else if (eventType === 'equipment_viewed') {
+    await db.query(
+      `UPDATE proposals SET equipment_viewed_at = COALESCE(equipment_viewed_at, NOW()) WHERE id = ?`,
+      [proposal.id],
+    );
+  } else if (eventType === 'downloaded') {
+    await db.query(
+      `UPDATE proposals SET
+         download_count = download_count + 1,
+         downloaded_at = NOW()
+       WHERE id = ?`,
+      [proposal.id],
+    );
+  } else if (eventType === 'accepted') {
+    // Sign endpoint owns signed status; this is for analytics alias only
+  }
+
+  const [fresh] = await db.query('SELECT * FROM proposals WHERE id = ? LIMIT 1', [proposal.id]);
+  return { ok: true, proposal: fresh[0] };
 }
 
 // Utility: Calculate ROI parameters server-side
@@ -145,6 +286,7 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
            utility_escalation = ?,
            est_25yr_savings = ?,
            payback_years = ?,
+           sent_at = COALESCE(sent_at, NOW()),
            updated_at = NOW()
          WHERE id = ?`,
         [
@@ -174,8 +316,8 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
            slug, lead_id, user_id, company_name, system_size_kw, panel_count, gross_cost,
            financing_type, loan_term_years, loan_interest_rate, down_payment, include_itc_30,
            state_rebate, battery_type, battery_count, battery_cost, utility_escalation,
-           est_25yr_savings, payback_years, status
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')`,
+           est_25yr_savings, payback_years, status, sent_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', NOW())`,
         [
           slug,
           leadId,
@@ -198,14 +340,30 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
           roi.paybackYears
         ]
       );
+
+      await db.query(
+        `INSERT INTO lead_activities (lead_id, user_id, type, content)
+         VALUES (?, ?, 'proposal_sent', ?)`,
+        [leadId, userId, 'Proposal created and share link ready.'],
+      );
+
+      // Move lead into proposal stage if still early in pipeline
+      await db.query(
+        `UPDATE leads SET status = 'proposal', updated_at = NOW()
+         WHERE id = ? AND user_id = ?
+           AND status IN ('new', 'contacted', 'qualified', 'appointment', 'in_progress')`,
+        [leadId, userId],
+      );
     }
 
     const [saved] = await db.query('SELECT * FROM proposals WHERE slug = ? LIMIT 1', [slug]);
+    const engagement = buildEngagement(saved[0], await loadEventCounts(saved[0].id));
     return res.json({
       success: true,
       proposal: saved[0],
       slug,
-      shareableUrl: `/proposal/${slug}`
+      shareableUrl: `/proposal/${slug}`,
+      engagement,
     });
 }));
 
@@ -214,11 +372,47 @@ router.get('/lead/:leadId', authenticateToken, asyncHandler(async (req, res) => 
   const userId = req.user.id;
   const { leadId } = req.params;
   const [rows] = await db.query('SELECT * FROM proposals WHERE lead_id = ? AND user_id = ? LIMIT 1', [leadId, userId]);
-  if (rows.length === 0) return res.json({ proposal: null });
-  return res.json({ proposal: rows[0], shareableUrl: `/proposal/${rows[0].slug}` });
+  if (rows.length === 0) return res.json({ proposal: null, engagement: null, events: [] });
+  const proposal = rows[0];
+  const eventCounts = await loadEventCounts(proposal.id);
+  const [events] = await db.query(
+    `SELECT id, event_type, session_id, meta, created_at
+     FROM proposal_events
+     WHERE proposal_id = ?
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [proposal.id],
+  );
+  return res.json({
+    proposal,
+    shareableUrl: `/proposal/${proposal.slug}`,
+    engagement: buildEngagement(proposal, eventCounts),
+    events,
+  });
 }));
 
-// GET /api/proposals/public/:slug (Public) - Fetch proposal details for public homeowner page
+// GET /api/proposals/lead/:leadId/events (Auth)
+router.get('/lead/:leadId/events', authenticateToken, asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { leadId } = req.params;
+  const [rows] = await db.query('SELECT * FROM proposals WHERE lead_id = ? AND user_id = ? LIMIT 1', [leadId, userId]);
+  if (rows.length === 0) return res.json({ events: [], engagement: null });
+  const proposal = rows[0];
+  const [events] = await db.query(
+    `SELECT id, event_type, session_id, meta, created_at
+     FROM proposal_events
+     WHERE proposal_id = ?
+     ORDER BY created_at DESC
+     LIMIT 100`,
+    [proposal.id],
+  );
+  res.json({
+    events,
+    engagement: buildEngagement(proposal, await loadEventCounts(proposal.id)),
+  });
+}));
+
+// GET /api/proposals/public/:slug (Public) - Fetch proposal (no auto view bump; client posts events)
 router.get('/public/:slug', publicProposalLimiter, async (req, res) => {
   try {
     const { slug } = req.params;
@@ -227,10 +421,6 @@ router.get('/public/:slug', publicProposalLimiter, async (req, res) => {
 
     const proposal = rows[0];
 
-    // Increment view count
-    await db.query('UPDATE proposals SET view_count = view_count + 1, viewed_at = NOW(), status = IF(status = "sent", "viewed", status) WHERE id = ?', [proposal.id]);
-
-    // Fetch associated lead info
     const [leadRows] = await db.query('SELECT id, owner_name, address, phone, email, lead_score, image_url, solar_json, property_json FROM leads WHERE id = ? LIMIT 1', [proposal.lead_id]);
     const lead = leadRows.length > 0 ? leadRows[0] : null;
 
@@ -265,6 +455,35 @@ router.get('/public/:slug', publicProposalLimiter, async (req, res) => {
   } catch (err) {
     console.error('Public proposal fetch error:', err);
     res.status(500).json({ error: 'Failed to load proposal' });
+  }
+});
+
+// POST /api/proposals/public/:slug/events — engagement tracking
+router.post('/public/:slug/events', publicEventLimiter, async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const eventType = String(req.body?.type || '').trim();
+    const sessionId = req.body?.sessionId || null;
+    const meta = req.body?.meta || null;
+
+    if (!TRACKABLE_EVENTS.has(eventType)) {
+      return res.status(400).json({ error: 'Invalid event type' });
+    }
+
+    const [rows] = await db.query('SELECT * FROM proposals WHERE slug = ? LIMIT 1', [slug]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Proposal not found' });
+
+    const result = await recordProposalEvent(rows[0], eventType, { sessionId, meta });
+    if (!result.ok) return res.status(400).json({ error: result.error });
+
+    res.json({
+      success: true,
+      deduped: Boolean(result.deduped),
+      engagement: buildEngagement(result.proposal, await loadEventCounts(result.proposal.id)),
+    });
+  } catch (err) {
+    console.error('Proposal event error:', err);
+    res.status(500).json({ error: 'Failed to record event' });
   }
 });
 
@@ -333,6 +552,17 @@ router.post('/public/:slug/sign', publicSignLimiter, async (req, res) => {
          status = 'signed'
        WHERE id = ?`,
       [signedName, signedEmail || '', signatureData, proposal.id]
+    );
+
+    await db.query(
+      `INSERT INTO proposal_events (proposal_id, lead_id, user_id, event_type, meta)
+       VALUES (?, ?, ?, 'accepted', ?)`,
+      [
+        proposal.id,
+        proposal.lead_id,
+        proposal.user_id,
+        JSON.stringify({ signedName, signedEmail: signedEmail || null }),
+      ],
     );
 
     // Update lead status to 'won' or 'proposal'

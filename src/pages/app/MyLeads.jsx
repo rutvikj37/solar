@@ -6,6 +6,7 @@ import LeadScoreBadge from '../../components/leads/LeadScoreBadge';
 import LeadAvatar from '../../components/leads/LeadAvatar';
 import LeadEmptyState from '../../components/leads/LeadEmptyState';
 import LeadKanbanBoard from '../../components/leads/LeadKanbanBoard';
+import PipelineCustomizeModal from '../../components/leads/PipelineCustomizeModal';
 import {
   CRM_PROVIDER_META,
   fetchCrmIntegrations,
@@ -28,6 +29,12 @@ import {
   getLeadScore,
   getSolarScore,
 } from '../../lib/leads.js';
+import {
+  fetchPipelineStages,
+  stagesToStatusOptions,
+  stagesToStatusConfig,
+  DEFAULT_PIPELINE_STAGE_LIST,
+} from '../../lib/pipelineApi.js';
 
 const API = API_BASE;
 
@@ -68,10 +75,18 @@ export default function MyLeads() {
     }
   });
   const [statusBusyId, setStatusBusyId] = useState(null);
+  const [pipelineStages, setPipelineStages] = useState(DEFAULT_PIPELINE_STAGE_LIST);
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
   const token = () => localStorage.getItem('solar_token');
+
+  const statusOptions = useMemo(
+    () => stagesToStatusOptions(pipelineStages) || STATUS_OPTIONS,
+    [pipelineStages],
+  );
+  const statusConfigMap = useMemo(() => stagesToStatusConfig(pipelineStages), [pipelineStages]);
 
   const setView = (mode) => {
     setViewMode(mode);
@@ -107,6 +122,14 @@ export default function MyLeads() {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads, location.key]);
+
+  useEffect(() => {
+    fetchPipelineStages()
+      .then((data) => {
+        if (data?.stages?.length) setPipelineStages(data.stages);
+      })
+      .catch(() => {});
+  }, [location.key]);
 
   useEffect(() => {
     fetchCrmIntegrations()
@@ -279,6 +302,14 @@ export default function MyLeads() {
           </div>
           <button
             type="button"
+            onClick={() => setShowPipelineModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-white hover:bg-white/10 transition-all"
+          >
+            <span className="material-symbols-outlined text-base">tune</span>
+            Customize
+          </button>
+          <button
+            type="button"
             onClick={fetchLeads}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-white hover:bg-white/10 transition-all"
           >
@@ -431,6 +462,8 @@ export default function MyLeads() {
                   leads={filteredLeads}
                   onStatusChange={handleStatusChange}
                   busyId={statusBusyId}
+                  stages={pipelineStages}
+                  statusConfigMap={statusConfigMap}
                 />
               </div>
             ) : (
@@ -552,17 +585,24 @@ export default function MyLeads() {
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex flex-col gap-1 min-w-0">
-                                <LeadStatusBadge status={lead.status} />
+                                <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
                                 <select
-                                  value={lead.status || 'new'}
+                                  value={
+                                    statusOptions.includes(lead.status)
+                                      ? lead.status
+                                      : lead.status || 'new'
+                                  }
                                   onChange={(e) => handleStatusChange(lead.id, e.target.value)}
                                   disabled={statusBusyId === lead.id}
                                   className="w-full min-w-0 bg-surface-container-low border border-glass-stroke rounded-md py-1 px-1.5 text-white text-[11px] focus:outline-none focus:border-primary/50 cursor-pointer disabled:opacity-50"
                                   aria-label={`Update stage for ${ownerName}`}
                                 >
-                                  {STATUS_OPTIONS.map((s) => (
+                                  {!statusOptions.includes(lead.status || 'new') && lead.status ? (
+                                    <option value={lead.status}>{lead.status}</option>
+                                  ) : null}
+                                  {statusOptions.map((s) => (
                                     <option key={s} value={s}>
-                                      {getStatusLabel(s)}
+                                      {statusConfigMap[s]?.label || getStatusLabel(s)}
                                     </option>
                                   ))}
                                 </select>
@@ -678,6 +718,14 @@ export default function MyLeads() {
           </section>
         </>
       )}
+
+      <PipelineCustomizeModal
+        open={showPipelineModal}
+        onClose={() => setShowPipelineModal(false)}
+        onSaved={(stages) => {
+          if (stages?.length) setPipelineStages(stages);
+        }}
+      />
     </>
   );
 }

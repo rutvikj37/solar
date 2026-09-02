@@ -2,11 +2,27 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 
+function getProposalSessionId(slug) {
+  const key = `proposal_session_${slug}`;
+  try {
+    let id = sessionStorage.getItem(key);
+    if (!id) {
+      id = `ps_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return `ps_${Date.now()}`;
+  }
+}
+
 export default function PublicProposalView() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const sessionIdRef = useRef(getProposalSessionId(slug));
+  const trackedOpenedRef = useRef(false);
 
   // Interactive ROI State
   const [financingType, setFinancingType] = useState('cash');
@@ -30,6 +46,22 @@ export default function PublicProposalView() {
   const canvasRef = useRef(null);
   const isDrawingRef = useRef(false);
 
+  const trackEvent = useCallback(
+    async (type, meta = null) => {
+      if (!slug) return;
+      try {
+        await fetch(`${API_BASE}/api/proposals/public/${slug}/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, sessionId: sessionIdRef.current, meta }),
+        });
+      } catch {
+        /* non-blocking */
+      }
+    },
+    [slug],
+  );
+
   const fetchProposal = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/proposals/public/${slug}`);
@@ -51,16 +83,32 @@ export default function PublicProposalView() {
           setSignedSuccess(true);
         }
       }
+      if (!trackedOpenedRef.current && p?.status !== 'signed') {
+        trackedOpenedRef.current = true;
+        trackEvent('opened');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [slug, trackEvent]);
 
   useEffect(() => {
+    sessionIdRef.current = getProposalSessionId(slug);
+    trackedOpenedRef.current = false;
     fetchProposal();
-  }, [fetchProposal]);
+  }, [fetchProposal, slug]);
+
+  const setFinancingTracked = (value) => {
+    setFinancingType(value);
+    trackEvent('financing_viewed', { financingType: value });
+  };
+
+  const setBatteryTracked = (value) => {
+    setBatteryType(value);
+    trackEvent('equipment_viewed', { batteryType: value });
+  };
 
   // Recalculate ROI dynamically
   const p = data?.proposal || {};
@@ -339,7 +387,7 @@ export default function PublicProposalView() {
                 {['cash', 'loan', 'lease'].map((mode) => (
                   <button
                     key={mode}
-                    onClick={() => setFinancingType(mode)}
+                    onClick={() => setFinancingTracked(mode)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
                       financingType === mode ? 'bg-primary text-on-primary shadow-md' : 'text-slate-400 hover:text-white'
                     }`}
@@ -427,7 +475,7 @@ export default function PublicProposalView() {
                   ].map((b) => (
                     <button
                       key={b.id}
-                      onClick={() => setBatteryType(b.id)}
+                      onClick={() => setBatteryTracked(b.id)}
                       className={`p-3 rounded-xl text-left border transition-all ${
                         batteryType === b.id
                           ? 'border-primary bg-primary/10 text-white'

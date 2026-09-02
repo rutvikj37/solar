@@ -2,6 +2,7 @@ import express from 'express';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
+import { getAllowedStatusKeys } from './pipeline.js';
 
 const router = express.Router();
 
@@ -54,8 +55,9 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     const values = [];
 
     if (status !== undefined) {
-      if (!PIPELINE_STATUSES.includes(status)) {
-        return res.status(400).json({ error: `Invalid status. Allowed: ${PIPELINE_STATUSES.join(', ')}` });
+      const allowed = await getAllowedStatusKeys(req.user.id);
+      if (!allowed.includes(status) && !PIPELINE_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Allowed: ${allowed.join(', ')}` });
       }
       updates.push('status = ?');
       values.push(status);

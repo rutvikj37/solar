@@ -241,6 +241,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
   const [copied, setCopied] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [proposalStatus, setProposalStatus] = useState('');
+  const [engagement, setEngagement] = useState(null);
   const [showAddons, setShowAddons] = useState(true);
 
   useEffect(() => {
@@ -254,6 +255,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
           setIncludeItc30(Boolean(data.proposal.include_itc_30));
           setBatteryType(data.proposal.battery_type || 'none');
           setProposalStatus(data.proposal.status || 'sent');
+          setEngagement(data.engagement || null);
           if (data.proposal.slug) {
             setShareableUrl(`${window.location.origin}/proposal/${data.proposal.slug}`);
           }
@@ -296,6 +298,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
       const fullUrl = `${window.location.origin}${data.shareableUrl}`;
       setShareableUrl(fullUrl);
       setProposalStatus(data.proposal?.status || 'sent');
+      if (data.engagement) setEngagement(data.engagement);
 
       await navigator.clipboard.writeText(fullUrl);
       setCopied(true);
@@ -309,6 +312,20 @@ export default function SolarProposalModal({ show, onClose, lead }) {
 
   const handlePrint = () => {
     printProposalNode(proposalDocRef.current);
+    // Installer download/print — track if public slug exists
+    const slugMatch = shareableUrl.match(/\/proposal\/([^/?#]+)/);
+    if (slugMatch?.[1]) {
+      fetch(`${API_BASE}/api/proposals/public/${slugMatch[1]}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'downloaded', meta: { source: 'installer_print' } }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.engagement) setEngagement(d.engagement);
+        })
+        .catch(() => {});
+    }
   };
 
   const proposalShareText = shareableUrl
@@ -350,6 +367,20 @@ export default function SolarProposalModal({ show, onClose, lead }) {
               <h3 className="font-bold text-white text-sm">Interactive Solar Proposal & E-Sign</h3>
               {proposalStatus && (
                 <span className="text-[9px] font-mono text-primary uppercase">Status: {proposalStatus}</span>
+              )}
+              {engagement?.summary && (
+                <span className="text-[9px] font-mono text-amber-300/90 uppercase">{engagement.summary}</span>
+              )}
+              {engagement && (
+                <span className="text-[9px] text-on-surface-variant">
+                  {[
+                    engagement.financingViewedAt ? 'Financing viewed' : null,
+                    engagement.equipmentViewedAt ? 'Equipment viewed' : null,
+                    engagement.downloadCount > 0 ? `Downloaded ${engagement.downloadCount}×` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
               )}
             </div>
           </div>

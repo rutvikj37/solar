@@ -181,12 +181,19 @@ export function getFilterTabCount(leads, tab) {
   return filterLeads(leads, { filterTab: tab }).length;
 }
 
-export function groupLeadsByStage(leads) {
-  const groups = Object.fromEntries(PIPELINE_STAGES.map((s) => [s, []]));
+export function groupLeadsByStage(leads, stageKeys = PIPELINE_STAGES) {
+  const keys = stageKeys?.length ? stageKeys : PIPELINE_STAGES;
+  const groups = Object.fromEntries(keys.map((s) => [s, []]));
+  const other = [];
   leads.forEach((lead) => {
-    const key = PIPELINE_STAGES.includes(lead.status) ? lead.status : 'new';
-    groups[key].push(lead);
+    const key = keys.includes(lead.status) ? lead.status : null;
+    if (key) groups[key].push(lead);
+    else other.push(lead);
   });
+  if (other.length && groups[keys[0]]) {
+    // Unknown statuses (e.g. AI dialer) stay visible under first column
+    groups[keys[0]].push(...other);
+  }
   return groups;
 }
 

@@ -12,14 +12,15 @@ const BADGE_STYLES = {
   slate: 'bg-slate-500/12 text-slate-300 border-slate-500/25',
 };
 
-export default function LeadStatusBadge({ status, size = 'sm' }) {
-  const cfg = getStatusConfig(status || 'new');
+export default function LeadStatusBadge({ status, size = 'sm', configMap = null }) {
+  const cfg =
+    (configMap && configMap[status || 'new']) || getStatusConfig(status || 'new');
   const style = BADGE_STYLES[cfg.color] || BADGE_STYLES.blue;
   const sizeClass = size === 'xs' ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-0.5';
 
   return (
     <span className={`inline-flex items-center gap-1 rounded-full border font-bold uppercase tracking-wide ${style} ${sizeClass}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot || 'bg-slate-400'}`} />
       {cfg.label}
     </span>
   );
