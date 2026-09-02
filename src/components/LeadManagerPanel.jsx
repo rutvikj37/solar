@@ -13,6 +13,7 @@ import {
   computeLeadStats,
   formatLeadValue,
   formatSavings,
+  getStatusLabel,
 } from '../lib/leads.js';
 
 const API = API_BASE;
@@ -242,7 +243,7 @@ export default function LeadManagerPanel({ onClose, refreshKey = 0, visible = tr
                       >
                         {STATUS_OPTIONS.map((s) => (
                           <option key={s} value={s}>
-                            {s.replace('_', ' ')}
+                            {getStatusLabel(s)}
                           </option>
                         ))}
                       </select>

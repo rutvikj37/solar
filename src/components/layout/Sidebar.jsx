@@ -50,7 +50,7 @@ export default function Sidebar({
       title: 'PIPELINE',
       items: [
         { name: 'Marketplace', path: '/marketplace', icon: 'storefront' },
-        { name: 'Lead Manager', path: '/my-leads', icon: 'assignment' },
+        { name: 'Leads CRM', path: '/my-leads', icon: 'assignment' },
         { name: 'Reports', path: '/reports', icon: 'analytics' },
         {
           name: 'Integrations',

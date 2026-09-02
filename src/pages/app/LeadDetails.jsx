@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import CrmPushPanel from '../../components/CrmPushPanel';
 import SolarProposalModal from '../../components/SolarProposalModal';
+import LeadStatusBadge from '../../components/leads/LeadStatusBadge';
 import { API_BASE } from '../../config.js';
 import { apiService } from '../../services/api.js';
 import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
@@ -14,10 +15,29 @@ import {
 } from '../../lib/emailIntegrations.js';
 import { fetchMe, isAdminRole, peekAuthSessionCache, getToken } from '../../lib/auth.js';
 import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../../utils/leadSharePdf.js';
+import {
+  STATUS_OPTIONS,
+  LOST_REASONS,
+  getStatusLabel,
+  getLeadScore,
+  getSolarScore,
+  getNextBestAction,
+} from '../../lib/leads.js';
 
 const API = API_BASE;
-const STATUS_OPTIONS = ['new', 'contacted', 'appointment', 'proposal', 'won', 'lost', 'qualified', 'in_progress'];
 const GMAPS_SCRIPT_ID = 'google-maps-script';
+
+const LEAD_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'details', label: 'Lead Details' },
+  { id: 'property', label: 'Property' },
+  { id: 'outreach', label: 'Outreach' },
+  { id: 'appointments', label: 'Appointments' },
+  { id: 'proposal', label: 'Proposal' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'files', label: 'Files' },
+];
 
 function money(n) {
   const v = Number(n);
@@ -66,11 +86,30 @@ function SpecRow({ label, value }) {
   );
 }
 
+function Card({ title, children, action = null, className = '' }) {
+  return (
+    <div className={`glass-card rounded-xl p-5 border border-glass-stroke ${className}`}>
+      {(title || action) && (
+        <div className="flex items-start justify-between gap-3 mb-3">
+          {title ? (
+            <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest">
+              {title}
+            </h3>
+          ) : (
+            <span />
+          )}
+          {action}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [crmStatus, setCrmStatus] = useState('idle');
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [shareError, setShareError] = useState('');
@@ -95,10 +134,21 @@ export default function LeadDetails() {
   const [emailMsg, setEmailMsg] = useState('');
   const [mapEl, setMapEl] = useState(null);
   const [isAdmin, setIsAdmin] = useState(() => isAdminRole(peekAuthSessionCache(getToken())?.role));
+  const [lostReason, setLostReason] = useState('');
+  const [outreachOptOut, setOutreachOptOut] = useState(false);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
 
-  // Callback ref so map mounts only after the container exists in the DOM
+  const tabParam = searchParams.get('tab') || 'overview';
+  const activeTab = LEAD_TABS.some((t) => t.id === tabParam) ? tabParam : 'overview';
+
+  const setTab = (tabId) => {
+    const next = new URLSearchParams(searchParams);
+    if (tabId === 'overview') next.delete('tab');
+    else next.set('tab', tabId);
+    setSearchParams(next, { replace: true });
+  };
+
   const mapContainerRef = useCallback((node) => {
     setMapEl(node);
   }, []);
@@ -127,26 +177,29 @@ export default function LeadDetails() {
       }
 
       const response = await fetch(`${API}/api/leads/${id}`, {
-        headers: { Authorization: `Bearer ${t}` }
+        headers: { Authorization: `Bearer ${t}` },
       });
       if (response.ok) {
         const data = await response.json();
         setLead(data);
         setNote(data.notes || '');
         setFollowUpAt(
-          data.follow_up_at
-            ? new Date(data.follow_up_at).toISOString().slice(0, 16)
-            : '',
+          data.follow_up_at ? new Date(data.follow_up_at).toISOString().slice(0, 16) : '',
         );
         setNextAction(data.next_action || '');
         setConversationNotes(data.conversation_notes || '');
         setEmailBody(
-          `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`
+          `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`,
         );
+        try {
+          setOutreachOptOut(localStorage.getItem(`lead_outreach_optout_${data.id}`) === '1');
+        } catch {
+          setOutreachOptOut(false);
+        }
       }
 
       const actRes = await fetch(`${API}/api/leads/${id}/activities`, {
-        headers: { Authorization: `Bearer ${t}` }
+        headers: { Authorization: `Bearer ${t}` },
       });
       if (actRes.ok) setActivities(await actRes.json());
 
@@ -193,6 +246,7 @@ export default function LeadDetails() {
     setShowProposalModal(true);
     const next = new URLSearchParams(searchParams);
     next.delete('proposal');
+    next.set('tab', 'proposal');
     setSearchParams(next, { replace: true });
   }, [lead, searchParams, setSearchParams]);
 
@@ -260,9 +314,16 @@ export default function LeadDetails() {
     }
   };
 
-  // Mount Google satellite map once script + lead + DOM container are ready
   useEffect(() => {
-    if (!lead || !mapsLoaded || !googleMapsKey || !mapEl || !window.google?.maps) return;
+    if (!lead || !mapsLoaded || !googleMapsKey || !mapEl || !window.google?.maps) {
+      if (!mapEl) {
+        mapInstanceRef.current = null;
+        markerRef.current = null;
+        setMapReady(false);
+      }
+      return;
+    }
+    if (activeTab !== 'overview' && activeTab !== 'property') return;
 
     const lat = parseFloat(lead.latitude);
     const lng = parseFloat(lead.longitude);
@@ -285,14 +346,14 @@ export default function LeadDetails() {
           tilt: 0,
           streetViewControl: false,
           fullscreenControl: false,
-          mapTypeControl: false
+          mapTypeControl: false,
         });
         mapInstanceRef.current = map;
         markerRef.current = new window.google.maps.Marker({
           position: center,
           map,
           title: lead.address,
-          icon: buildLeadMarkerIcon(window.google, { fillColor: '#FF3B30', scale: 1.8 })
+          icon: buildLeadMarkerIcon(window.google, { fillColor: '#FF3B30', scale: 1.8 }),
         });
       } else {
         mapInstanceRef.current.setCenter(center);
@@ -305,14 +366,13 @@ export default function LeadDetails() {
             position: center,
             map: mapInstanceRef.current,
             title: lead.address,
-            icon: buildLeadMarkerIcon(window.google, { fillColor: '#FF3B30', scale: 1.8 })
+            icon: buildLeadMarkerIcon(window.google, { fillColor: '#FF3B30', scale: 1.8 }),
           });
         }
       }
 
       setMapReady(true);
       setMapError('');
-      // Nudge tiles after layout
       setTimeout(() => {
         if (window.google?.maps?.event && mapInstanceRef.current) {
           window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
@@ -323,22 +383,34 @@ export default function LeadDetails() {
       console.error(err);
       setMapError('Could not load Google satellite map');
     }
-  }, [lead, mapsLoaded, googleMapsKey, mapEl]);
+  }, [lead, mapsLoaded, googleMapsKey, mapEl, activeTab]);
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token()}`
+    Authorization: `Bearer ${token()}`,
   });
 
   const handleStatus = async (status) => {
+    if (status === 'lost' && !lostReason) {
+      alert('Select a lost reason before marking Lost (needed for analytics).');
+      setTab('details');
+      return;
+    }
     setBusy('status');
     const res = await fetch(`${API}/api/leads/${id}`, {
       method: 'PATCH',
       headers: authHeaders(),
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status }),
     });
     if (res.ok) {
       setLead(await res.json());
+      if (status === 'lost' && lostReason) {
+        await fetch(`${API}/api/leads/${id}/activities`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ type: 'note', content: `Lost reason: ${lostReason}` }),
+        });
+      }
       await load();
     }
     setBusy('');
@@ -349,7 +421,7 @@ export default function LeadDetails() {
     await fetch(`${API}/api/leads/${id}/activities`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ type: 'note', content: note })
+      body: JSON.stringify({ type: 'note', content: note }),
     });
     await load();
     setBusy('');
@@ -379,18 +451,11 @@ export default function LeadDetails() {
     }
   };
 
-  const handleExport = async () => {
-    setCrmStatus('exporting');
-    const res = await fetch(`${API}/api/crm/${id}/export-crm`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ target: 'generic' })
-    });
-    setCrmStatus(res.ok ? 'exported' : 'idle');
-    if (res.ok) await load();
-  };
-
   const handleEmail = async () => {
+    if (outreachOptOut) {
+      setEmailMsg('This lead opted out of outreach.');
+      return;
+    }
     if (!emailBody.trim()) {
       setEmailMsg('Write a message before sending.');
       return;
@@ -403,11 +468,7 @@ export default function LeadDetails() {
       setEmailMsg('Connect your mailbox in Integrations before sending.');
       return;
     }
-    if (
-      emailQuota &&
-      !emailQuota.unlimited &&
-      Number(emailQuota.remaining) <= 0
-    ) {
+    if (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0) {
       setEmailMsg('Monthly email limit reached. Upgrade your plan to send more.');
       return;
     }
@@ -444,8 +505,8 @@ export default function LeadDetails() {
         leadId: Number(id),
         title: `Site Survey — ${lead.owner_name || 'Lead'}`,
         scheduledAt: apptAt,
-        location: lead.address
-      })
+        location: lead.address,
+      }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -453,8 +514,35 @@ export default function LeadDetails() {
     } else {
       await load();
       alert('Appointment booked');
+      setTab('appointments');
     }
     setBusy('');
+  };
+
+  const toggleOptOut = () => {
+    const next = !outreachOptOut;
+    setOutreachOptOut(next);
+    try {
+      localStorage.setItem(`lead_outreach_optout_${id}`, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const nba = useMemo(() => (lead ? getNextBestAction(lead) : null), [lead]);
+
+  const runNbaCta = () => {
+    if (!nba) return;
+    if (nba.cta === 'call' && lead?.phone && lead.phone !== 'Not Available') {
+      window.location.href = `tel:${lead.phone}`;
+      return;
+    }
+    if (nba.cta === 'outreach') setTab('outreach');
+    else if (nba.cta === 'appointment') setTab('appointments');
+    else if (nba.cta === 'proposal') {
+      setTab('proposal');
+      setShowProposalModal(true);
+    } else setTab('details');
   };
 
   if (loading) {
@@ -475,11 +563,14 @@ export default function LeadDetails() {
   }
 
   const displayName = lead.owner_name || 'Not Available';
-  const displayScore = lead.lead_score || lead.propertyExtra?.aiLeadScore?.overall || 0;
+  const displayScore = getLeadScore(lead);
+  const solarScore = getSolarScore(lead);
   const solar = lead.solar || {};
   const propExtra = lead.propertyExtra || {};
   const lat = parseFloat(lead.latitude);
   const lng = parseFloat(lead.longitude);
+  const phoneOk = lead.phone && lead.phone !== 'Not Available';
+  const emailOk = lead.email && lead.email !== 'Not Available';
 
   const solarSpecs = [
     ['Roof Outline', solar.roofOutline],
@@ -497,14 +588,22 @@ export default function LeadDetails() {
     ['Carbon Offset', solar.carbonOffset],
     ['NREL Radiation', solar.nrelSolradAnnual],
     ['Capacity Factor', solar.nrelCapacityFactor],
-    ['Electricity Rate', solar.electricityRate ? `${solar.electricityRate}${solar.utilityName ? ` · ${solar.utilityName}` : ''}` : null],
-    ['Production Source', solar.productionSource]
+    [
+      'Electricity Rate',
+      solar.electricityRate
+        ? `${solar.electricityRate}${solar.utilityName ? ` · ${solar.utilityName}` : ''}`
+        : null,
+    ],
+    ['Production Source', solar.productionSource],
   ];
 
   const registryRows = [
     ['Parcel', lead.parcel_id || propExtra.parcelNumber],
     ['Mailing Address', lead.mailing_address || propExtra.mailingAddress],
-    ['Owner Occupied', lead.owner_occupied === 1 ? 'Yes' : lead.owner_occupied === 0 ? 'No' : propExtra.ownerOccupied],
+    [
+      'Owner Occupied',
+      lead.owner_occupied === 1 ? 'Yes' : lead.owner_occupied === 0 ? 'No' : propExtra.ownerOccupied,
+    ],
     ['Property Type', propExtra.propertyType],
     ['Year Built', propExtra.yearBuilt],
     ['Living Area', propExtra.livingArea],
@@ -513,189 +612,337 @@ export default function LeadDetails() {
     ['Property Value', money(lead.property_value)],
     ['Tax Assessed', propExtra.taxAssessedValue],
     ['Last Sale', propExtra.lastSaleDate],
-    ['Last Sale Price', propExtra.lastSalePrice]
+    ['Last Sale Price', propExtra.lastSalePrice],
   ];
+
+  const MapBlock = ({ heightClass = 'h-[280px] sm:h-[340px]' }) => (
+    <div className="glass-card rounded-2xl overflow-hidden border border-glass-stroke">
+      <div className={`relative w-full ${heightClass} bg-[#0B1220]`}>
+        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+        {!mapReady && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0B1220]/90 pointer-events-none">
+            {mapError ? (
+              <>
+                <span className="material-symbols-outlined text-3xl text-on-surface-variant">satellite_alt</span>
+                <p className="text-[11px] text-on-surface-variant px-4 text-center">{mapError}</p>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
+                <p className="text-[11px] text-on-surface-variant">Loading Google satellite…</p>
+              </>
+            )}
+          </div>
+        )}
+        <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/65 text-[10px] text-white font-semibold backdrop-blur-sm">
+          Google Satellite · {Number.isNaN(lat) ? '—' : lat.toFixed(5)}, {Number.isNaN(lng) ? '—' : lng.toFixed(5)}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
-      <div className="w-full max-w-6xl mx-auto space-y-5 pb-8 text-xs">
+      <div className="w-full max-w-6xl mx-auto space-y-4 pb-8 text-xs">
         <div className="pt-2">
           <Link
             to="/my-leads"
             className="text-primary hover:text-white transition-colors inline-flex items-center gap-2 text-xs font-semibold font-label-mono uppercase tracking-wider"
           >
             <span className="material-symbols-outlined text-sm">arrow_back</span>
-            Back to My Leads
+            Back to Leads CRM
           </Link>
         </div>
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="font-headline-lg text-2xl font-bold text-white truncate">{displayName}</h2>
-            <p className="text-on-surface-variant mt-1 break-words">{lead.address}</p>
-            {formatLeadGeneratedAt(lead.created_at) && (
-              <p className="text-[11px] text-primary/90 mt-2 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">schedule</span>
-                Generated {formatLeadGeneratedAt(lead.created_at)}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2 items-center shrink-0">
-            <div className="relative" ref={shareMenuRef}>
+        {/* Lead 360 header */}
+        <div className="glass-card rounded-2xl border border-glass-stroke p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-headline-lg text-2xl font-bold text-white truncate">{displayName}</h2>
+                <LeadStatusBadge status={lead.status} />
+              </div>
+              <p className="text-on-surface-variant break-words">{lead.address}</p>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-glass-stroke text-[11px] font-bold text-white">
+                  Lead Score <span className="font-mono text-primary">{displayScore}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[11px] font-bold text-emerald-300">
+                  Solar Score <span className="font-mono">{solarScore != null ? solarScore : '—'}</span>
+                </span>
+                {formatLeadGeneratedAt(lead.created_at) && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-primary/90">
+                    <span className="material-symbols-outlined text-sm">schedule</span>
+                    Generated {formatLeadGeneratedAt(lead.created_at)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 items-center shrink-0">
+              {phoneOk && (
+                <a
+                  href={`tel:${lead.phone}`}
+                  className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs"
+                >
+                  <span className="material-symbols-outlined text-base">call</span>
+                  Call
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setTab('outreach')}
+                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs"
+              >
+                <span className="material-symbols-outlined text-base">mail</span>
+                Email
+              </button>
+              <button
+                type="button"
+                onClick={handleShareWhatsApp}
+                disabled={busy === 'share-wa'}
+                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">chat</span>
+                WhatsApp
+              </button>
+
+              <div className="relative" ref={shareMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShareError('');
+                    setShowShareMenu((v) => !v);
+                  }}
+                  disabled={busy === 'share-pdf' || busy === 'share-wa'}
+                  className="bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
+                  title="More share options"
+                  aria-expanded={showShareMenu}
+                  aria-haspopup="menu"
+                >
+                  <span
+                    className={`material-symbols-outlined text-base${
+                      busy === 'share-pdf' || busy === 'share-wa' ? ' animate-spin' : ''
+                    }`}
+                  >
+                    {busy === 'share-pdf' || busy === 'share-wa' ? 'progress_activity' : 'more_horiz'}
+                  </span>
+                  More
+                </button>
+                {showShareMenu && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-[#0F172A] shadow-xl overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleDownloadSharePdf}
+                      disabled={!!busy}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-base text-primary">picture_as_pdf</span>
+                      <span>
+                        <span className="font-bold block">Download PDF</span>
+                        <span className="text-[10px] text-on-surface-variant">SpaceToRoof.com branded sheet</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleShareWhatsApp}
+                      disabled={!!busy}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 border-t border-glass-stroke disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-base text-secondary">chat</span>
+                      <span>
+                        <span className="font-bold block">Share to WhatsApp</span>
+                        <span className="text-[10px] text-on-surface-variant">PDF + lead summary</span>
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
-                  setShareError('');
-                  setShowShareMenu((v) => !v);
+                  setTab('proposal');
+                  setShowProposalModal(true);
                 }}
-                disabled={busy === 'share-pdf' || busy === 'share-wa'}
-                className="bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
-                title="Share lead details"
-                aria-expanded={showShareMenu}
-                aria-haspopup="menu"
+                className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110"
               >
-                <span className={`material-symbols-outlined text-base${busy === 'share-pdf' || busy === 'share-wa' ? ' animate-spin' : ''}`}>
-                  {busy === 'share-pdf' || busy === 'share-wa' ? 'progress_activity' : 'share'}
-                </span>
-                Share
+                <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+                Create & send proposal
               </button>
-              {showShareMenu && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-[#0F172A] shadow-xl overflow-hidden"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={handleDownloadSharePdf}
-                    disabled={!!busy}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 disabled:opacity-50"
-                  >
-                    <span className="material-symbols-outlined text-base text-primary">picture_as_pdf</span>
-                    <span>
-                      <span className="font-bold block">Download PDF</span>
-                      <span className="text-[10px] text-on-surface-variant">SpaceToRoof.com branded sheet</span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={handleShareWhatsApp}
-                    disabled={!!busy}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 border-t border-glass-stroke disabled:opacity-50"
-                  >
-                    <span className="material-symbols-outlined text-base text-secondary">chat</span>
-                    <span>
-                      <span className="font-bold block">Share to WhatsApp</span>
-                      <span className="text-[10px] text-on-surface-variant">PDF + lead summary</span>
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
 
-            <button
-              onClick={() => setShowProposalModal(true)}
-              className="bg-primary text-on-primary font-bold py-2 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md hover:brightness-110"
-            >
-              <span className="material-symbols-outlined text-base">picture_as_pdf</span>
-              Create & send proposal
-            </button>
+              <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
 
-            <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
-
-            <select
-              value={lead.status || 'new'}
-              onChange={(e) => handleStatus(e.target.value)}
-              disabled={busy === 'status'}
-              className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {shareError && (
-          <p className="text-[11px] text-red-400 -mt-2">{shareError}</p>
-        )}
-
-        {dripEnrollments.length > 0 && (
-          <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">
-            <span className="material-symbols-outlined text-primary text-base">reorder</span>
-            <span className="text-xs font-bold text-white">Active Drip:</span>
-            {dripEnrollments.map((e) => (
-              <Link
-                key={e.id}
-                to="/drip-campaigns"
-                className="px-2 py-1 rounded-lg bg-white/10 text-primary text-[10px] font-bold hover:bg-white/15"
+              <select
+                value={lead.status || 'new'}
+                onChange={(e) => handleStatus(e.target.value)}
+                disabled={busy === 'status'}
+                className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                aria-label="Change pipeline stage"
               >
-                {e.campaignName} · Step {e.currentStep}
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Google Maps satellite hero */}
-        <div className="glass-card rounded-2xl overflow-hidden border border-glass-stroke">
-          <div className="relative w-full h-[280px] sm:h-[340px] bg-[#0B1220]">
-            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
-            {!mapReady && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0B1220]/90 pointer-events-none">
-                {mapError ? (
-                  <>
-                    <span className="material-symbols-outlined text-3xl text-on-surface-variant">satellite_alt</span>
-                    <p className="text-[11px] text-on-surface-variant px-4 text-center">{mapError}</p>
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>
-                    <p className="text-[11px] text-on-surface-variant">Loading Google satellite…</p>
-                  </>
-                )}
-              </div>
-            )}
-            <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/65 text-[10px] text-white font-semibold backdrop-blur-sm">
-              Google Satellite · {Number.isNaN(lat) ? '—' : lat.toFixed(5)}, {Number.isNaN(lng) ? '—' : lng.toFixed(5)}
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {getStatusLabel(s)}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
+
+          {shareError && <p className="text-[11px] text-red-400">{shareError}</p>}
+
+          {/* Next Best Action */}
+          {nba && (
+            <div className="rounded-xl border border-primary/30 bg-primary/10 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">
+                  Next Best Action
+                </p>
+                <p className="text-sm font-bold text-white">{nba.title}</p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">{nba.detail}</p>
+              </div>
+              <button
+                type="button"
+                onClick={runNbaCta}
+                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:brightness-110"
+              >
+                {nba.ctaLabel}
+                <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              </button>
+            </div>
+          )}
+
+          {dripEnrollments.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">
+              <span className="material-symbols-outlined text-primary text-base">reorder</span>
+              <span className="text-xs font-bold text-white">Active Drip:</span>
+              {dripEnrollments.map((e) => (
+                <Link
+                  key={e.id}
+                  to="/drip"
+                  className="px-2 py-1 rounded-lg bg-white/10 text-primary text-[10px] font-bold hover:bg-white/15"
+                >
+                  {e.campaignName} · Step {e.currentStep}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* KPI strip */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: 'Lead Score', value: `${displayScore}/100`, accent: false },
-            { label: '25-yr Savings', value: displayVal(solar.twentyFiveYearSavings, money(lead.estimated_savings)), accent: true },
-            { label: 'System Size', value: displayVal(solar.recommendedSize) },
-            { label: 'Annual Production', value: displayVal(solar.annualProduction) }
-          ].map((k) => (
-            <div key={k.label} className="glass-card rounded-xl p-4 border border-glass-stroke">
-              <p className="text-[9px] text-on-surface-variant uppercase font-label-mono tracking-wider">{k.label}</p>
-              <p className={`text-base font-bold mt-1.5 truncate font-mono tabular-nums ${k.accent ? 'text-primary' : 'text-white'}`}>{k.value}</p>
-            </div>
+        {/* Tabs */}
+        <div className="flex gap-1 overflow-x-auto custom-scrollbar border-b border-glass-stroke pb-px">
+          {LEAD_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`shrink-0 px-3.5 py-2.5 text-[11px] font-bold border-b-2 transition-colors ${
+                activeTab === t.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-on-surface-variant hover:text-white'
+              }`}
+            >
+              {t.label}
+            </button>
           ))}
         </div>
 
-        {/* Main content */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          {/* Left: contact + notes + activity */}
-          <div className="xl:col-span-4 space-y-5">
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-              <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest">Contact</h3>
+        {/* Tab panels — same APIs / actions as before, reorganized */}
+        {activeTab === 'overview' && (
+          <div className="space-y-4">
+            <MapBlock />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                { label: 'Lead Score', value: `${displayScore}/100`, accent: false },
+                {
+                  label: '25-yr Savings',
+                  value: displayVal(solar.twentyFiveYearSavings, money(lead.estimated_savings)),
+                  accent: true,
+                },
+                { label: 'System Size', value: displayVal(solar.recommendedSize) },
+                { label: 'Annual Production', value: displayVal(solar.annualProduction) },
+              ].map((k) => (
+                <div key={k.label} className="glass-card rounded-xl p-4 border border-glass-stroke">
+                  <p className="text-[9px] text-on-surface-variant uppercase font-label-mono tracking-wider">
+                    {k.label}
+                  </p>
+                  <p
+                    className={`text-base font-bold mt-1.5 truncate font-mono tabular-nums ${
+                      k.accent ? 'text-primary' : 'text-white'
+                    }`}
+                  >
+                    {k.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card title="Lead Intelligence">
+                <div className="space-y-2 text-[12px]">
+                  <p className="text-white">
+                    Lead Score: <span className="font-mono font-bold">{displayScore}/100</span>
+                  </p>
+                  <p className="text-white">
+                    Solar Potential:{' '}
+                    <span className="font-mono font-bold">
+                      {solarScore != null ? `${solarScore}/100` : displayVal(solar.potential || lead.solar_potential)}
+                    </span>
+                  </p>
+                  <p className="text-on-surface-variant">
+                    Phone: {phoneOk ? 'Available' : 'Missing'} · Email: {emailOk ? 'Available' : 'Missing'}
+                  </p>
+                  <p className="text-on-surface-variant leading-relaxed mt-2">
+                    High-potential rooftop opportunity. Use Next Best Action to move this lead through the pipeline
+                    without leaving Lead 360.
+                  </p>
+                </div>
+              </Card>
+              <Card title="Customer Snapshot">
+                <div className="space-y-2">
+                  <div className="p-3 rounded-lg bg-white/5">
+                    <p className="text-[9px] text-on-surface-variant uppercase mb-1">Phone</p>
+                    <p className="text-white font-mono font-semibold break-all">{phoneOk ? lead.phone : '—'}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-white/5">
+                    <p className="text-[9px] text-on-surface-variant uppercase mb-1">Email</p>
+                    <p className="text-white font-semibold break-all">{emailOk ? lead.email : '—'}</p>
+                  </div>
+                  {lead.follow_up_at && (
+                    <p className="text-[11px] text-amber-300">
+                      Follow-up {formatLeadGeneratedAt(lead.follow_up_at)}
+                      {lead.next_action ? ` · ${lead.next_action}` : ''}
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'details' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card title="Contact">
               <div className="space-y-2">
                 <div className="p-3 rounded-lg bg-white/5">
+                  <p className="text-[9px] text-on-surface-variant uppercase mb-1">Name</p>
+                  <p className="text-white font-semibold">{displayName}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-white/5">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Phone</p>
-                  <p className="text-white font-mono font-semibold break-all">
-                    {lead.phone && lead.phone !== 'Not Available' ? lead.phone : '—'}
-                  </p>
+                  <p className="text-white font-mono font-semibold break-all">{phoneOk ? lead.phone : '—'}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-white/5">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Email</p>
-                  <p className="text-white font-semibold break-all">
-                    {lead.email && lead.email !== 'Not Available' ? lead.email : '—'}
-                  </p>
+                  <p className="text-white font-semibold break-all">{emailOk ? lead.email : '—'}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-white/5">
+                  <p className="text-[9px] text-on-surface-variant uppercase mb-1">Address</p>
+                  <p className="text-white break-words">{lead.address}</p>
                 </div>
                 {lead.notes ? (
                   <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
@@ -704,142 +951,176 @@ export default function LeadDetails() {
                   </div>
                 ) : null}
               </div>
-            </div>
-
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-              <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest">Notes</h3>
-              <textarea
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[88px]"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <button
-                onClick={handleSaveNote}
-                disabled={busy === 'note'}
-                className="bg-white/10 hover:bg-white/15 text-white px-4 py-2 rounded-lg font-bold"
-              >
-                Save Note
-              </button>
-            </div>
-
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-              <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest">
-                Follow-up
-              </h3>
-              <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
-                Schedule follow-up
-                <input
-                  type="datetime-local"
+            </Card>
+            <Card title="Lead Management">
+              <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-3">
+                Change stage
+                <select
+                  value={lead.status || 'new'}
+                  onChange={(e) => handleStatus(e.target.value)}
+                  disabled={busy === 'status'}
                   className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
-                  value={followUpAt}
-                  onChange={(e) => setFollowUpAt(e.target.value)}
-                />
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {getStatusLabel(s)}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
-                Next action
-                <input
-                  type="text"
+              <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-3">
+                Lost reason (required when marking Lost)
+                <select
+                  value={lostReason}
+                  onChange={(e) => setLostReason(e.target.value)}
                   className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
-                  placeholder="e.g. Send proposal, call back, site visit"
-                  value={nextAction}
-                  onChange={(e) => setNextAction(e.target.value)}
-                />
+                >
+                  <option value="">Select reason…</option>
+                  {LOST_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
-                What they talked about
-                <textarea
-                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs min-h-[80px]"
-                  placeholder="Conversation notes…"
-                  value={conversationNotes}
-                  onChange={(e) => setConversationNotes(e.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handleSaveFollowUp}
-                disabled={busy === 'followup'}
-                className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
-              >
-                {busy === 'followup' ? 'Saving…' : 'Save follow-up'}
-              </button>
-            </div>
-
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke">
-              <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest mb-3">Activity</h3>
-              <div className="space-y-3 max-h-56 overflow-y-auto custom-scrollbar pr-1">
-                {activities.length === 0 && <p className="text-on-surface-variant">No activity yet.</p>}
-                {activities.map((a) => (
-                  <div key={a.id} className="flex gap-3">
-                    <div className="w-2 h-2 mt-1.5 rounded-full bg-primary shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-label-mono text-[9px] text-primary uppercase">
-                        {a.type} · {new Date(a.created_at).toLocaleString()}
-                      </div>
-                      <div className="text-on-surface mt-0.5 whitespace-pre-wrap break-words">{a.content}</div>
-                    </div>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
+                  Schedule follow-up
+                  <input
+                    type="datetime-local"
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                    value={followUpAt}
+                    onChange={(e) => setFollowUpAt(e.target.value)}
+                  />
+                </label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
+                  Next action
+                  <input
+                    type="text"
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                    placeholder="e.g. Send proposal, call back, site visit"
+                    value={nextAction}
+                    onChange={(e) => setNextAction(e.target.value)}
+                  />
+                </label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
+                  What they talked about
+                  <textarea
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs min-h-[80px]"
+                    placeholder="Conversation notes…"
+                    value={conversationNotes}
+                    onChange={(e) => setConversationNotes(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSaveFollowUp}
+                  disabled={busy === 'followup'}
+                  className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
+                >
+                  {busy === 'followup' ? 'Saving…' : 'Save follow-up'}
+                </button>
               </div>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'property' && (
+          <div className="space-y-4">
+            <MapBlock heightClass="h-[300px] sm:h-[400px]" />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <Card
+                title="Solar Analysis"
+                action={
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
+                    {displayVal(solar.potential || lead.solar_potential, 'Rated')} ·{' '}
+                    {displayVal(solar.estimatedPanels, '0')} panels
+                  </span>
+                }
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+                  {solarSpecs.map(([label, value]) => (
+                    <SpecRow key={label} label={label} value={value} />
+                  ))}
+                  {solarSpecs.every(([, v]) => !displayVal(v, null)) && (
+                    <p className="text-on-surface-variant py-2 md:col-span-2">
+                      Solar specs are still enriching. Refresh in a moment.
+                    </p>
+                  )}
+                </div>
+              </Card>
+              <Card title="Property Registry">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+                  {registryRows.map(([label, value]) => (
+                    <SpecRow key={label} label={label} value={value} />
+                  ))}
+                </div>
+              </Card>
             </div>
           </div>
+        )}
 
-          {/* Right: solar + registry + outreach */}
-          <div className="xl:col-span-8 space-y-5">
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest">
-                  Solar Intelligence
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
-                  {displayVal(solar.potential || lead.solar_potential, 'Rated')} · {displayVal(solar.estimatedPanels, '0')} panels
-                </span>
-              </div>
+        {activeTab === 'outreach' && (
+          <div className="space-y-4">
+            <Card
+              title="Outreach controls"
+              action={
+                <button
+                  type="button"
+                  onClick={toggleOptOut}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${
+                    outreachOptOut
+                      ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                      : 'bg-white/5 text-on-surface-variant border-glass-stroke'
+                  }`}
+                >
+                  {outreachOptOut ? 'Opted out' : 'Allow outreach · Opt out'}
+                </button>
+              }
+            >
+              <p className="text-[11px] text-on-surface-variant mb-3">
+                Send from your connected mailbox. Drip sequences stay on Drip Workflows — enrollments still show above.
+              </p>
+              {dripEnrollments.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {dripEnrollments.map((e) => (
+                    <Link
+                      key={e.id}
+                      to="/drip"
+                      className="px-2 py-1 rounded-lg bg-primary/15 text-primary text-[10px] font-bold"
+                    >
+                      {e.campaignName} · Step {e.currentStep}
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <Link to="/drip" className="text-[11px] text-primary font-bold hover:underline">
+                  Open Drip Workflows to start a sequence →
+                </Link>
+              )}
+            </Card>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
-                {solarSpecs.map(([label, value]) => (
-                  <SpecRow key={label} label={label} value={value} />
-                ))}
-                {solarSpecs.every(([, v]) => !displayVal(v, null)) && (
-                  <p className="text-on-surface-variant py-2 md:col-span-2">
-                    Solar specs are still enriching. Refresh in a moment.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke">
-              <h3 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest mb-3">
-                Property Registry
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                {registryRows.map(([label, value]) => (
-                  <SpecRow key={label} label={label} value={value} />
-                ))}
-              </div>
-            </div>
-
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <h4 className="font-bold text-white">Send Email</h4>
-                <span className="text-[10px] text-on-surface-variant font-semibold text-right">
+            <Card title="Send Email">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <span className="text-[10px] text-on-surface-variant font-semibold text-right ml-auto">
                   {emailQuota?.unlimited
                     ? 'Unlimited plan emails'
                     : emailQuota
                       ? `${emailQuota.remaining ?? 0} / ${emailQuota.limit ?? 0} left`
                       : 'Plan quota'}
                   {emailIntegration?.connected ? (
-                    <span className="block text-green-400 mt-0.5">
-                      From: {emailIntegration.fromEmail}
-                    </span>
+                    <span className="block text-green-400 mt-0.5">From: {emailIntegration.fromEmail}</span>
                   ) : (
                     <span className="block text-amber-400 mt-0.5">Mailbox not connected</span>
                   )}
                 </span>
               </div>
 
-              {emailIntegration?.connected ? (
+              {outreachOptOut ? (
+                <p className="text-[11px] text-red-300">Outreach paused for this lead (opt-out).</p>
+              ) : emailIntegration?.connected ? (
                 <>
-                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed mb-2">
                     Emails send from your inbox. Replies come back to you. Uses your plan email quota.
                   </p>
                   <textarea
@@ -849,7 +1130,7 @@ export default function LeadDetails() {
                   />
                   {emailMsg && (
                     <p
-                      className={`text-[11px] ${
+                      className={`text-[11px] mt-2 ${
                         emailMsg.toLowerCase().includes('sent') ||
                         emailMsg.toLowerCase().includes('success') ||
                         emailMsg.toLowerCase().includes('connected')
@@ -867,7 +1148,7 @@ export default function LeadDetails() {
                       busy === 'email' ||
                       (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
                     }
-                    className="w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
+                    className="mt-3 w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
                   >
                     {busy === 'email' ? 'Sending...' : 'Send Email'}
                   </button>
@@ -875,12 +1156,11 @@ export default function LeadDetails() {
               ) : (
                 <>
                   <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                    Connect your mailbox in Integrations to send from your inbox. Replies come back
-                    to you.
+                    Connect your mailbox in Integrations to send from your inbox. Replies come back to you.
                   </p>
                   {emailMsg && (
                     <p
-                      className={`text-[11px] ${
+                      className={`text-[11px] mt-2 ${
                         emailMsg.toLowerCase().includes('connected') ||
                         emailMsg.toLowerCase().includes('success')
                           ? 'text-green-400'
@@ -892,17 +1172,39 @@ export default function LeadDetails() {
                   )}
                   <Link
                     to="/integrations#email"
-                    className="inline-flex w-full items-center justify-center bg-primary text-on-primary py-3 rounded-xl font-bold text-sm hover:brightness-110"
+                    className="inline-flex w-full items-center justify-center bg-primary text-on-primary py-3 rounded-xl font-bold text-sm hover:brightness-110 mt-3"
                   >
                     Open Integrations
                   </Link>
                 </>
               )}
-            </div>
+            </Card>
 
-            <div className="glass-card rounded-xl p-5 border border-glass-stroke flex flex-col sm:flex-row gap-3 sm:items-end">
+            <Card title="WhatsApp">
+              <p className="text-[11px] text-on-surface-variant mb-3">
+                Share the lead PDF and summary via WhatsApp (same share flow as before).
+              </p>
+              <button
+                type="button"
+                onClick={handleShareWhatsApp}
+                disabled={busy === 'share-wa' || outreachOptOut}
+                className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold disabled:opacity-50"
+              >
+                {busy === 'share-wa' ? 'Opening…' : 'Share to WhatsApp'}
+              </button>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'appointments' && (
+          <Card title="Book Site Survey">
+            <p className="text-[11px] text-on-surface-variant mb-3">
+              Booking sets lead stage to Appointment (existing automation). Manage all appointments from the global
+              Appointments page.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
               <div className="flex-1 w-full">
-                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Book Site Survey</label>
+                <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Date & time</label>
                 <input
                   type="datetime-local"
                   className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
@@ -911,20 +1213,128 @@ export default function LeadDetails() {
                 />
               </div>
               <button
+                type="button"
                 onClick={handleBookAppt}
                 disabled={busy === 'appt'}
                 className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold shrink-0"
               >
                 Book Appointment
               </button>
+              <Link
+                to="/appointments"
+                className="text-primary font-bold hover:underline py-2 shrink-0 text-center"
+              >
+                All Appointments →
+              </Link>
               {isAdmin && (
                 <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
                   AI Voice Calling →
                 </Link>
               )}
             </div>
+          </Card>
+        )}
+
+        {activeTab === 'proposal' && (
+          <Card title="Proposal">
+            <p className="text-[11px] text-on-surface-variant mb-4">
+              Create and send proposals with the existing proposal builder. Public sign still marks the lead Won.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowProposalModal(true)}
+                className="bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg text-xs flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+                Create & send proposal
+              </button>
+              <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
+            </div>
+          </Card>
+        )}
+
+        {activeTab === 'activity' && (
+          <Card title="Activity timeline">
+            <div className="space-y-3 max-h-[520px] overflow-y-auto custom-scrollbar pr-1">
+              {activities.length === 0 && <p className="text-on-surface-variant">No activity yet.</p>}
+              {activities.map((a) => (
+                <div key={a.id} className="flex gap-3">
+                  <div className="w-2 h-2 mt-1.5 rounded-full bg-primary shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-label-mono text-[9px] text-primary uppercase">
+                      {a.type} · {new Date(a.created_at).toLocaleString()}
+                    </div>
+                    <div className="text-on-surface mt-0.5 whitespace-pre-wrap break-words">{a.content}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {activeTab === 'notes' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card title="Internal Notes" className="lg:col-span-2">
+              <p className="text-[11px] text-on-surface-variant mb-3">
+                Add and manage notes visible only to your team.
+              </p>
+              <textarea
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[120px]"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={handleSaveNote}
+                disabled={busy === 'note'}
+                className="mt-3 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold"
+              >
+                {busy === 'note' ? 'Saving…' : 'Add Note'}
+              </button>
+              <div className="mt-5 space-y-3 max-h-72 overflow-y-auto custom-scrollbar">
+                {activities
+                  .filter((a) => a.type === 'note')
+                  .map((a) => (
+                    <div key={a.id} className="p-3 rounded-lg bg-white/5 border border-glass-stroke">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[10px] font-bold text-primary uppercase">Internal Note</span>
+                        <span className="text-[10px] text-on-surface-variant">
+                          {new Date(a.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-white whitespace-pre-wrap break-words">{a.content}</p>
+                    </div>
+                  ))}
+              </div>
+            </Card>
+            <Card title="Privacy">
+              <div className="flex gap-2 items-start">
+                <span className="material-symbols-outlined text-primary text-xl">lock</span>
+                <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                  These notes are visible only to team members with access to this lead.
+                </p>
+              </div>
+            </Card>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'files' && (
+          <Card title="Files">
+            <p className="text-[11px] text-on-surface-variant mb-3">
+              Download the shareable lead PDF. Proposal PDFs are created from the Proposal tab.
+            </p>
+            <button
+              type="button"
+              onClick={handleDownloadSharePdf}
+              disabled={busy === 'share-pdf'}
+              className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+              {busy === 'share-pdf' ? 'Preparing…' : 'Download lead PDF'}
+            </button>
+          </Card>
+        )}
       </div>
 
       <SolarProposalModal

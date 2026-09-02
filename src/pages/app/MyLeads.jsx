@@ -5,6 +5,7 @@ import LeadStatusBadge from '../../components/leads/LeadStatusBadge';
 import LeadScoreBadge from '../../components/leads/LeadScoreBadge';
 import LeadAvatar from '../../components/leads/LeadAvatar';
 import LeadEmptyState from '../../components/leads/LeadEmptyState';
+import LeadKanbanBoard from '../../components/leads/LeadKanbanBoard';
 import {
   CRM_PROVIDER_META,
   fetchCrmIntegrations,
@@ -23,6 +24,9 @@ import {
   getFilterTabCount,
   formatLeadValue,
   formatSavings,
+  getStatusLabel,
+  getLeadScore,
+  getSolarScore,
 } from '../../lib/leads.js';
 
 const API = API_BASE;
@@ -56,10 +60,27 @@ export default function MyLeads() {
   const [crmIntegrations, setCrmIntegrations] = useState(null);
   const [bulkPushBusy, setBulkPushBusy] = useState('');
   const [bulkPushMessage, setBulkPushMessage] = useState('');
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('lead_crm_view') === 'kanban' ? 'kanban' : 'list';
+    } catch {
+      return 'list';
+    }
+  });
+  const [statusBusyId, setStatusBusyId] = useState(null);
 
   const navigate = useNavigate();
   const location = useLocation();
   const token = () => localStorage.getItem('solar_token');
+
+  const setView = (mode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('lead_crm_view', mode);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const fetchLeads = useCallback(async () => {
     const t = token();
@@ -148,18 +169,23 @@ export default function MyLeads() {
 
   const handleStatusChange = async (leadId, status) => {
     const t = token();
-    const res = await fetch(`${API}/api/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
-      body: JSON.stringify({ status }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
-      const sumRes = await fetch(`${API}/api/leads/pipeline/summary`, {
-        headers: { Authorization: `Bearer ${t}` },
+    setStatusBusyId(leadId);
+    try {
+      const res = await fetch(`${API}/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+        body: JSON.stringify({ status }),
       });
-      if (sumRes.ok) setSummary(await sumRes.json());
+      if (res.ok) {
+        const updated = await res.json();
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
+        const sumRes = await fetch(`${API}/api/leads/pipeline/summary`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (sumRes.ok) setSummary(await sumRes.json());
+      }
+    } finally {
+      setStatusBusyId(null);
     }
   };
 
@@ -222,13 +248,35 @@ export default function MyLeads() {
             <span className="material-symbols-outlined text-sm">assignment</span>
             Pipeline CRM
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">Lead Manager</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">Leads CRM</h1>
           <p className="text-xs text-on-surface-variant max-w-2xl">
-            Track, qualify, and move homeowners through your solar sales pipeline. Update stage inline or open a lead for full details.
+            List or Kanban pipeline — drag stages, open Lead 360 for outreach, appointments, and proposals. Existing automations stay intact.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="inline-flex rounded-xl border border-glass-stroke bg-white/5 p-0.5">
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
+                viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-white'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">view_list</span>
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('kanban')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
+                viewMode === 'kanban' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-white'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">view_kanban</span>
+              Kanban
+            </button>
+          </div>
           <button
             type="button"
             onClick={fetchLeads}
@@ -370,23 +418,35 @@ export default function MyLeads() {
             </div>
           )}
 
-          {/* Table view */}
+          {/* Table / Kanban view */}
           <section className="glass-card rounded-2xl overflow-hidden border border-glass-stroke flex flex-col min-h-[min(70vh,720px)]">
             {filteredLeads.length === 0 ? (
               <LeadEmptyState hasFilters={hasActiveFilters} onClearFilters={clearFilters} />
+            ) : viewMode === 'kanban' ? (
+              <div className="p-3">
+                <p className="text-[11px] text-on-surface-variant mb-3 px-1">
+                  Drag and drop leads across stages to update pipeline. Same statuses used by drip, appointments, and proposals.
+                </p>
+                <LeadKanbanBoard
+                  leads={filteredLeads}
+                  onStatusChange={handleStatusChange}
+                  busyId={statusBusyId}
+                />
+              </div>
             ) : (
               <>
                 <div className="flex-1 overflow-auto custom-scrollbar max-h-[calc(100vh-320px)] min-h-[420px]">
-                  <table className="w-full table-fixed border-collapse text-left min-w-[1080px]">
+                  <table className="w-full table-fixed border-collapse text-left min-w-[1180px]">
                     <colgroup>
                       <col className="w-10" />
-                      <col className="w-[26%]" />
-                      <col className="w-[28%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[9%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[18%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[12%]" />
                       <col className="w-[10%]" />
-                      <col className="w-[72px]" />
+                      <col className="w-[80px]" />
                     </colgroup>
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-surface-container-low/95 backdrop-blur-md text-[10px] font-bold uppercase tracking-widest text-on-surface-variant border-b border-glass-stroke">
@@ -404,24 +464,25 @@ export default function MyLeads() {
                         </th>
                         <th className="px-3 py-2.5">
                           <button type="button" onClick={() => toggleSort('owner_name')} className="inline-flex items-center gap-1 hover:text-white">
-                            Name / Contact <SortIcon column="owner_name" />
+                            Lead / Property <SortIcon column="owner_name" />
                           </button>
                         </th>
                         <th className="px-3 py-2.5">Address</th>
                         <th className="px-3 py-2.5">
                           <button type="button" onClick={() => toggleSort('lead_score')} className="inline-flex items-center gap-1 hover:text-white">
-                            Score <SortIcon column="lead_score" />
+                            Lead <SortIcon column="lead_score" />
                           </button>
                         </th>
+                        <th className="px-3 py-2.5">Solar</th>
                         <th className="px-3 py-2.5">
                           <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-white">
                             Stage <SortIcon column="status" />
                           </button>
                         </th>
-                        <th className="px-3 py-2.5">Savings</th>
+                        <th className="px-3 py-2.5">Next Follow-up</th>
                         <th className="px-3 py-2.5">
                           <button type="button" onClick={() => toggleSort('created_at')} className="inline-flex items-center gap-1 hover:text-white">
-                            Date <SortIcon column="created_at" />
+                            Created <SortIcon column="created_at" />
                           </button>
                         </th>
                         <th className="px-3 py-2.5 text-right">Actions</th>
@@ -435,6 +496,8 @@ export default function MyLeads() {
                         const email = formatLeadValue(lead.email);
                         const savings = formatSavings(lead.estimated_savings);
                         const generatedAt = formatLeadGeneratedAt(lead.created_at);
+                        const leadScore = getLeadScore(lead);
+                        const solarScore = getSolarScore(lead);
                         return (
                           <tr key={lead.id} className="hover:bg-white/[0.03] transition-colors group align-middle">
                             <td className="px-3 py-2.5 text-center">
@@ -448,7 +511,7 @@ export default function MyLeads() {
                             </td>
                             <td className="px-3 py-2.5 max-w-0">
                               <div className="flex items-center gap-2.5 min-w-0">
-                                <LeadAvatar name={lead.owner_name} score={lead.lead_score} size="sm" />
+                                <LeadAvatar name={lead.owner_name} score={leadScore} size="sm" />
                                 <div className="min-w-0 flex-1 overflow-hidden">
                                   <Link
                                     to={`/lead/${lead.id}`}
@@ -471,9 +534,21 @@ export default function MyLeads() {
                                 {address}
                               </p>
                               <p className="text-[10px] text-slate-400 font-mono mt-0.5">ID #{lead.id}</p>
+                              {savings ? (
+                                <p className="text-[10px] text-emerald-400/90 font-mono mt-0.5">{savings}</p>
+                              ) : null}
                             </td>
                             <td className="px-3 py-2.5">
-                              <LeadScoreBadge score={lead.lead_score} showBar />
+                              <LeadScoreBadge score={leadScore} showBar />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {solarScore != null ? (
+                                <span className="inline-flex items-center justify-center min-w-[2.25rem] h-8 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold font-mono">
+                                  {solarScore}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 text-xs">—</span>
+                              )}
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex flex-col gap-1 min-w-0">
@@ -481,43 +556,69 @@ export default function MyLeads() {
                                 <select
                                   value={lead.status || 'new'}
                                   onChange={(e) => handleStatusChange(lead.id, e.target.value)}
-                                  className="w-full min-w-0 bg-surface-container-low border border-glass-stroke rounded-md py-1 px-1.5 text-white text-[11px] focus:outline-none focus:border-primary/50 cursor-pointer"
+                                  disabled={statusBusyId === lead.id}
+                                  className="w-full min-w-0 bg-surface-container-low border border-glass-stroke rounded-md py-1 px-1.5 text-white text-[11px] focus:outline-none focus:border-primary/50 cursor-pointer disabled:opacity-50"
                                   aria-label={`Update stage for ${ownerName}`}
                                 >
                                   {STATUS_OPTIONS.map((s) => (
                                     <option key={s} value={s}>
-                                      {s.replace('_', ' ')}
+                                      {getStatusLabel(s)}
                                     </option>
                                   ))}
                                 </select>
                               </div>
                             </td>
                             <td className="px-3 py-2.5">
-                              <p className={`text-xs font-mono tabular-nums ${savings ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                {savings || '—'}
-                              </p>
+                              {lead.follow_up_at ? (
+                                <>
+                                  <p className="text-[11px] text-amber-300 whitespace-nowrap">
+                                    {formatLeadGeneratedAt(lead.follow_up_at)}
+                                  </p>
+                                  {lead.next_action ? (
+                                    <p className="text-[10px] text-slate-400 truncate mt-0.5" title={lead.next_action}>
+                                      {lead.next_action}
+                                    </p>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="text-slate-500 text-xs">—</span>
+                              )}
                             </td>
                             <td className="px-3 py-2.5">
                               <p className="text-[11px] text-slate-400 whitespace-nowrap" title={generatedAt || undefined}>
                                 {generatedAt || '—'}
                               </p>
-                              {lead.follow_up_at ? (
-                                <p
-                                  className="text-[10px] text-amber-300/90 whitespace-nowrap mt-0.5"
-                                  title={lead.next_action || 'Scheduled follow-up'}
-                                >
-                                  Follow-up {formatLeadGeneratedAt(lead.follow_up_at)}
-                                </p>
-                              ) : null}
                             </td>
                             <td className="px-3 py-2.5 text-right">
-                              <Link
-                                to={`/lead/${lead.id}`}
-                                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-[11px] font-bold hover:bg-primary/20 transition-all whitespace-nowrap"
-                              >
-                                Open
-                                <span className="material-symbols-outlined text-sm">chevron_right</span>
-                              </Link>
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                {lead.phone && lead.phone !== 'Not Available' ? (
+                                  <a
+                                    href={`tel:${lead.phone}`}
+                                    className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
+                                    title="Call"
+                                    aria-label={`Call ${ownerName}`}
+                                  >
+                                    <span className="material-symbols-outlined text-base">call</span>
+                                  </a>
+                                ) : null}
+                                {lead.email && lead.email !== 'Not Available' ? (
+                                  <Link
+                                    to={`/lead/${lead.id}?tab=outreach`}
+                                    className="p-1.5 rounded-md text-on-surface-variant hover:text-primary hover:bg-primary/10"
+                                    title="Email"
+                                    aria-label={`Email ${ownerName}`}
+                                  >
+                                    <span className="material-symbols-outlined text-base">mail</span>
+                                  </Link>
+                                ) : null}
+                                <Link
+                                  to={`/lead/${lead.id}`}
+                                  className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-[11px] font-bold hover:bg-primary/20 transition-all whitespace-nowrap"
+                                >
+                                  Open
+                                  <span className="material-symbols-outlined text-sm">chevron_right</span>
+                                </Link>
+                              </div>
                             </td>
                           </tr>
                         );
