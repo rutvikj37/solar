@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { API_BASE } from '../config.js';
-import { authHeaders, getToken } from '../lib/auth.js';
-import CrmPushPanel from './CrmPushPanel.jsx';
+import { API_BASE } from '../../config.js';
+import { authHeaders, getToken } from '../../lib/auth.js';
 
 const STEPS = [
   { id: 1, label: 'System & Pricing' },
@@ -555,9 +554,6 @@ export default function LeadProposalPanel({
               <span className="material-symbols-outlined text-base">download</span>
               Download PDF
             </button>
-            <div className="pt-1">
-              <CrmPushPanel leadId={leadId} leadName={displayName} onPushed={() => onRefresh?.()} />
-            </div>
           </div>
         </div>
       </div>
