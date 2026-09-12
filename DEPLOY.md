@@ -14,7 +14,7 @@ For a short go-live ops checklist (env keys, Maps referrer UI, Resend/SES setup,
 1. Copy [`server/.env.example`](server/.env.example) to `server/.env` and fill in secrets.
 2. Copy [`.env.example`](.env.example) to `.env` for the Vite frontend build.
 3. Set `NODE_ENV=production` in `server/.env`.
-4. Do **not** set `ALLOW_DEV_CHECKOUT=1`, `ALLOW_ADMIN_BOOTSTRAP=1`, `ALLOW_BOOTSTRAP_SUPER_ADMIN=1`, or `ALLOW_EMAIL_SIMULATION=1` in production.
+4. Do **not** set `ALLOW_DEV_CHECKOUT=1`, `ALLOW_ADMIN_BOOTSTRAP=1`, `ALLOW_BOOTSTRAP_SUPER_ADMIN=1`, `ALLOW_EMAIL_SIMULATION=1`, or `ALLOW_PURGE_MARKETPLACE_DEMOS=1` in production. Leave those keys unset. First admin is promoted via SQL/ops, not the in-app “Become First Admin” button (hidden in production builds).
 5. Set `FRONTEND_URL` and `PUBLIC_URL` to your HTTPS domains.
 6. Configure real `RAZORPAY_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET`.
 7. Configure platform email (SES preferred, or `RESEND_API_KEY` / `SENDGRID_API_KEY`) — signup/verify/reset fail closed without a provider.

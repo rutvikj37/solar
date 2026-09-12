@@ -32,7 +32,7 @@ function CrmPreviewCard({ provider, configured }) {
             {style.logo}
           </div>
           <div>
-            <p className="text-white font-bold">{meta.label}</p>
+            <p className="text-on-surface font-bold">{meta.label}</p>
             <p className="text-[11px] text-on-surface-variant">{meta.description}</p>
           </div>
         </div>
@@ -56,7 +56,7 @@ function EmailPreviewCard({ provider, configured, alwaysOn = false }) {
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-2xl text-primary">{meta.icon}</span>
           <div>
-            <p className="text-white font-bold">{meta.label}</p>
+            <p className="text-on-surface font-bold">{meta.label}</p>
             <p className="text-[11px] text-on-surface-variant">{meta.description}</p>
           </div>
         </div>
@@ -73,8 +73,24 @@ function EmailPreviewCard({ provider, configured, alwaysOn = false }) {
   );
 }
 
-export default function AdminIntegrationsPreview({ crmSetup, emailSetup }) {
-  if (!crmSetup && !emailSetup) return null;
+export default function AdminIntegrationsPreview({ crmSetup, emailSetup, smtpOnly = false }) {
+  if (!crmSetup && !emailSetup && !smtpOnly) return null;
+
+  if (smtpOnly) {
+    return (
+      <div className="space-y-4">
+        <div className="glass-card rounded-xl p-4 border border-glass-stroke bg-surface-container-low/40">
+          <p className="text-sm text-on-surface font-semibold">What users see on Integrations</p>
+          <p className="text-xs text-on-surface-variant mt-1">
+            SMTP connect form only for this launch. CRM and Gmail OAuth cards are not shown to users.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+          <EmailPreviewCard provider="smtp" configured alwaysOn />
+        </div>
+      </div>
+    );
+  }
 
   const crmReady = crmSetup?.hubspotConfigured || crmSetup?.salesforceConfigured;
   const emailReady = !!emailSetup?.gmailConfigured;
@@ -82,14 +98,14 @@ export default function AdminIntegrationsPreview({ crmSetup, emailSetup }) {
   return (
     <div className="space-y-6">
       <div className="glass-card rounded-xl p-4 border border-primary/20 bg-primary/5">
-        <p className="text-sm text-white font-semibold">What users see on Integrations</p>
+        <p className="text-sm text-on-surface font-semibold">What users see on Integrations</p>
         <p className="text-xs text-on-surface-variant mt-1">
           Preview below matches the user-facing page. Save credentials in the forms below to unlock each provider.
         </p>
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-white font-bold text-sm">CRM</h4>
+        <h4 className="text-on-surface font-bold text-sm">CRM</h4>
         {!crmReady && (
           <p className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
             CRM not set up yet — users see locked HubSpot and Salesforce cards until you add OAuth credentials below.
@@ -102,7 +118,7 @@ export default function AdminIntegrationsPreview({ crmSetup, emailSetup }) {
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-white font-bold text-sm">Email</h4>
+        <h4 className="text-on-surface font-bold text-sm">Email</h4>
         {!emailReady && (
           <p className="text-xs text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
             Gmail is locked for users until Google OAuth is configured below. Custom SMTP is always

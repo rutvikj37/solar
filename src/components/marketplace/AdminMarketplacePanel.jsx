@@ -14,11 +14,26 @@ function authHeaders() {
 const SUBTABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'settings', label: 'Settings' },
-  { id: 'leads', label: 'Active leads' },
+  { id: 'leads', label: 'Review & approve' },
   { id: 'disputes', label: 'Claims' },
   { id: 'installers', label: 'Installers' },
   { id: 'wallets', label: 'Wallets' },
 ];
+
+const PENDING_STATUSES = ['new', 'ai_qualified', 'pending_admin'];
+const canShowPurgeDemos = !import.meta.env.PROD;
+
+function leadMatchesSearch(l, query) {
+  if (!query.trim()) return true;
+  const q = query.toLowerCase();
+  return (
+    (l.leadCode || '').toLowerCase().includes(q) ||
+    (l.homeownerName || '').toLowerCase().includes(q) ||
+    (l.phone || '').toLowerCase().includes(q) ||
+    (l.zip || '').toLowerCase().includes(q) ||
+    (l.address || '').toLowerCase().includes(q)
+  );
+}
 
 export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
   const [sub, setSub] = useState(initialSub);
@@ -34,8 +49,10 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
   const [areas, setAreas] = useState([]);
   const [walletForm, setWalletForm] = useState({ userId: '', amount: '100', mode: 'add', note: '' });
   const [areaForm, setAreaForm] = useState({ zip: '', state: '' });
-  const [leadFilter, setLeadFilter] = useState('all');
+  const [leadFilter, setLeadFilter] = useState('pending');
   const [leadSearch, setLeadSearch] = useState('');
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [settings, setSettings] = useState(null);
   const [settingsForm, setSettingsForm] = useState({
     defaultBidWindowHours: '48',
@@ -117,6 +134,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         setLeads(data.leads || []);
+        setSelectedLeadIds([]);
       } else if (sub === 'disputes') {
         const res = await fetch(`${API_BASE}/api/marketplace/admin/disputes`, {
           headers: authHeaders(),
@@ -258,7 +276,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
   };
 
   const approveLead = async (leadId) => {
-    if (!window.confirm('Approve this lead for the installer marketplace?')) return;
+    if (!window.confirm('Approve this lead and send it to the installer marketplace for bids?')) return;
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/admin/leads/${leadId}/approve`, {
         method: 'POST',
@@ -266,12 +284,68 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Approve failed');
-      toast.success(`Approved — status: ${data.lead?.status || 'updated'}`);
+      toast.success(`Approved — now ${data.lead?.status || 'bidding'} in marketplace`);
       setSelected(data.lead);
       load();
       openLead(leadId);
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const visibleLeads = leads.filter((l) => {
+    if (leadFilter === 'pending') {
+      if (!PENDING_STATUSES.includes(l.status)) return false;
+    } else if (leadFilter !== 'all' && l.status !== leadFilter) {
+      return false;
+    }
+    return leadMatchesSearch(l, leadSearch);
+  });
+
+  const pendingVisibleIds = visibleLeads.filter((l) => PENDING_STATUSES.includes(l.status)).map((l) => l.id);
+
+  const toggleLeadSelected = (id, checked) => {
+    setSelectedLeadIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((x) => x !== id);
+    });
+  };
+
+  const toggleSelectVisiblePending = (checked) => {
+    setSelectedLeadIds(checked ? pendingVisibleIds : []);
+  };
+
+  const bulkApproveLeads = async () => {
+    const ids = selectedLeadIds.filter((id) => pendingVisibleIds.includes(id));
+    if (!ids.length) {
+      toast.error('Select pending leads to approve');
+      return;
+    }
+    if (!window.confirm(`Approve ${ids.length} lead${ids.length === 1 ? '' : 's'} and send them to the marketplace for bidding?`)) {
+      return;
+    }
+    setBulkApproving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/marketplace/admin/leads/bulk-approve`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ leadIds: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Bulk approve failed');
+      const okCount = Number(data.approvedCount) || 0;
+      const skipCount = Number(data.skippedCount) || 0;
+      const failCount = Number(data.failedCount) || 0;
+      toast.success(
+        `Approved ${okCount} → marketplace` +
+          (skipCount || failCount ? ` · skipped ${skipCount} · failed ${failCount}` : ''),
+      );
+      setSelectedLeadIds([]);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBulkApproving(false);
     }
   };
 
@@ -480,21 +554,23 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               ))}
             </ul>
           </div>
-          <div __KEEP_WHITE_0__>
-            <p className="font-semibold text-red-200/90">Danger zone</p>
-            <p>
-              Marketplace uses real homeowner inquiries. Only use this if old demo seed rows are still
-              in the database.
-            </p>
-            <button
-              type="button"
-              onClick={clearDemoData}
-              disabled={clearingDemos}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-50"
-            >
-              {clearingDemos ? 'Removing demo leads…' : 'Purge demo marketplace leads'}
-            </button>
-          </div>
+          {canShowPurgeDemos && (
+            <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-xs text-on-surface/60 space-y-2">
+              <p className="font-semibold text-red-200/90">Danger zone</p>
+              <p>
+                Marketplace uses real homeowner inquiries. Only use this if old demo seed rows are still
+                in the database. Hidden in production builds.
+              </p>
+              <button
+                type="button"
+                onClick={clearDemoData}
+                disabled={clearingDemos}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-50"
+              >
+                {clearingDemos ? 'Removing demo leads…' : 'Purge demo marketplace leads'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -615,7 +691,9 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
 
       {sub === 'leads' && (
         <div className="space-y-4">
-          {/* Search and Status Filters */}
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100/90">
+            Homeowner form → pending review here → bulk approve → installer marketplace bidding.
+          </div>
           <div className="flex flex-wrap gap-2 items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
             <div className="flex flex-wrap gap-2 items-center flex-1">
               <input
@@ -628,10 +706,16 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               <select
                 className="bg-surface-container border border-white/15 rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none focus:border-primary/50"
                 value={leadFilter}
-                onChange={(e) => setLeadFilter(e.target.value)}
+                onChange={(e) => {
+                  setLeadFilter(e.target.value);
+                  setSelectedLeadIds([]);
+                }}
               >
+                <option value="pending">
+                  Awaiting approval ({leads.filter((l) => PENDING_STATUSES.includes(l.status)).length})
+                </option>
                 <option value="all">All Statuses ({leads.length})</option>
-                <option value="pending_admin">Awaiting approval</option>
+                <option value="pending_admin">Pending Admin</option>
                 <option value="new">New</option>
                 <option value="ai_qualified">AI Qualified (review)</option>
                 <option value="bidding">Bidding Active</option>
@@ -646,65 +730,75 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 <option value="proposal">Proposal</option>
                 <option value="invalid_refunded">Invalid / Refunded</option>
               </select>
-              {(leadFilter !== 'all' || leadSearch.trim()) && (
+              {((leadFilter !== 'all' && leadFilter !== 'pending') || leadSearch.trim()) ? (
                 <button
                   type="button"
                   className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-on-surface/70 hover:bg-white/10"
                   onClick={() => {
-                    setLeadFilter('all');
+                    setLeadFilter('pending');
                     setLeadSearch('');
+                    setSelectedLeadIds([]);
                   }}
                 >
-                  Clear filters
+                  Reset to awaiting
                 </button>
-              )}
+              ) : null}
             </div>
             <div className="text-xs text-on-surface/50">
-              Showing {leads.filter((l) => {
-                if (leadFilter !== 'all' && l.status !== leadFilter) return false;
-                if (leadSearch.trim()) {
-                  const q = leadSearch.toLowerCase();
-                  return (
-                    (l.leadCode || '').toLowerCase().includes(q) ||
-                    (l.homeownerName || '').toLowerCase().includes(q) ||
-                    (l.phone || '').toLowerCase().includes(q) ||
-                    (l.zip || '').toLowerCase().includes(q) ||
-                    (l.address || '').toLowerCase().includes(q)
-                  );
-                }
-                return true;
-              }).length} of {leads.length} leads
+              Showing {visibleLeads.length} of {leads.length} leads
             </div>
           </div>
 
+          {pendingVisibleIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+              <label className="flex items-center gap-2 text-xs text-on-surface/80">
+                <input
+                  type="checkbox"
+                  checked={pendingVisibleIds.length > 0 && pendingVisibleIds.every((id) => selectedLeadIds.includes(id))}
+                  onChange={(e) => toggleSelectVisiblePending(e.target.checked)}
+                />
+                Select all pending ({pendingVisibleIds.length})
+              </label>
+              <button
+                type="button"
+                disabled={bulkApproving || selectedLeadIds.length === 0}
+                className="rounded-lg bg-emerald-500 text-black text-xs font-bold px-3 py-1.5 disabled:opacity-50"
+                onClick={bulkApproveLeads}
+              >
+                {bulkApproving
+                  ? 'Approving…'
+                  : `Approve ${selectedLeadIds.length || ''} selected → Marketplace`}
+              </button>
+            </div>
+          )}
+
           <div className="grid lg:grid-cols-2 gap-4">
             <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
-              {leads
-                .filter((l) => {
-                  if (leadFilter !== 'all' && l.status !== leadFilter) return false;
-                  if (leadSearch.trim()) {
-                    const q = leadSearch.toLowerCase();
-                    return (
-                      (l.leadCode || '').toLowerCase().includes(q) ||
-                      (l.homeownerName || '').toLowerCase().includes(q) ||
-                      (l.phone || '').toLowerCase().includes(q) ||
-                      (l.zip || '').toLowerCase().includes(q) ||
-                      (l.address || '').toLowerCase().includes(q)
-                    );
-                  }
-                  return true;
-                })
-                .map((l) => (
-                  <button
+              {visibleLeads.map((l) => (
+                  <div
                     key={l.id}
-                    type="button"
-                    onClick={() => openLead(l.id)}
-                    className={`w-full text-left rounded-xl border p-3 text-xs transition-all ${
+                    className={`w-full rounded-xl border p-3 text-xs transition-all flex gap-2 ${
                       selected?.id === l.id
                         ? 'border-primary bg-primary/10 shadow-lg'
                         : 'border-white/10 bg-white/5 hover:border-white/20'
                     }`}
                   >
+                    {PENDING_STATUSES.includes(l.status) ? (
+                      <input
+                        type="checkbox"
+                        className="mt-1 shrink-0"
+                        checked={selectedLeadIds.includes(l.id)}
+                        onChange={(e) => toggleLeadSelected(l.id, e.target.checked)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="w-4 shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openLead(l.id)}
+                      className="flex-1 text-left min-w-0"
+                    >
                     <div className="flex justify-between items-start gap-2">
                       <span className="font-mono text-on-surface/45 text-[11px]">{l.leadCode}</span>
                       <div className="flex flex-col items-end gap-1.5">
@@ -715,11 +809,13 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                             l.status === 'bidding'
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                              : l.status === 'won' || l.status === 'lead_unlocked'
-                                ? 'bg-green-500/20 text-green-300 border-green-500/30'
-                                : l.status === 'invalid_refunded'
-                                  ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                                  : 'bg-white/10 text-on-surface/70 border-white/15'
+                              : PENDING_STATUSES.includes(l.status)
+                                ? 'bg-amber-500/20 text-amber-200 border-amber-500/30'
+                                : l.status === 'won' || l.status === 'lead_unlocked'
+                                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                                  : l.status === 'invalid_refunded'
+                                    ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                                    : 'bg-white/10 text-on-surface/70 border-white/15'
                           }`}
                         >
                           {l.status}
@@ -739,40 +835,30 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                       <span>·</span>
                       <span>Min Bid: {formatMoney(l.minBid ?? l.winningAmount)}</span>
                     </div>
-                  </button>
+                    </button>
+                  </div>
                 ))}
-              {leads.length === 0 && !loading && (
-                <div className="text-center py-8 text-on-surface/40 text-xs">No marketplace leads found.</div>
-              )}
-              {leads.length > 0 &&
-                leads.filter((l) => {
-                  if (leadFilter !== 'all' && l.status !== leadFilter) return false;
-                  if (leadSearch.trim()) {
-                    const q = leadSearch.toLowerCase();
-                    return (
-                      (l.leadCode || '').toLowerCase().includes(q) ||
-                      (l.homeownerName || '').toLowerCase().includes(q) ||
-                      (l.phone || '').toLowerCase().includes(q) ||
-                      (l.zip || '').toLowerCase().includes(q) ||
-                      (l.address || '').toLowerCase().includes(q)
-                    );
-                  }
-                  return true;
-                }).length === 0 && (
-                  <div className="text-center py-8 text-on-surface/40 text-xs space-y-2">
-                    <p>No leads match this filter.</p>
+              {visibleLeads.length === 0 && !loading && (
+                <div className="text-center py-8 text-on-surface/40 text-xs space-y-2">
+                  <p>
+                    {leadFilter === 'pending'
+                      ? 'No leads waiting for approval.'
+                      : 'No marketplace leads found.'}
+                  </p>
+                  {leadFilter !== 'pending' && (
                     <button
                       type="button"
                       className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] text-on-surface/70 hover:bg-white/10"
                       onClick={() => {
-                        setLeadFilter('all');
+                        setLeadFilter('pending');
                         setLeadSearch('');
                       }}
                     >
-                      Clear filters
+                      Show awaiting approval
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
               {loading && leads.length === 0 && (
                 <div className="text-center py-8 text-on-surface/40 text-xs">Loading leads…</div>
               )}

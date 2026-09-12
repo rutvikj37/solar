@@ -32,6 +32,12 @@ PUBLIC_URL=https://api.spacetoroof.com
 # ALLOW_DEV_CHECKOUT
 # ALLOW_ADMIN_BOOTSTRAP
 # ALLOW_BOOTSTRAP_SUPER_ADMIN
+# ALLOW_PURGE_MARKETPLACE_DEMOS
+
+# Ops note: first-admin bootstrap and super-admin email auto-promote stay **off** in prod.
+# Promote the first operator with a one-shot SQL UPDATE (or a controlled non-prod bootstrap),
+# never by leaving ALLOW_ADMIN_BOOTSTRAP / ALLOW_BOOTSTRAP_SUPER_ADMIN set on the live host.
+# Leave ALLOW_EMAIL_SIMULATION unset so auth email cannot silently simulate.
 
 # Maps (HTTP-referrer–restricted browser key; see §B)
 GOOGLE_MAPS_API_KEY=<gcp browser key>

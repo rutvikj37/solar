@@ -7,12 +7,6 @@ import LeadAvatar from '../../components/leads/LeadAvatar';
 import LeadEmptyState from '../../components/leads/LeadEmptyState';
 import LeadKanbanBoard from '../../components/leads/LeadKanbanBoard';
 import PipelineCustomizeModal from '../../components/leads/PipelineCustomizeModal';
-import {
-  CRM_PROVIDER_META,
-  fetchCrmIntegrations,
-  getConnectedProviders,
-  pushBulkLeadsToCrm,
-} from '../../lib/crmIntegrations.js';
 import { API_BASE } from '../../config.js';
 import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
 import ApiErrorBanner from '../../components/layout/ApiErrorBanner.jsx';
@@ -66,9 +60,6 @@ export default function MyLeads() {
   const [pageSize, setPageSize] = useState(25);
   const [sortKey, setSortKey] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
-  const [crmIntegrations, setCrmIntegrations] = useState(null);
-  const [bulkPushBusy, setBulkPushBusy] = useState('');
-  const [bulkPushMessage, setBulkPushMessage] = useState('');
   const [viewMode, setViewMode] = useState(() => {
     try {
       return localStorage.getItem('lead_crm_view') === 'kanban' ? 'kanban' : 'list';
@@ -131,12 +122,6 @@ export default function MyLeads() {
         if (data?.stages?.length) setPipelineStages(data.stages);
       })
       .catch(() => {});
-  }, [location.key]);
-
-  useEffect(() => {
-    fetchCrmIntegrations()
-      .then(setCrmIntegrations)
-      .catch(() => setCrmIntegrations(null));
   }, [location.key]);
 
   useEffect(() => {
@@ -232,24 +217,6 @@ export default function MyLeads() {
     }
   };
 
-  const connectedCrms = useMemo(() => getConnectedProviders(crmIntegrations), [crmIntegrations]);
-
-  const handleBulkPush = async (provider) => {
-    if (selectedIds.length === 0) return;
-    setBulkPushBusy(provider);
-    setBulkPushMessage('');
-    try {
-      const result = await pushBulkLeadsToCrm(selectedIds.slice(0, 50), provider);
-      setBulkPushMessage(
-        `${result.success} pushed to ${CRM_PROVIDER_META[provider].label}${result.failed ? `, ${result.failed} failed` : ''}`,
-      );
-    } catch (err) {
-      setBulkPushMessage(err.message);
-    } finally {
-      setBulkPushBusy('');
-    }
-  };
-
   const handleExport = async () => {
     try {
       const { downloadLeadsCsv } = await import('../../lib/downloadLeadsCsv.js');
@@ -272,10 +239,10 @@ export default function MyLeads() {
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
             <span className="material-symbols-outlined text-sm">assignment</span>
-            Pipeline CRM
+            Pipeline
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-on-surface tracking-tight">
-            Leads CRM – {viewMode === 'kanban' ? 'Kanban View' : 'List View'}
+            My Leads – {viewMode === 'kanban' ? 'Kanban View' : 'List View'}
           </h1>
           <p className="text-xs text-on-surface-variant max-w-2xl">
             {viewMode === 'kanban'
@@ -444,33 +411,6 @@ export default function MyLeads() {
                 >
                   Clear
                 </button>
-                {connectedCrms.length === 0 ? (
-                  <Link
-                    to="/integrations"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-secondary/20 text-secondary border border-secondary/30 text-xs font-bold hover:bg-secondary/30 transition-all"
-                  >
-                    <span className="material-symbols-outlined text-sm">link</span>
-                    Connect CRM
-                  </Link>
-                ) : (
-                  connectedCrms.map((provider) => {
-                    const meta = CRM_PROVIDER_META[provider];
-                    return (
-                      <button
-                        key={provider}
-                        type="button"
-                        onClick={() => handleBulkPush(provider)}
-                        disabled={!!bulkPushBusy}
-                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-xs font-bold disabled:opacity-50 ${meta.btnClass}`}
-                      >
-                        <span className="material-symbols-outlined text-sm">sync_alt</span>
-                        {bulkPushBusy === provider
-                          ? 'Pushing…'
-                          : `Push to ${meta.shortLabel}`}
-                      </button>
-                    );
-                  })
-                )}
                 <button
                   type="button"
                   onClick={handleBulkDelete}
@@ -480,9 +420,6 @@ export default function MyLeads() {
                   Delete selected
                 </button>
               </div>
-              {bulkPushMessage && (
-                <p className="text-[10px] text-green-400 w-full text-right">{bulkPushMessage}</p>
-              )}
             </div>
           )}
 

@@ -476,6 +476,22 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      admin_id INT UNSIGNED NULL,
+      action VARCHAR(100) NOT NULL,
+      target_type VARCHAR(50) NULL,
+      target_id INT UNSIGNED NULL,
+      details JSON NULL,
+      ip_address VARCHAR(45) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_aal_created (created_at),
+      INDEX idx_aal_admin (admin_id, created_at),
+      INDEX idx_aal_action (action, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
   // ===== AI CALLING AUTOMATION MODULE TABLES =====
 
   await db.query(`

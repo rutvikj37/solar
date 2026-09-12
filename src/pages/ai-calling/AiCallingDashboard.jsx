@@ -111,7 +111,7 @@ export default function AiCallingDashboard() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowTestModal(true)}
-            __KEEP_WHITE_0__
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-on-primary font-bold text-xs hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-amber-500/20"
           >
             <span className="material-symbols-outlined text-sm">phone_iphone</span>
             ⚡ Test Call Personally

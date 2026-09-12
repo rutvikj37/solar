@@ -227,17 +227,17 @@ export default function Profile() {
 
           <div className="glass-card p-6 rounded-xl space-y-3">
             <h4 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest font-semibold">
-              CRM Integrations
+              Email Integrations
             </h4>
             <p className="text-xs text-on-surface-variant leading-relaxed">
-              Connect HubSpot or Salesforce to push leads from My Leads.
+              Connect company SMTP to send outreach from your domain. HubSpot / Salesforce CRM push is not part of this launch.
             </p>
             <Link
               to="/integrations"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-xs font-bold hover:brightness-110"
             >
-              <span className="material-symbols-outlined text-base">hub</span>
-              Manage Integrations
+              <span className="material-symbols-outlined text-base">mail</span>
+              Manage SMTP
             </Link>
           </div>
 
@@ -246,7 +246,7 @@ export default function Profile() {
               Developer Settings
             </h4>
             <p className="text-xs text-on-surface-variant leading-relaxed">
-              Developer API keys for custom integrations with HubSpot, Salesforce, or internal dashboards.
+              Developer API keys for custom integrations or internal dashboards.
             </p>
             <div className="flex items-center gap-2 text-xs">
               <div className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 flex items-center justify-between font-mono text-[11px]">

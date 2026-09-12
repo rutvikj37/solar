@@ -26,8 +26,12 @@ import {
   ensurePlatformEmailSettingsLoaded,
 } from '../services/email/platformEmailSettings.js';
 import { getEmailSetupStatus } from '../services/email/userEmailConnections.js';
+import { writeAdminAudit, clientIp } from '../utils/adminAudit.js';
+import { isAdminRole } from '../middleware/auth.js';
 
 const router = express.Router();
+
+const ASSIGNABLE_ROLES = ['solar_company', 'admin', 'platform_admin', 'super_admin'];
 
 /** Matches RegisterPage minLength={8} */
 const MIN_PASSWORD_LENGTH = 8;
@@ -159,6 +163,36 @@ async function assignUserPlan({
   return { previousCredits, credits: nextCredits, previousPlanId: existing?.currentPlanId || 'Free', previousPlanName: existing?.currentPlanName || 'Free' };
 }
 
+router.get('/audit-log', ...adminChain, async (req, res) => {
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+  try {
+    const [rows] = await db.query(
+      `SELECT a.id, a.admin_id, a.action, a.target_type, a.target_id, a.details, a.ip_address, a.created_at,
+              u.name AS admin_name, u.email AS admin_email
+       FROM admin_audit_log a
+       LEFT JOIN users u ON u.id = a.admin_id
+       ORDER BY a.created_at DESC
+       LIMIT ?`,
+      [limit],
+    );
+    const entries = rows.map((r) => {
+      let details = r.details;
+      if (typeof details === 'string') {
+        try {
+          details = JSON.parse(details);
+        } catch {
+          /* keep string */
+        }
+      }
+      return { ...r, details };
+    });
+    res.json({ entries });
+  } catch (error) {
+    console.error('Admin audit log error:', error);
+    res.status(500).json({ error: 'Failed to load audit log' });
+  }
+});
+
 router.get('/stats', ...adminChain, async (_req, res) => {
   try {
     const [[userCount]] = await db.query(
@@ -205,6 +239,7 @@ router.get('/stats', ...adminChain, async (_req, res) => {
 
 router.get('/users', ...adminChain, async (req, res) => {
   const q = (req.query.q || '').toString().trim();
+  const roleFilter = (req.query.role || '').toString().trim();
   try {
     let sql = `
       SELECT u.id, u.name, u.email, u.company_name, u.role, u.account_status, u.created_at,
@@ -215,10 +250,16 @@ router.get('/users', ...adminChain, async (req, res) => {
       LEFT JOIN user_packages p ON p.user_id = u.id AND p.status = 'active'
     `;
     const params = [];
+    const where = [];
     if (q) {
-      sql += ` WHERE u.name LIKE ? OR u.email LIKE ? OR u.company_name LIKE ?`;
+      where.push('(u.name LIKE ? OR u.email LIKE ? OR u.company_name LIKE ?)');
       params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
+    if (roleFilter && ASSIGNABLE_ROLES.includes(roleFilter)) {
+      where.push('u.role = ?');
+      params.push(roleFilter);
+    }
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`;
     sql += ' ORDER BY u.created_at DESC LIMIT 200';
     const [rows] = await db.query(sql, params);
     res.json(rows);
@@ -377,6 +418,78 @@ router.get('/subscriptions', ...adminChain, async (_req, res) => {
   } catch (error) {
     console.error('Admin subscriptions error:', error);
     res.status(500).json({ error: 'Failed to list subscriptions' });
+  }
+});
+
+router.patch('/users/:id/role', ...adminChain, async (req, res) => {
+  const userId = Number(req.params.id);
+  const nextRole = (req.body?.role || '').toString().trim();
+  if (!ASSIGNABLE_ROLES.includes(nextRole)) {
+    return res.status(400).json({
+      error: `role must be one of: ${ASSIGNABLE_ROLES.join(', ')}`,
+    });
+  }
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+
+  try {
+    const [users] = await db.query(
+      'SELECT id, email, name, role FROM users WHERE id = ? LIMIT 1',
+      [userId],
+    );
+    if (!users.length) return res.status(404).json({ error: 'User not found' });
+
+    const previousRole = users[0].role || 'solar_company';
+    if (previousRole === nextRole) {
+      return res.json({ success: true, userId, role: nextRole, unchanged: true });
+    }
+
+    const actorRole = req.user.role;
+    if (nextRole === 'super_admin' && actorRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super_admin can grant super_admin' });
+    }
+    if (previousRole === 'super_admin' && actorRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super_admin can change a super_admin' });
+    }
+
+    if (previousRole === 'super_admin' && nextRole !== 'super_admin') {
+      const [[{ cnt }]] = await db.query(
+        `SELECT COUNT(*) AS cnt FROM users WHERE role = 'super_admin'`,
+      );
+      if (Number(cnt) <= 1) {
+        return res.status(400).json({ error: 'Cannot demote the last super_admin' });
+      }
+    }
+
+    if (userId === req.user.id && isAdminRole(previousRole) && !isAdminRole(nextRole)) {
+      return res.status(400).json({ error: 'Cannot remove your own admin access' });
+    }
+
+    await db.query('UPDATE users SET role = ? WHERE id = ?', [nextRole, userId]);
+    await writeAdminAudit({
+      adminId: req.user.id,
+      action: 'user.role_change',
+      targetType: 'user',
+      targetId: userId,
+      details: {
+        email: users[0].email,
+        previousRole,
+        nextRole,
+      },
+      ip: clientIp(req),
+    });
+
+    res.json({
+      success: true,
+      userId,
+      role: nextRole,
+      previousRole,
+      message: `Role updated to ${nextRole}`,
+    });
+  } catch (error) {
+    console.error('Admin role update error:', error);
+    res.status(500).json({ error: 'Failed to update role' });
   }
 });
 
@@ -712,6 +825,21 @@ router.post('/users/:id/credits', ...adminChain, async (req, res) => {
       message = `Subtracted ${applied} (balance floored at 0; requested ${amount})`;
     }
 
+    await writeAdminAudit({
+      adminId: req.user.id,
+      action: 'user.credit_adjust',
+      targetType: 'user',
+      targetId: Number(userId),
+      details: {
+        mode,
+        delta,
+        balanceAfter,
+        note: note || null,
+        invoiceId,
+      },
+      ip: clientIp(req),
+    });
+
     res.json({
       success: true,
       credits: balanceAfter,
@@ -757,16 +885,27 @@ router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
 
     logger.info(`Admin password reset for user ${userId}`, { adminId: req.user.id, generated: generate });
 
+    await writeAdminAudit({
+      adminId: req.user.id,
+      action: generate ? 'user.password_generate' : 'user.password_reset',
+      targetType: 'user',
+      targetId: Number(userId),
+      details: { email: users[0].email, generated: generate },
+      ip: clientIp(req),
+    });
+
     const payload = {
       success: true,
       userId: Number(userId),
       email: users[0].email,
       generated: generate,
       message: generate
-        ? 'Temporary password generated. Share it through a secure channel (not returned in API response).'
+        ? 'Temporary password generated. Copy it now — it is shown only once.'
         : 'Password updated.',
     };
-    if (generate && process.env.NODE_ENV !== 'production') {
+    // One-time reveal to the authenticated admin UI (secure channel). Also set legacy key for older clients.
+    if (generate) {
+      payload.temporaryPassword = password;
       payload.temporaryPasswordDevOnly = password;
     }
     res.json(payload);

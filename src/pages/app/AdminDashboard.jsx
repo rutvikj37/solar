@@ -4,11 +4,23 @@ import { toast, Toaster } from 'sonner';
 import { API_BASE } from '../../config.js';
 import { invoiceNumber, openInvoicePdf } from '../../utils/invoicePdf.js';
 import { setToken } from '../../lib/auth.js';
+import { useTheme } from '../../context/ThemeContext.jsx';
 
 import TeamWorkspacePanel from '../../components/TeamWorkspacePanel';
 import TerritoryAnalyticsPanel from '../../components/TerritoryAnalyticsPanel';
 import AdminMarketplacePanel from '../../components/marketplace/AdminMarketplacePanel';
 import AdminIntegrationsPanel from '../../components/admin/AdminIntegrationsPanel';
+
+const ROLE_OPTIONS = [
+  { value: '', label: 'All roles' },
+  { value: 'solar_company', label: 'solar_company' },
+  { value: 'admin', label: 'admin' },
+  { value: 'platform_admin', label: 'platform_admin' },
+  { value: 'super_admin', label: 'super_admin' },
+];
+
+const ASSIGNABLE_ROLES = ['solar_company', 'admin', 'platform_admin', 'super_admin'];
+const isProdBuild = import.meta.env.PROD;
 
 function ActionBanner({ type, message }) {
   if (!message) return null;
@@ -35,8 +47,8 @@ const TAB_GROUPS = [
     tabs: [
       { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
       { id: 'marketplace', label: 'Marketplace', icon: 'storefront' },
-      { id: 'team', label: 'Team', icon: 'groups' },
-      { id: 'territory', label: 'Territory', icon: 'analytics' },
+      { id: 'team', label: 'Your company team', icon: 'groups' },
+      { id: 'territory', label: 'Your company territory', icon: 'analytics' },
     ],
   },
   {
@@ -52,6 +64,7 @@ const TAB_GROUPS = [
     tabs: [
       { id: 'apis', label: 'APIs', icon: 'api' },
       { id: 'integrations', label: 'Integrations', icon: 'extension' },
+      { id: 'audit', label: 'Audit log', icon: 'history' },
     ],
   },
   {
@@ -66,6 +79,7 @@ const TAB_GROUPS = [
 const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
 export default function AdminDashboard() {
+  const { theme } = useTheme();
   const [tab, setTab] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
@@ -74,7 +88,10 @@ export default function AdminDashboard() {
   const [apis, setApis] = useState([]);
   const [inquiries, setInquiries] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [auditEntries, setAuditEntries] = useState([]);
   const [q, setQ] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [roleBusy, setRoleBusy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [userDetail, setUserDetail] = useState(null);
@@ -150,8 +167,9 @@ export default function AdminDashboard() {
         setStats(await res.json());
       }
       if (active === 'users') {
+        const roleQs = roleFilter ? `&role=${encodeURIComponent(roleFilter)}` : '';
         const [usersRes, plansRes] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}`, { headers: authHeaders() }),
+          fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}${roleQs}`, { headers: authHeaders() }),
           fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() })
         ]);
         if (usersRes.status === 403 || plansRes.status === 403) {
@@ -208,13 +226,23 @@ export default function AdminDashboard() {
         if (!res.ok) throw new Error('Failed to load tickets');
         setTickets(await res.json());
       }
+      if (active === 'audit') {
+        const res = await fetch(`${API_BASE}/api/admin/audit-log?limit=50`, { headers: authHeaders() });
+        if (res.status === 403) {
+          setError('Admin access required.');
+          return;
+        }
+        if (!res.ok) throw new Error('Failed to load audit log');
+        const data = await res.json();
+        setAuditEntries(data.entries || []);
+      }
     } catch (err) {
       setError(err.message);
       toast.error(err.message || 'Failed to load admin data');
     } finally {
       setLoading(false);
     }
-  }, [navigate, q]);
+  }, [navigate, q, roleFilter]);
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -237,22 +265,6 @@ export default function AdminDashboard() {
     setTicketDetail(null);
     setUserDetail(null);
     setSelectedUserId(null);
-  };
-
-  const bootstrapAdmin = async () => {
-    const res = await fetch(`${API_BASE}/api/admin/bootstrap`, {
-      method: 'POST',
-      headers: authHeaders()
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      toast.error(data.error || 'Bootstrap failed');
-      return;
-    }
-    if (data.token) setToken(data.token);
-    toast.success('You are now an admin');
-    setError('');
-    loadTab(tab);
   };
 
   const openUser = async (id, { keepFeedback = false } = {}) => {
@@ -422,7 +434,7 @@ export default function AdminDashboard() {
       setPasswordMsgType('success');
       setPasswordMsg(successMsg);
       toast.success(successMsg);
-      setRevealedPassword(data.temporaryPassword || '');
+      setRevealedPassword(data.temporaryPassword || data.temporaryPasswordDevOnly || '');
       setNewPassword('');
       setConfirmPassword('');
     } catch {
@@ -432,6 +444,32 @@ export default function AdminDashboard() {
       toast.error(err);
     } finally {
       setPasswordBusy(false);
+    }
+  };
+
+  const updateUserRole = async (nextRole) => {
+    if (!selectedUserId || roleBusy) return;
+    if (!ASSIGNABLE_ROLES.includes(nextRole)) return;
+    if (!window.confirm(`Change this user's role to "${nextRole}"?`)) return;
+    setRoleBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/role`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ role: nextRole }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update role');
+        return;
+      }
+      toast.success(data.message || `Role set to ${nextRole}`);
+      await openUser(selectedUserId);
+      loadTab('users');
+    } catch {
+      toast.error('Failed to update role');
+    } finally {
+      setRoleBusy(false);
     }
   };
 
@@ -585,7 +623,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <Toaster theme="dark" position="top-center" richColors />
+      <Toaster theme={theme === 'light' ? 'light' : 'dark'} position="top-center" richColors />
       <div className="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 font-label-mono text-[9px] font-bold uppercase mb-2">
@@ -612,7 +650,7 @@ export default function AdminDashboard() {
                   type="button"
                   onClick={() => switchTab(t.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
-                    tab === t.id ? 'bg-primary text-on-primary' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                    tab === t.id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                   }`}
                 >
                   <span className="material-symbols-outlined text-sm">{t.icon}</span>
@@ -627,14 +665,10 @@ export default function AdminDashboard() {
       {error && (
         <div className="mb-4 p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 text-xs flex flex-wrap gap-3 items-center justify-between">
           <span>{error}</span>
-          {error === 'Admin access required.' && (
-            <button
-              type="button"
-              onClick={bootstrapAdmin}
-              className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold"
-            >
-              Become First Admin
-            </button>
+          {error === 'Admin access required.' && !isProdBuild && (
+            <p className="text-[10px] text-on-surface-variant max-w-md">
+              First-admin bootstrap is disabled in the UI. Enable ALLOW_ADMIN_BOOTSTRAP with ADMIN_BOOTSTRAP_SECRET only in non-prod, or promote via SQL.
+            </p>
           )}
         </div>
       )}
@@ -671,9 +705,23 @@ export default function AdminDashboard() {
       )}
       {tab === 'integrations' && <AdminIntegrationsPanel />}
 
-      {tab === 'team' && <TeamWorkspacePanel />}
+      {tab === 'team' && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-glass-stroke bg-surface-container-low/60 px-3 py-2 text-[11px] text-on-surface-variant">
+            Your company workspace — team members for the account you are signed in as (not platform-wide ops).
+          </div>
+          <TeamWorkspacePanel />
+        </div>
+      )}
 
-      {tab === 'territory' && <TerritoryAnalyticsPanel />}
+      {tab === 'territory' && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-glass-stroke bg-surface-container-low/60 px-3 py-2 text-[11px] text-on-surface-variant">
+            Your company territory analytics for the signed-in account (not a platform-wide map).
+          </div>
+          <TerritoryAnalyticsPanel />
+        </div>
+      )}
 
       {tab === 'users' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
@@ -686,15 +734,27 @@ export default function AdminDashboard() {
                 placeholder="Search users…"
                 className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface w-64"
               />
-              <button onClick={() => loadTab('users')} className="text-xs bg-white/10 px-3 py-2 rounded-lg">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface"
+              >
+                {ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => loadTab('users')} className="text-xs bg-surface-container-high text-on-surface px-3 py-2 rounded-lg">
                 Search
               </button>
             </div>
             <div className="glass-card rounded-xl overflow-x-auto max-h-[70vh] overflow-y-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-white/5 text-on-surface-variant uppercase text-[9px] sticky top-0">
+                <thead className="bg-surface-container-low text-on-surface-variant uppercase text-[9px] sticky top-0">
                   <tr>
                     <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Role</th>
                     <th className="px-4 py-3">Plan</th>
                     <th className="px-4 py-3">Credits</th>
                     <th className="px-4 py-3">Status</th>
@@ -713,6 +773,7 @@ export default function AdminDashboard() {
                         <p className="text-on-surface font-semibold">{u.name}</p>
                         <p className="text-on-surface-variant">{u.email}</p>
                       </td>
+                      <td className="px-4 py-3 text-on-surface font-mono text-[10px]">{u.role || 'solar_company'}</td>
                       <td className="px-4 py-3 text-on-surface">{u.plan}</td>
                       <td className="px-4 py-3 font-mono text-on-surface">{u.credits}</td>
                       <td className="px-4 py-3">
@@ -732,7 +793,7 @@ export default function AdminDashboard() {
                   ))}
                   {users.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-on-surface-variant text-center">
+                      <td colSpan={5} className="px-4 py-8 text-on-surface-variant text-center">
                         No users found.
                       </td>
                     </tr>
@@ -763,17 +824,49 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   {[
                     ['Company', userDetail.user.company_name || '—'],
-                    ['Role', userDetail.user.role || 'solar_company'],
                     ['Phone', userDetail.user.phone || '—'],
                     ['Joined', userDetail.user.created_at ? new Date(userDetail.user.created_at).toLocaleDateString() : '—'],
                     ['Account', userDetail.user.account_status || 'active'],
                     ['Credits', userDetail.credits]
                   ].map(([label, value]) => (
-                    <div key={label} className="bg-white/5 rounded-lg p-2">
+                    <div key={label} className="bg-surface-container-low rounded-lg p-2">
                       <p className="text-[9px] text-on-surface-variant uppercase">{label}</p>
                       <p className="text-on-surface font-semibold mt-0.5">{value}</p>
                     </div>
                   ))}
+                </div>
+
+                <div className="mb-4 p-3 rounded-lg bg-surface-container-low space-y-2">
+                  <p className="text-[9px] text-on-surface-variant uppercase">Role</p>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <select
+                      value={userDetail.user.role || 'solar_company'}
+                      disabled={roleBusy}
+                      onChange={(e) => updateUserRole(e.target.value)}
+                      className="bg-surface-container border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
+                    >
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={roleBusy || (userDetail.user.role || 'solar_company') === 'admin'}
+                      onClick={() => updateUserRole('admin')}
+                      className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold text-[10px] disabled:opacity-50"
+                    >
+                      Promote to admin
+                    </button>
+                    <button
+                      type="button"
+                      disabled={roleBusy || (userDetail.user.role || 'solar_company') === 'solar_company'}
+                      onClick={() => updateUserRole('solar_company')}
+                      className="bg-surface-container-high text-on-surface px-3 py-1.5 rounded-lg font-bold text-[10px] disabled:opacity-50"
+                    >
+                      Demote to user
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant">Last super_admin cannot be demoted. Only super_admin can grant super_admin.</p>
                 </div>
 
                 <div className="mb-4 p-3 rounded-lg bg-white/5 space-y-2">
@@ -1067,6 +1160,56 @@ export default function AdminDashboard() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {tab === 'audit' && (
+        <div className="glass-card rounded-xl overflow-x-auto">
+          <div className="px-4 py-3 border-b border-glass-stroke flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-on-surface">Admin audit log</h3>
+              <p className="text-[11px] text-on-surface-variant">Password resets, role changes, credit adjusts, marketplace approve/verify.</p>
+            </div>
+            <button type="button" onClick={() => loadTab('audit')} className="text-xs bg-surface-container-high px-3 py-1.5 rounded-lg text-on-surface">
+              Refresh
+            </button>
+          </div>
+          <table className="w-full text-xs text-left">
+            <thead className="bg-surface-container-low text-on-surface-variant uppercase text-[9px]">
+              <tr>
+                <th className="px-4 py-3">When</th>
+                <th className="px-4 py-3">Admin</th>
+                <th className="px-4 py-3">Action</th>
+                <th className="px-4 py-3">Target</th>
+                <th className="px-4 py-3">Details</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-glass-stroke">
+              {auditEntries.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-4 py-3 text-on-surface-variant whitespace-nowrap">
+                    {e.created_at ? new Date(e.created_at).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-on-surface">{e.admin_name || e.admin_id || '—'}</p>
+                    <p className="text-on-surface-variant text-[10px]">{e.admin_email || ''}</p>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[10px] text-primary">{e.action}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">
+                    {e.target_type || '—'}{e.target_id != null ? ` #${e.target_id}` : ''}
+                  </td>
+                  <td className="px-4 py-3 text-on-surface-variant max-w-xs truncate" title={JSON.stringify(e.details || {})}>
+                    {e.details ? JSON.stringify(e.details) : '—'}
+                  </td>
+                </tr>
+              ))}
+              {auditEntries.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-on-surface-variant">No audit entries yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
