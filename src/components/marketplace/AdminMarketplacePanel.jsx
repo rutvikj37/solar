@@ -1183,7 +1183,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 <button
                   type="button"
                   onClick={() => setAreaUserId(null)}
-                  className="text-xs text-white/40 hover:text-white"
+                  className="text-xs text-white/40 hover:text-on-surface"
                 >
                   Close
                 </button>

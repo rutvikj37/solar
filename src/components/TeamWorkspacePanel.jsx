@@ -155,7 +155,7 @@ export default function TeamWorkspacePanel() {
           <div className="w-full max-w-md bg-surface-elevated border border-glass-stroke rounded-2xl p-6 shadow-2xl space-y-4 text-left">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-white text-sm">Invite Team Seat</h3>
-              <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-on-surface">
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>

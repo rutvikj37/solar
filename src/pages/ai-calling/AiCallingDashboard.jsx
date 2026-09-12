@@ -269,7 +269,7 @@ export default function AiCallingDashboard() {
                 <span className="material-symbols-outlined text-amber-400 text-xl">phone_iphone</span>
                 <h2 className="text-lg font-bold text-white font-display">Personal AI Test Call</h2>
               </div>
-              <button onClick={() => setShowTestModal(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setShowTestModal(false)} className="text-slate-400 hover:text-on-surface">
                 <span className="material-symbols-outlined text-lg">close</span>
               </button>
             </div>

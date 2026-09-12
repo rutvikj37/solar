@@ -91,11 +91,21 @@ function SpecRow({ label, value }) {
   const shown = displayVal(value, null);
   if (!shown) return null;
   return (
-    <div className="flex items-start justify-between gap-3 py-2 border-b border-white/5 last:border-0">
+    <div className="flex items-start justify-between gap-3 py-2 border-b border-glass-stroke last:border-0">
       <span className="text-on-surface-variant shrink-0">{label}</span>
-      <span className="text-white font-semibold text-right break-words max-w-[60%]">{shown}</span>
+      <span className="text-on-surface font-semibold text-right break-words max-w-[60%]">{shown}</span>
     </div>
   );
+}
+
+function pickContactField(...candidates) {
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    const v = String(raw).trim();
+    if (!v || v === 'Not Available' || v === 'N/A' || v === 'undefined' || v === 'null') continue;
+    return v;
+  }
+  return null;
 }
 
 function Card({ title, children, action = null, className = '' }) {
@@ -597,7 +607,7 @@ export default function LeadDetails() {
       setEmailMsg('Write a message before sending.');
       return;
     }
-    if (!lead?.email || lead.email === 'Not Available') {
+    if (!emailDisplay) {
       setEmailMsg('This lead has no email address.');
       return;
     }
@@ -775,10 +785,35 @@ export default function LeadDetails() {
 
   const nba = useMemo(() => (lead ? getNextBestAction(lead) : null), [lead]);
 
+  const phoneDisplay = useMemo(
+    () =>
+      pickContactField(
+        lead?.phone,
+        lead?.propertyExtra?.phone,
+        lead?.propertyExtra?.ownerPhone,
+        lead?.propertyExtra?.contactPhone,
+        lead?.propertyExtra?.contact?.phone,
+        lead?.solar?.phone,
+      ),
+    [lead],
+  );
+  const emailDisplay = useMemo(
+    () =>
+      pickContactField(
+        lead?.email,
+        lead?.propertyExtra?.email,
+        lead?.propertyExtra?.ownerEmail,
+        lead?.propertyExtra?.contactEmail,
+        lead?.propertyExtra?.contact?.email,
+        lead?.solar?.email,
+      ),
+    [lead],
+  );
+
   const runNbaCta = () => {
     if (!nba) return;
-    if (nba.cta === 'call' && lead?.phone && lead.phone !== 'Not Available') {
-      window.location.href = `tel:${lead.phone}`;
+    if (nba.cta === 'call' && phoneDisplay) {
+      window.location.href = `tel:${phoneDisplay}`;
       return;
     }
     if (nba.cta === 'outreach') setTab('outreach');
@@ -821,8 +856,8 @@ export default function LeadDetails() {
   const propExtra = lead.propertyExtra || {};
   const lat = parseFloat(lead.latitude);
   const lng = parseFloat(lead.longitude);
-  const phoneOk = lead.phone && lead.phone !== 'Not Available';
-  const emailOk = lead.email && lead.email !== 'Not Available';
+  const phoneOk = Boolean(phoneDisplay);
+  const emailOk = Boolean(emailDisplay);
 
   const solarSpecs = [
     ['Roof Outline', solar.roofOutline],
@@ -873,7 +908,7 @@ export default function LeadDetails() {
         <div className="pt-2">
           <Link
             to="/my-leads"
-            className="text-primary hover:text-white transition-colors inline-flex items-center gap-2 text-xs font-semibold font-label-mono uppercase tracking-wider"
+            className="text-primary hover:text-on-surface transition-colors inline-flex items-center gap-2 text-xs font-semibold font-label-mono uppercase tracking-wider"
           >
             <span className="material-symbols-outlined text-sm">arrow_back</span>
             Back to Leads CRM
@@ -900,6 +935,34 @@ export default function LeadDetails() {
                   <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
                 </div>
                 <p className="text-on-surface-variant break-words text-sm">{lead.address}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+                  <div className="inline-flex items-center gap-1.5 min-w-0">
+                    <span className="material-symbols-outlined text-base text-on-surface-variant shrink-0">call</span>
+                    {phoneOk ? (
+                      <a
+                        href={`tel:${phoneDisplay}`}
+                        className="text-on-surface font-semibold font-mono hover:text-primary break-all"
+                      >
+                        {phoneDisplay}
+                      </a>
+                    ) : (
+                      <span className="text-on-surface-variant">No phone on file</span>
+                    )}
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 min-w-0">
+                    <span className="material-symbols-outlined text-base text-on-surface-variant shrink-0">mail</span>
+                    {emailOk ? (
+                      <a
+                        href={`mailto:${emailDisplay}`}
+                        className="text-on-surface font-semibold hover:text-primary break-all"
+                      >
+                        {emailDisplay}
+                      </a>
+                    ) : (
+                      <span className="text-on-surface-variant">No email on file</span>
+                    )}
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/15 border border-sky-500/30 text-[11px] font-bold text-sky-300">
                     Lead Score <span className="font-mono">{displayScore}</span>
@@ -958,8 +1021,8 @@ export default function LeadDetails() {
             <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-glass-stroke">
               {phoneOk && (
                 <a
-                  href={`tel:${lead.phone}`}
-                  className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs"
+                  href={`tel:${phoneDisplay}`}
+                  className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-on-surface font-bold py-2 px-3 rounded-lg text-xs"
                 >
                   <span className="material-symbols-outlined text-base">call</span>
                   Call
@@ -1112,7 +1175,7 @@ export default function LeadDetails() {
                 className={`shrink-0 px-3.5 py-2.5 text-[11px] font-bold border-b-2 transition-colors ${
                   activeTab === t.id
                     ? 'border-primary text-primary bg-primary/10 rounded-t-md'
-                    : 'border-transparent text-on-surface-variant hover:text-white'
+                    : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 {t.label}
@@ -1159,17 +1222,14 @@ export default function LeadDetails() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card title="Lead Intelligence">
                 <div className="space-y-2 text-[12px]">
-                  <p className="text-white">
+                  <p className="text-on-surface">
                     Lead Score: <span className="font-mono font-bold">{displayScore}/100</span>
                   </p>
-                  <p className="text-white">
+                  <p className="text-on-surface">
                     Solar Potential:{' '}
                     <span className="font-mono font-bold">
                       {solarScore != null ? `${solarScore}/100` : displayVal(solar.potential || lead.solar_potential)}
                     </span>
-                  </p>
-                  <p className="text-on-surface-variant">
-                    Phone: {phoneOk ? 'Available' : 'Missing'} · Email: {emailOk ? 'Available' : 'Missing'}
                   </p>
                   <p className="text-on-surface-variant leading-relaxed mt-2">
                     High-potential rooftop opportunity. Use Next Best Action to move this lead through the pipeline
@@ -1179,13 +1239,43 @@ export default function LeadDetails() {
               </Card>
               <Card title="Customer Snapshot">
                 <div className="space-y-2">
-                  <div className="p-3 rounded-lg bg-white/5">
-                    <p className="text-[9px] text-on-surface-variant uppercase mb-1">Phone</p>
-                    <p className="text-white font-mono font-semibold break-all">{phoneOk ? lead.phone : '—'}</p>
+                  <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
+                    <p className="text-[9px] text-on-surface-variant uppercase mb-1">Name</p>
+                    <p className="text-on-surface font-semibold break-words">{displayName}</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-white/5">
+                  <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
+                    <p className="text-[9px] text-on-surface-variant uppercase mb-1">Phone</p>
+                    {phoneOk ? (
+                      <a
+                        href={`tel:${phoneDisplay}`}
+                        className="text-on-surface font-mono font-semibold break-all hover:text-primary inline-flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-sm text-primary">call</span>
+                        {phoneDisplay}
+                      </a>
+                    ) : (
+                      <p className="text-on-surface-variant">Not available</p>
+                    )}
+                    {lead.phone_type && lead.phone_type !== 'Not Available' && (
+                      <p className="text-[10px] text-on-surface-variant mt-1">{lead.phone_type}</p>
+                    )}
+                  </div>
+                  <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
                     <p className="text-[9px] text-on-surface-variant uppercase mb-1">Email</p>
-                    <p className="text-white font-semibold break-all">{emailOk ? lead.email : '—'}</p>
+                    {emailOk ? (
+                      <a
+                        href={`mailto:${emailDisplay}`}
+                        className="text-on-surface font-semibold break-all hover:text-primary inline-flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-sm text-primary">mail</span>
+                        {emailDisplay}
+                      </a>
+                    ) : (
+                      <p className="text-on-surface-variant">Not available</p>
+                    )}
+                    {lead.email_status && lead.email_status !== 'Not Available' && (
+                      <p className="text-[10px] text-on-surface-variant mt-1">{lead.email_status}</p>
+                    )}
                   </div>
                   {lead.follow_up_at && (
                     <p className="text-[11px] text-amber-300">
@@ -1203,21 +1293,39 @@ export default function LeadDetails() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card title="Contact">
               <div className="space-y-2">
-                <div className="p-3 rounded-lg bg-white/5">
+                <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Name</p>
-                  <p className="text-white font-semibold">{displayName}</p>
+                  <p className="text-on-surface font-semibold">{displayName}</p>
                 </div>
-                <div className="p-3 rounded-lg bg-white/5">
+                <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Phone</p>
-                  <p className="text-white font-mono font-semibold break-all">{phoneOk ? lead.phone : '—'}</p>
+                  {phoneOk ? (
+                    <a
+                      href={`tel:${phoneDisplay}`}
+                      className="text-on-surface font-mono font-semibold break-all hover:text-primary"
+                    >
+                      {phoneDisplay}
+                    </a>
+                  ) : (
+                    <p className="text-on-surface-variant">Not available</p>
+                  )}
                 </div>
-                <div className="p-3 rounded-lg bg-white/5">
+                <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Email</p>
-                  <p className="text-white font-semibold break-all">{emailOk ? lead.email : '—'}</p>
+                  {emailOk ? (
+                    <a
+                      href={`mailto:${emailDisplay}`}
+                      className="text-on-surface font-semibold break-all hover:text-primary"
+                    >
+                      {emailDisplay}
+                    </a>
+                  ) : (
+                    <p className="text-on-surface-variant">Not available</p>
+                  )}
                 </div>
-                <div className="p-3 rounded-lg bg-white/5">
+                <div className="p-3 rounded-lg bg-surface-container border border-glass-stroke">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Address</p>
-                  <p className="text-white break-words">{lead.address}</p>
+                  <p className="text-on-surface break-words">{lead.address}</p>
                 </div>
                 {lead.notes ? (
                   <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">

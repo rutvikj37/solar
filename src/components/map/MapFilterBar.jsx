@@ -257,7 +257,7 @@ export default function MapFilterBar({
             onClick={() => setLassoMode && setLassoMode('freehand')}
             title="Drag mouse to draw freehand shape"
             className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-              lassoMode === 'freehand' ? 'bg-primary text-on-primary shadow-sm' : 'text-slate-400 hover:text-white'
+              lassoMode === 'freehand' ? 'bg-primary text-on-primary shadow-sm' : 'text-slate-400 hover:text-on-surface'
             }`}
           >
             Freehand
@@ -267,7 +267,7 @@ export default function MapFilterBar({
             onClick={() => setLassoMode && setLassoMode('click')}
             title="Click points to outline polygon"
             className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-              lassoMode === 'click' ? 'bg-primary text-on-primary shadow-sm' : 'text-slate-400 hover:text-white'
+              lassoMode === 'click' ? 'bg-primary text-on-primary shadow-sm' : 'text-slate-400 hover:text-on-surface'
             }`}
           >
             Point Click
@@ -332,7 +332,7 @@ export default function MapFilterBar({
           <div className="w-full max-w-sm bg-surface-elevated border border-glass-stroke rounded-2xl p-5 shadow-2xl space-y-4 text-left">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-white text-sm">Save Search Filter Preset</h3>
-              <button onClick={() => setShowSaveModal(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setShowSaveModal(false)} className="text-slate-400 hover:text-on-surface">
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>

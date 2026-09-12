@@ -111,7 +111,7 @@ export default function LeadManagerPanel({ onClose, refreshKey = 0, visible = tr
               <button
                 type="button"
                 onClick={onClose}
-                className="text-on-surface-variant hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors"
+                className="text-on-surface-variant hover:text-on-surface p-2 rounded-lg hover:bg-white/5 transition-colors"
                 aria-label="Close Lead Manager"
               >
                 <span className="material-symbols-outlined text-base">close</span>
@@ -161,7 +161,7 @@ export default function LeadManagerPanel({ onClose, refreshKey = 0, visible = tr
               className={`shrink-0 px-2.5 py-1 rounded-full text-[9px] font-bold tracking-wide transition-all border ${
                 filterTab === tab
                   ? 'bg-primary/15 text-primary border-primary/30'
-                  : 'bg-white/5 text-on-surface-variant border-transparent hover:text-white'
+                  : 'bg-white/5 text-on-surface-variant border-transparent hover:text-on-surface'
               }`}
             >
               {tab}

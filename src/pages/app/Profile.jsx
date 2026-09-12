@@ -253,7 +253,7 @@ export default function Profile() {
                 <span className="truncate">{displayKey}</span>
                 <button
                   onClick={() => setShowKey(!showKey)}
-                  className="text-on-surface-variant hover:text-white p-0.5 ml-2 shrink-0"
+                  className="text-on-surface-variant hover:text-on-surface p-0.5 ml-2 shrink-0"
                 >
                   <span className="material-symbols-outlined text-sm">
                     {showKey ? "visibility_off" : "visibility"}
@@ -270,7 +270,7 @@ export default function Profile() {
               <button
                 onClick={handleRegen}
                 disabled={regenerating}
-                className="border border-glass-stroke hover:bg-white/5 text-on-surface-variant hover:text-white py-2 px-3 rounded-lg disabled:opacity-50"
+                className="border border-glass-stroke hover:bg-white/5 text-on-surface-variant hover:text-on-surface py-2 px-3 rounded-lg disabled:opacity-50"
                 title="Regenerate API Key"
               >
                 <span className="material-symbols-outlined text-sm">refresh</span>

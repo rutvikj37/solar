@@ -252,7 +252,7 @@ export default function LocationSearchField({
                 <button
                   type="button"
                   onClick={clearResolved}
-                  className="text-on-surface-variant hover:text-white p-1 shrink-0"
+                  className="text-on-surface-variant hover:text-on-surface p-1 shrink-0"
                   title="Change location"
                 >
                   <span className="material-symbols-outlined text-base">edit</span>
@@ -292,7 +292,7 @@ export default function LocationSearchField({
                           onAreaQueryChange(ex);
                           onAreaResolved?.(null);
                         }}
-                        className="px-2.5 py-1 rounded-full bg-white/5 border border-glass-stroke text-[10px] text-on-surface-variant hover:text-white hover:border-primary/40 transition-colors"
+                        className="px-2.5 py-1 rounded-full bg-white/5 border border-glass-stroke text-[10px] text-on-surface-variant hover:text-on-surface hover:border-primary/40 transition-colors"
                       >
                         {ex}
                       </button>
@@ -352,7 +352,7 @@ export default function LocationSearchField({
                 className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
                   radius === opt.value
                     ? 'bg-primary text-on-primary border-primary'
-                    : 'bg-white/5 text-on-surface-variant border-glass-stroke hover:text-white hover:border-primary/40'
+                    : 'bg-white/5 text-on-surface-variant border-glass-stroke hover:text-on-surface hover:border-primary/40'
                 }`}
               >
                 {opt.label}

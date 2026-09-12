@@ -185,7 +185,7 @@ export default function PropertyDrawer({
                 className={`flex-1 py-3 text-center transition-all ${
                   activeTab === tab
                     ? 'text-primary border-b-2 border-primary bg-primary/5 font-bold'
-                    : 'text-on-surface-variant hover:text-white'
+                    : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 {tab}

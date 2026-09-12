@@ -20,7 +20,7 @@ export default function MapModePill({ mapType, onChange, dimmed = false }) {
             className={`px-3.5 py-1.5 rounded-full text-[10px] font-extrabold tracking-wider transition-all uppercase ${
               active
                 ? 'bg-primary text-on-primary shadow-lg shadow-primary/30 scale-105'
-                : 'text-slate-200 hover:text-white hover:bg-white/10 bg-transparent'
+                : 'text-slate-200 hover:text-on-surface hover:bg-white/10 bg-transparent'
             }`}
           >
             {type}

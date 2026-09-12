@@ -1,10 +1,10 @@
 export const MARKETPLACE_TABS = [
-  { id: 'opportunities', label: 'Available Opportunities' },
+  { id: 'opportunities', label: 'Opportunities' },
   { id: 'bids', label: 'My Bids' },
-  { id: 'won', label: 'Won Leads' },
-  { id: 'active', label: 'Active Leads' },
-  { id: 'closed', label: 'Closed Leads' },
-  { id: 'wallet', label: 'Bid Wallet' },
+  { id: 'won', label: 'Won' },
+  { id: 'active', label: 'Active' },
+  { id: 'closed', label: 'Closed' },
+  { id: 'wallet', label: 'Wallet' },
 ];
 
 export const OUTCOME_OPTIONS = [
@@ -54,10 +54,10 @@ export const MARKETPLACE_WALLET_PACKS = [
 ];
 
 export function strengthClass(strength) {
-  if (strength === 'Leading') return 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30';
-  if (strength === 'Competitive') return 'text-amber-300 bg-amber-500/15 border-amber-500/30';
-  if (strength === 'Behind') return 'text-slate-300 bg-slate-500/15 border-slate-500/30';
-  return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+  if (strength === 'Leading') return 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30';
+  if (strength === 'Competitive') return 'text-amber-500 bg-amber-500/15 border-amber-500/30';
+  if (strength === 'Behind') return 'text-on-surface-variant bg-surface-container border-glass-stroke';
+  return 'text-on-surface-variant bg-surface-container border-glass-stroke';
 }
 
 export function formatMoney(n) {

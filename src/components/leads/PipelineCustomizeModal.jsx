@@ -110,7 +110,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
           <button
             type="button"
             onClick={onClose}
-            className="text-on-surface-variant hover:text-white"
+            className="text-on-surface-variant hover:text-on-surface"
             aria-label="Close"
           >
             <span className="material-symbols-outlined">close</span>
@@ -128,7 +128,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
                   type="button"
                   disabled={!canMove || index === 0}
                   onClick={() => move(index, -1)}
-                  className="text-on-surface-variant hover:text-white disabled:opacity-30"
+                  className="text-on-surface-variant hover:text-on-surface disabled:opacity-30"
                   aria-label="Move up"
                 >
                   <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
@@ -137,7 +137,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
                   type="button"
                   disabled={!canMove || index === stages.length - 1}
                   onClick={() => move(index, 1)}
-                  className="text-on-surface-variant hover:text-white disabled:opacity-30"
+                  className="text-on-surface-variant hover:text-on-surface disabled:opacity-30"
                   aria-label="Move down"
                 >
                   <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
@@ -202,7 +202,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
             type="button"
             onClick={handleReset}
             disabled={!!busy}
-            className="text-xs font-bold text-on-surface-variant hover:text-white disabled:opacity-50"
+            className="text-xs font-bold text-on-surface-variant hover:text-on-surface disabled:opacity-50"
           >
             {busy === 'reset' ? 'Resetting…' : 'Reset defaults'}
           </button>

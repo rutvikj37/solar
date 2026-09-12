@@ -149,7 +149,7 @@ export default function Sidebar({
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Navigation</span>
           <button
             type="button"
-            className="text-slate-400 hover:text-white p-1 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            className="text-slate-400 hover:text-on-surface p-1 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
             onClick={handleMobileClose}
             aria-label="Close navigation"
           >
@@ -261,7 +261,7 @@ export default function Sidebar({
                       type="button"
                       title={tooltip}
                       onClick={() => handleAction(item.action)}
-                      className={`w-full flex items-center rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-all active:scale-[0.98] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
+                      className={`w-full flex items-center rounded-lg text-xs font-semibold text-slate-300 hover:text-on-surface hover:bg-white/5 transition-all active:scale-[0.98] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
                         collapsed
                           ? 'lg:justify-center lg:px-0 lg:py-2.5 lg:mx-auto lg:w-11'
                           : 'gap-3 px-4 py-2'

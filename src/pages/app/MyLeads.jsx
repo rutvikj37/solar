@@ -290,7 +290,7 @@ export default function MyLeads() {
               type="button"
               onClick={() => setView('list')}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
-                viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-white'
+                viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
               <span className="material-symbols-outlined text-base">view_list</span>
@@ -300,7 +300,7 @@ export default function MyLeads() {
               type="button"
               onClick={() => setView('kanban')}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-bold transition-all ${
-                viewMode === 'kanban' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-white'
+                viewMode === 'kanban' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
               <span className="material-symbols-outlined text-base">view_kanban</span>
@@ -412,7 +412,7 @@ export default function MyLeads() {
                       className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border ${
                         active
                           ? 'bg-primary/15 text-primary border-primary/30'
-                          : 'bg-white/5 text-on-surface-variant border-transparent hover:text-white hover:border-glass-stroke'
+                          : 'bg-white/5 text-on-surface-variant border-transparent hover:text-on-surface hover:border-glass-stroke'
                       }`}
                     >
                       {tab}
@@ -522,18 +522,18 @@ export default function MyLeads() {
                           />
                         </th>
                         <th className="px-3 py-3 min-w-[220px]">
-                          <button type="button" onClick={() => toggleSort('owner_name')} className="inline-flex items-center gap-1 hover:text-white">
+                          <button type="button" onClick={() => toggleSort('owner_name')} className="inline-flex items-center gap-1 hover:text-on-surface">
                             Lead / Property <SortIcon column="owner_name" />
                           </button>
                         </th>
                         <th className="px-3 py-3">
-                          <button type="button" onClick={() => toggleSort('lead_score')} className="inline-flex items-center gap-1 hover:text-white">
+                          <button type="button" onClick={() => toggleSort('lead_score')} className="inline-flex items-center gap-1 hover:text-on-surface">
                             Lead Score <SortIcon column="lead_score" />
                           </button>
                         </th>
                         <th className="px-3 py-3">Solar Score</th>
                         <th className="px-3 py-3">
-                          <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-white">
+                          <button type="button" onClick={() => toggleSort('status')} className="inline-flex items-center gap-1 hover:text-on-surface">
                             Stage <SortIcon column="status" />
                           </button>
                         </th>
@@ -543,7 +543,7 @@ export default function MyLeads() {
                         <th className="px-3 py-3">Assigned To</th>
                         <th className="px-3 py-3">Lead Source</th>
                         <th className="px-3 py-3">
-                          <button type="button" onClick={() => toggleSort('created_at')} className="inline-flex items-center gap-1 hover:text-white">
+                          <button type="button" onClick={() => toggleSort('created_at')} className="inline-flex items-center gap-1 hover:text-on-surface">
                             Created <SortIcon column="created_at" />
                           </button>
                         </th>

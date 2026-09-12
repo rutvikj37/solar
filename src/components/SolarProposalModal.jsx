@@ -432,7 +432,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
               PDF
             </button>
 
-            <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
+            <button onClick={onClose} className="text-slate-400 hover:text-on-surface p-1">
               <span className="material-symbols-outlined text-sm">close</span>
             </button>
           </div>

@@ -461,6 +461,35 @@ html.light .text-on-primary {
   color: var(--color-on-primary);
 }
 
+/* Opacity white text → readable on light surfaces (global) */
+html.light .text-white\/95 { color: color-mix(in oklab, var(--color-on-surface) 95%, transparent); }
+html.light .text-white\/90 { color: color-mix(in oklab, var(--color-on-surface) 90%, transparent); }
+html.light .text-white\/80 { color: color-mix(in oklab, var(--color-on-surface) 80%, transparent); }
+html.light .text-white\/70 { color: color-mix(in oklab, var(--color-on-surface) 70%, transparent); }
+html.light .text-white\/65 { color: color-mix(in oklab, var(--color-on-surface) 65%, transparent); }
+html.light .text-white\/60 { color: color-mix(in oklab, var(--color-on-surface) 60%, transparent); }
+html.light .text-white\/55 { color: color-mix(in oklab, var(--color-on-surface) 55%, transparent); }
+html.light .text-white\/50 { color: color-mix(in oklab, var(--color-on-surface) 50%, transparent); }
+html.light .text-white\/45 { color: color-mix(in oklab, var(--color-on-surface) 45%, transparent); }
+html.light .text-white\/40 { color: color-mix(in oklab, var(--color-on-surface) 40%, transparent); }
+html.light .text-white\/35 { color: color-mix(in oklab, var(--color-on-surface) 35%, transparent); }
+html.light .text-white\/30 { color: color-mix(in oklab, var(--color-on-surface) 30%, transparent); }
+html.light .text-white\/25 { color: color-mix(in oklab, var(--color-on-surface) 25%, transparent); }
+html.light .text-white\/20 { color: color-mix(in oklab, var(--color-on-surface) 20%, transparent); }
+html.light .text-white\/15 { color: color-mix(in oklab, var(--color-on-surface) 15%, transparent); }
+html.light .text-white\/10 { color: color-mix(in oklab, var(--color-on-surface) 10%, transparent); }
+
+/* Hover white → on-surface so labels stay visible in light mode */
+html.light .hover\:text-white:hover,
+html.light .group:hover .group-hover\:text-white,
+html.light .group-hover\:text-white {
+  color: var(--color-on-surface) !important;
+}
+html.light .hover\:text-slate-200:hover,
+html.light .hover\:text-slate-100:hover {
+  color: var(--color-on-surface) !important;
+}
+
 html.light .text-slate-200,
 html.light .text-slate-300 {
   color: oklch(0.38 0.03 255);
@@ -472,21 +501,28 @@ html.light .text-slate-500 {
 
 html.light .bg-white\/5,
 html.light .bg-white\/\[0\.02\],
-html.light .bg-white\/\[0\.03\] {
+html.light .bg-white\/\[0\.03\],
+html.light .bg-white\/\[0\.04\] {
   background-color: oklch(0.3 0.04 260 / 0.05);
 }
 html.light .bg-white\/10,
+html.light .bg-white\/15,
+html.light .hover\:bg-white\/5:hover,
 html.light .hover\:bg-white\/10:hover,
-html.light .hover\:bg-white\/15:hover {
+html.light .hover\:bg-white\/15:hover,
+html.light .hover\:bg-white\/20:hover,
+html.light .hover\:bg-white\/25:hover {
   background-color: oklch(0.3 0.04 260 / 0.08);
 }
 html.light .border-white\/5,
-html.light .border-white\/10 {
+html.light .border-white\/10,
+html.light .border-white\/15 {
   border-color: oklch(0.35 0.03 260 / 0.12);
 }
 
 html.light .bg-\[\#0B1220\],
-html.light .bg-\[\#0F172A\] {
+html.light .bg-\[\#0F172A\],
+html.light .bg-\[\#0d1520\] {
   background-color: oklch(0.94 0.012 250) !important;
 }
 
@@ -494,6 +530,19 @@ html.light select,
 html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 html.light textarea {
   color-scheme: light;
+  color: var(--color-on-surface);
+}
+
+/* Interactive affordance — global */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 /* Keep navy sidebar + top chrome dark (List/Kanban chrome) */
@@ -517,6 +566,10 @@ html.light .app-sidebar .text-slate-500 {
   color: oklch(0.72 0.02 260) !important;
 }
 html.light .app-sidebar .text-white {
+  color: oklch(0.98 0.005 250) !important;
+}
+html.light .app-sidebar .hover\:text-on-surface:hover,
+html.light .app-sidebar .group:hover .group-hover\:text-on-surface {
   color: oklch(0.98 0.005 250) !important;
 }
 
@@ -560,4 +613,22 @@ html.light .crm-kpi {
 }
 html.light .lead-360-tabs {
   background: #ffffff;
+}
+
+/* Marketplace: readable amber banners + soft cards in light mode */
+html.light .text-amber-100,
+html.light .text-amber-200 {
+  color: oklch(0.42 0.12 75);
+}
+html.light .text-cyan-300 {
+  color: oklch(0.45 0.1 220);
+}
+html.light .text-amber-300 {
+  color: oklch(0.48 0.12 75);
+}
+html.light .text-red-300 {
+  color: oklch(0.5 0.18 25);
+}
+html.light .text-emerald-300 {
+  color: oklch(0.42 0.12 155);
 }

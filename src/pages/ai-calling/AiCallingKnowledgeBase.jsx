@@ -101,7 +101,7 @@ export default function AiCallingKnowledgeBase() {
                   {art.category}
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => openEdit(art)} className="text-slate-400 hover:text-white">
+                  <button onClick={() => openEdit(art)} className="text-slate-400 hover:text-on-surface">
                     <span className="material-symbols-outlined text-sm">edit</span>
                   </button>
                   <button onClick={() => handleDelete(art.id)} className="text-red-400 hover:text-red-300">

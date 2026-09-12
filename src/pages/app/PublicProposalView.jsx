@@ -389,7 +389,7 @@ export default function PublicProposalView() {
                     key={mode}
                     onClick={() => setFinancingTracked(mode)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
-                      financingType === mode ? 'bg-primary text-on-primary shadow-md' : 'text-slate-400 hover:text-white'
+                      financingType === mode ? 'bg-primary text-on-primary shadow-md' : 'text-slate-400 hover:text-on-surface'
                     }`}
                   >
                     {mode}
@@ -479,7 +479,7 @@ export default function PublicProposalView() {
                       className={`p-3 rounded-xl text-left border transition-all ${
                         batteryType === b.id
                           ? 'border-primary bg-primary/10 text-white'
-                          : 'border-white/5 bg-white/5 text-slate-400 hover:text-white'
+                          : 'border-white/5 bg-white/5 text-slate-400 hover:text-on-surface'
                       }`}
                     >
                       <p className="font-bold text-xs">{b.label}</p>
@@ -555,7 +555,7 @@ export default function PublicProposalView() {
                 <h3 className="font-bold text-white text-base">Electronic Signature (E-Sign)</h3>
                 <p className="text-[10px] text-slate-400 font-mono">Proposal #{slug}</p>
               </div>
-              <button onClick={() => setShowSignModal(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setShowSignModal(false)} className="text-slate-400 hover:text-on-surface">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>

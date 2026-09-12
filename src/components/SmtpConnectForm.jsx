@@ -115,7 +115,7 @@ export default function SmtpConnectForm({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-xs text-on-surface-variant hover:text-white"
+            className="px-4 py-2 rounded-lg text-xs text-on-surface-variant hover:text-on-surface"
           >
             Cancel
           </button>

@@ -112,7 +112,7 @@ export default function AiCallingLiveMonitor() {
           <button
             onClick={() => setActiveTab('all')}
             className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-              activeTab === 'all' ? 'bg-primary text-on-primary shadow' : 'text-on-surface-variant hover:text-white'
+              activeTab === 'all' ? 'bg-primary text-on-primary shadow' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
             All Call Logs ({totalCalls})
@@ -120,7 +120,7 @@ export default function AiCallingLiveMonitor() {
           <button
             onClick={() => setActiveTab('live')}
             className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
-              activeTab === 'live' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-on-surface-variant hover:text-white'
+              activeTab === 'live' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-current animate-ping" />
@@ -267,7 +267,7 @@ export default function AiCallingLiveMonitor() {
               </div>
               <button
                 onClick={() => setSelectedCall(null)}
-                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white"
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-on-surface"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>

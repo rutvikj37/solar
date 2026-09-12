@@ -48,7 +48,7 @@ export default function AiCallingCallDetail() {
   return (
     <>
       <div className="mb-8 flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-xl bg-white/5 text-slate-300 hover:text-white">
+        <button onClick={() => navigate(-1)} className="p-2 rounded-xl bg-white/5 text-slate-300 hover:text-on-surface">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
         <div>

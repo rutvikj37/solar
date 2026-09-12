@@ -78,7 +78,7 @@ export default function DashboardTour({ forceOpen = false, onClose }) {
             </p>
             <h3 className="text-lg font-bold text-white mt-1">{current.title}</h3>
           </div>
-          <button type="button" onClick={() => close(true)} className="text-slate-400 hover:text-white p-1">
+          <button type="button" onClick={() => close(true)} className="text-slate-400 hover:text-on-surface p-1">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         </div>

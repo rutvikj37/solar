@@ -902,7 +902,7 @@ export default function Billing() {
               <button
                 type="button"
                 onClick={closeInvoice}
-                className="text-on-surface-variant hover:text-white"
+                className="text-on-surface-variant hover:text-on-surface"
                 aria-label="Close invoice"
               >
                 <span className="material-symbols-outlined text-xl">close</span>

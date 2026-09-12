@@ -27,7 +27,7 @@ export default function AskHeraFab({ className = '' }) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-on-surface-variant hover:text-white p-0.5"
+              className="text-on-surface-variant hover:text-on-surface p-0.5"
               aria-label="Close Ask Hera"
             >
               <span className="material-symbols-outlined text-sm">close</span>

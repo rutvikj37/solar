@@ -271,7 +271,7 @@ export default function Appointments() {
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-1 rounded-lg text-on-surface-variant hover:text-white"
+                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>

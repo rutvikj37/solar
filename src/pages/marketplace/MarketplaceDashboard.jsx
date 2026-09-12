@@ -4,6 +4,7 @@ import { toast, Toaster } from 'sonner';
 import { API_BASE } from '../../config.js';
 import { isAdminRole } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useTheme } from '../../context/ThemeContext.jsx';
 import BiddingCountdown from '../../components/marketplace/BiddingCountdown.jsx';
 import {
   DISPUTE_TYPES,
@@ -81,6 +82,7 @@ function describeRazorpayFailure(resp) {
 
 export default function MarketplaceDashboard() {
   const { user, unlimitedCredits } = useAuth();
+  const { theme } = useTheme();
   const isAdmin = isAdminRole(user?.role) || unlimitedCredits;
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState('opportunities');
@@ -474,23 +476,23 @@ export default function MarketplaceDashboard() {
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto">
-      <Toaster theme="dark" position="top-right" />
+      <Toaster theme={theme === 'light' ? 'light' : 'dark'} position="top-right" />
       <div>
-        <h1 className="text-2xl font-display font-bold text-white">Marketplace</h1>
-        <p className="text-sm text-white/55 mt-1">
+        <h1 className="text-2xl font-display font-bold text-on-surface">Marketplace</h1>
+        <p className="text-sm text-on-surface-variant mt-1">
           Bid on masked solar opportunities. Contact details unlock only when you win.
         </p>
       </div>
 
       {isAdmin && (
         <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-amber-100">
+          <div className="text-sm text-amber-200">
             <span className="font-bold">Admin:</span> Homeowner form submissions are approved in the operator
             console — not on this installer bidding page.
           </div>
           <Link
             to="/admin?tab=marketplace&mkt=leads"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 text-black text-xs font-bold px-3 py-2 hover:bg-amber-300"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 text-black text-xs font-bold px-3 py-2 hover:bg-amber-300 cursor-pointer"
           >
             <span className="material-symbols-outlined text-sm">fact_check</span>
             Open marketplace approvals
@@ -498,16 +500,16 @@ export default function MarketplaceDashboard() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-glass-stroke pb-3 -mx-1 px-1">
         {MARKETPLACE_TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+            className={`shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
               tab === t.id
-                ? 'bg-primary text-black'
-                : 'bg-white/5 text-white/70 hover:bg-white/10'
+                ? 'bg-primary text-on-primary'
+                : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
             }`}
           >
             {t.label}
@@ -515,15 +517,15 @@ export default function MarketplaceDashboard() {
         ))}
       </div>
 
-      {loading && <p className="text-sm text-white/50">Loading…</p>}
+      {loading && <p className="text-sm text-on-surface-variant">Loading…</p>}
 
       {tab === 'opportunities' && (
         <div className="space-y-6">
-          <section className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+          <section className="rounded-xl border border-glass-stroke bg-surface-container p-4 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <h2 className="text-sm font-semibold text-white">Your service area</h2>
-                <p className="text-[11px] text-white/45 mt-1">
+                <h2 className="text-sm font-semibold text-on-surface">Your service area</h2>
+                <p className="text-[11px] text-on-surface-variant mt-1">
                   Add at least one ZIP code or state to see homeowner inquiries in your territory.
                   Opportunities are hidden until you choose where you work.
                 </p>
@@ -546,7 +548,7 @@ export default function MarketplaceDashboard() {
                         : `Verification: ${verificationStatus || 'pending'}`}
                   </span>
                   {(needsVerification || accountBlocked) && (
-                    <p className="text-[10px] text-white/45 max-w-[220px]">
+                    <p className="text-[10px] text-on-surface-variant max-w-[220px]">
                       {accountBlocked
                         ? 'Contact support or an admin to restore marketplace access.'
                         : 'Ask an admin to verify your installer account to see all opportunities.'}
@@ -557,7 +559,7 @@ export default function MarketplaceDashboard() {
             </div>
 
             <form onSubmit={addArea} className="flex flex-wrap gap-2 items-end">
-              <label className="text-xs text-white/60">
+              <label className="text-xs text-on-surface-variant">
                 ZIP
                 <input
                   className={inputCls}
@@ -566,7 +568,7 @@ export default function MarketplaceDashboard() {
                   placeholder="85001"
                 />
               </label>
-              <label className="text-xs text-white/60">
+              <label className="text-xs text-on-surface-variant">
                 State
                 <input
                   className={inputCls}
@@ -575,7 +577,7 @@ export default function MarketplaceDashboard() {
                   placeholder="AZ"
                 />
               </label>
-              <label className="text-xs text-white/60">
+              <label className="text-xs text-on-surface-variant">
                 Radius (mi)
                 <input
                   className={inputCls}
@@ -585,7 +587,7 @@ export default function MarketplaceDashboard() {
               </label>
               <button
                 type="submit"
-                className="rounded-lg bg-primary/90 text-black text-xs font-semibold px-3 py-2"
+                className="rounded-lg bg-primary text-on-primary text-xs font-semibold px-3 py-2 cursor-pointer hover:brightness-110"
               >
                 Add area
               </button>
@@ -594,7 +596,7 @@ export default function MarketplaceDashboard() {
               {areas.map((a) => (
                 <li
                   key={a.id}
-                  className="text-xs rounded-full border border-white/15 px-3 py-1 flex items-center gap-2"
+                  className="text-xs rounded-full border border-glass-stroke px-3 py-1 flex items-center gap-2"
                 >
                   {[a.zip, a.state, a.radius_miles ? `${a.radius_miles}mi` : null]
                     .filter(Boolean)
@@ -617,15 +619,15 @@ export default function MarketplaceDashboard() {
           </section>
 
           {areas.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-amber-400/30 bg-amber-500/5 p-6 text-sm text-white/70 space-y-2">
+            <div className="rounded-xl border border-dashed border-amber-400/30 bg-amber-500/5 p-6 text-sm text-on-surface-variant space-y-2">
               <p className="font-semibold text-amber-100">Choose your service area first</p>
-              <p className="text-xs text-white/50 leading-relaxed">
+              <p className="text-xs text-on-surface-variant leading-relaxed">
                 Bidders only see homeowner inquiries that match their territory. Add a ZIP code
                 (e.g. 85001) or state (e.g. AZ) with an optional radius, then relevant open leads
                 will appear here.
               </p>
               {oppFilter?.openLeadCount > 0 && (
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-on-surface-variant">
                   {oppFilter.openLeadCount} open lead{oppFilter.openLeadCount === 1 ? '' : 's'}{' '}
                   nationwide — waiting for your area selection.
                 </p>
@@ -653,10 +655,10 @@ export default function MarketplaceDashboard() {
             {oppFilter &&
               oppFilter.openLeadCount > 0 &&
               oppFilter.visibleCount < oppFilter.openLeadCount && (
-                <p className="text-xs text-white/50">
+                <p className="text-xs text-on-surface-variant">
                   Showing{' '}
-                  <span className="text-white/80 font-semibold">{oppFilter.visibleCount}</span> of{' '}
-                  <span className="text-white/80 font-semibold">{oppFilter.openLeadCount}</span> open
+                  <span className="text-on-surface font-semibold">{oppFilter.visibleCount}</span> of{' '}
+                  <span className="text-on-surface font-semibold">{oppFilter.openLeadCount}</span> open
                   opportunities
                   {oppFilter.hiddenByAccountStatus
                     ? ' (account restricted)'
@@ -671,13 +673,13 @@ export default function MarketplaceDashboard() {
             {opportunities.map((o) => (
               <article
                 key={o.id}
-                className="rounded-xl border border-white/10 bg-white/[0.04] p-4 space-y-3"
+                className="rounded-xl border border-glass-stroke bg-surface-container p-4 space-y-3"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="text-xs text-white/45 font-mono">{o.leadCode}</div>
-                    <h3 className="text-base font-semibold text-white">{o.locationLabel}</h3>
-                    <p className="text-xs text-white/55 mt-1">
+                    <div className="text-xs text-on-surface-variant font-mono">{o.leadCode}</div>
+                    <h3 className="text-base font-semibold text-on-surface">{o.locationLabel}</h3>
+                    <p className="text-xs text-on-surface-variant mt-1">
                       {o.propertyType} · Bill {o.electricityBillRange || '—'} · Timeline{' '}
                       {o.installationTimeline || '—'}
                     </p>
@@ -686,18 +688,18 @@ export default function MarketplaceDashboard() {
                     <BiddingCountdown closesAt={o.biddingClosesAt} />
                     <div className="text-right">
                       <div className="text-lg font-bold text-primary">{o.leadScore ?? o.opportunityScore}</div>
-                      <div className="text-[10px] uppercase tracking-wide text-white/40">
+                      <div className="text-[10px] uppercase tracking-wide text-on-surface-variant">
                         Lead score{o.leadScoreTier ? ` · ${o.leadScoreTier}` : ''}
                       </div>
                       {o.solarPotentialScore != null && o.solarPotentialScore > 0 && (
-                        <div className="text-[10px] text-white/35 mt-0.5">
+                        <div className="text-[10px] text-on-surface-variant mt-0.5">
                           Solar {o.solarPotentialScore}/100
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-white/65">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-on-surface-variant">
                   <Meta label="Roof est." value={o.estimatedRoofSqft ? `${o.estimatedRoofSqft} sqft` : '—'} />
                   <Meta label="Solar est." value={o.estimatedSolarKw ? `${o.estimatedSolarKw} kW` : '—'} />
                   <Meta label="Potential" value={o.solarPotentialLabel || '—'} />
@@ -740,7 +742,7 @@ export default function MarketplaceDashboard() {
                     type="button"
                     onClick={() => placeBid(o.id)}
                     disabled={!wallet.canBid || biddingLeadId != null}
-                    className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded-lg bg-primary text-on-primary text-xs font-bold px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:brightness-110"
                   >
                     {biddingLeadId === o.id
                       ? 'Placing…'
@@ -761,7 +763,7 @@ export default function MarketplaceDashboard() {
               </article>
             ))}
             {!loading && !opportunities.length && (
-              <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/55 space-y-2">
+              <div className="rounded-xl border border-dashed border-glass-stroke p-5 text-sm text-on-surface-variant space-y-2">
                 {accountBlocked && (oppFilter?.openLeadCount > 0 || oppFilter?.hiddenByAccountStatus > 0) ? (
                   <>
                     <p>
@@ -769,7 +771,7 @@ export default function MarketplaceDashboard() {
                       <span className="text-red-300 font-semibold">{verificationStatus}</span>, so
                       marketplace opportunities are hidden.
                     </p>
-                    <p className="text-xs text-white/40">
+                    <p className="text-xs text-on-surface-variant">
                       Contact an admin or support to restore access.
                     </p>
                   </>
@@ -777,14 +779,14 @@ export default function MarketplaceDashboard() {
                   <>
                     <p>
                       There {oppFilter?.openLeadCount === 1 ? 'is' : 'are'}{' '}
-                      <span className="text-white/80 font-semibold">
+                      <span className="text-on-surface font-semibold">
                         {oppFilter?.openLeadCount || 0}
                       </span>{' '}
                       open lead{(oppFilter?.openLeadCount || 0) === 1 ? '' : 's'}, but your account
                       still needs verification (
                       <span className="text-amber-300">{verificationStatus || 'pending'}</span>).
                     </p>
-                    <p className="text-xs text-white/40">
+                    <p className="text-xs text-on-surface-variant">
                       Ask an admin to verify your installer account under Admin → Marketplace →
                       Installers.
                     </p>
@@ -797,12 +799,12 @@ export default function MarketplaceDashboard() {
                   <>
                     <p>
                       There {oppFilter.openLeadCount === 1 ? 'is' : 'are'}{' '}
-                      <span className="text-white/80 font-semibold">{oppFilter.openLeadCount}</span>{' '}
+                      <span className="text-on-surface font-semibold">{oppFilter.openLeadCount}</span>{' '}
                       open lead{oppFilter.openLeadCount === 1 ? '' : 's'}, but none match your
                       coverage filter ({oppFilter.serviceAreaCount} area
                       {oppFilter.serviceAreaCount === 1 ? '' : 's'}).
                     </p>
-                    <p className="text-xs text-white/40">
+                    <p className="text-xs text-on-surface-variant">
                       Delete mismatched ZIP/state rows above, or add the lead&apos;s ZIP/state, to
                       see them.
                     </p>
@@ -810,7 +812,7 @@ export default function MarketplaceDashboard() {
                 ) : (
                   <>
                     <p>No open homeowner inquiries yet.</p>
-                    <p className="text-xs text-white/40">
+                    <p className="text-xs text-on-surface-variant">
                       New opportunities appear here after admin approves homeowner submissions.
                     </p>
                   </>
@@ -828,15 +830,15 @@ export default function MarketplaceDashboard() {
           {bids.map((b) => (
             <div
               key={b.id}
-              className="rounded-xl border border-white/10 bg-white/[0.04] p-4 flex flex-wrap justify-between gap-3"
+              className="rounded-xl border border-glass-stroke bg-surface-container p-4 flex flex-wrap justify-between gap-3"
             >
               <div className="space-y-1">
-                <div className="font-mono text-xs text-white/45">{b.leadCode}</div>
-                <div className="font-semibold">{b.locationLabel || b.zip}</div>
-                <div className="text-xs text-white/55">
+                <div className="font-mono text-xs text-on-surface-variant">{b.leadCode}</div>
+                <div className="font-semibold text-on-surface">{b.locationLabel || b.zip}</div>
+                <div className="text-xs text-on-surface-variant">
                   Lead: {b.leadStatus} · Bid: {b.status}
                   {isBiddingOpen(b.leadStatus) && b.biddingClosesAt && (
-                    <span className="text-white/40"> · closes {formatWhen(b.biddingClosesAt)}</span>
+                    <span className="text-on-surface-variant"> · closes {formatWhen(b.biddingClosesAt)}</span>
                   )}
                 </div>
               </div>
@@ -844,7 +846,7 @@ export default function MarketplaceDashboard() {
                 {isBiddingOpen(b.leadStatus) && (
                   <BiddingCountdown closesAt={b.biddingClosesAt} compact />
                 )}
-                <div className="font-bold">{formatMoney(b.amount)}</div>
+                <div className="font-bold text-on-surface">{formatMoney(b.amount)}</div>
                 <span
                   className={`inline-block px-2 py-0.5 rounded border text-[10px] ${strengthClass(b.strength)}`}
                 >
@@ -854,7 +856,7 @@ export default function MarketplaceDashboard() {
             </div>
           ))}
           {!loading && !bids.length && (
-            <p className="text-sm text-white/50">You have not placed any bids yet.</p>
+            <p className="text-sm text-on-surface-variant">You have not placed any bids yet.</p>
           )}
         </div>
       )}
@@ -878,18 +880,18 @@ export default function MarketplaceDashboard() {
       {tab === 'wallet' && (
         <div className="space-y-4">
                     <div className="rounded-xl border border-primary/30 bg-primary/10 p-5">
-            <div className="text-xs uppercase tracking-wide text-white/50">Bid wallet balance</div>
+            <div className="text-xs uppercase tracking-wide text-on-surface-variant">Bid wallet balance</div>
             <div className="text-3xl font-bold text-primary mt-1">{formatMoney(wallet.balance)}</div>
-            <p className="text-xs text-white/50 mt-2">
+            <p className="text-xs text-on-surface-variant mt-2">
               Bid wallet (USD) — not used for map lead unlocks. Minimum{' '}
               {formatMoney(wallet.minBalanceToBid || 25)} balance required to bid on opportunities.
             </p>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4 space-y-3">
+          <div className="rounded-xl border border-glass-stroke bg-surface-container p-4 space-y-3">
             <div>
-              <h2 className="text-sm font-semibold text-white">Top up bid wallet</h2>
-              <p className="text-xs text-white/55 mt-1 leading-relaxed">
+              <h2 className="text-sm font-semibold text-on-surface">Top up bid wallet</h2>
+              <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
                 Add at least {formatMoney(wallet.minBalanceToBid || 25)} before placing bids.
                 Winning bids debit this balance. Map lead unlocks use separate lead credits.
               </p>
@@ -914,7 +916,7 @@ export default function MarketplaceDashboard() {
                 startWalletCheckout({ amount: walletAmount });
               }}
             >
-              <label className="text-xs text-white/60 flex-1 min-w-[140px]">
+              <label className="text-xs text-on-surface-variant flex-1 min-w-[140px]">
                 Custom amount (USD)
                 <input
                   className={inputCls}
@@ -931,13 +933,13 @@ export default function MarketplaceDashboard() {
               <button
                 type="submit"
                 disabled={walletPaying}
-                className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2 disabled:opacity-50"
+                className="rounded-lg bg-primary text-on-primary text-xs font-bold px-4 py-2 disabled:opacity-50 cursor-pointer hover:brightness-110"
               >
                 {walletPaying ? 'Processing…' : 'Top up wallet'}
               </button>
             </form>
             {isDevBuild && (
-              <p className="text-[10px] text-white/40">
+              <p className="text-[10px] text-on-surface-variant">
                 Dev mode may credit instantly without Razorpay when payment keys are missing.
               </p>
             )}
@@ -945,15 +947,15 @@ export default function MarketplaceDashboard() {
 
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
             <h2 className="text-sm font-semibold text-amber-200">When you win a bid</h2>
-            <p className="text-xs text-white/70 leading-relaxed">
+            <p className="text-xs text-on-surface-variant leading-relaxed">
               Your winning bid amount is debited from this wallet. If the balance is too low at win
-              time, complete payment within <strong className="text-white">10 minutes</strong> — a
+              time, complete payment within <strong className="text-on-surface">10 minutes</strong> — a
               payment due timer is set on the won lead.
             </p>
           </div>
-          <div className="rounded-xl border border-white/10 overflow-hidden">
-            <div className="px-3 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-white/50">Recent wallet activity</p>
+          <div className="rounded-xl border border-glass-stroke overflow-hidden">
+            <div className="px-3 py-2 border-b border-glass-stroke flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-on-surface-variant">Recent wallet activity</p>
               <a
                 href="/billing"
                 className="text-[11px] font-semibold text-primary hover:underline"
@@ -961,32 +963,40 @@ export default function MarketplaceDashboard() {
                 View invoices & PDFs on Billing →
               </a>
             </div>
-            <table className="w-full text-sm">
-              <thead className="bg-white/5 text-left text-xs text-white/50">
-                <tr>
-                  <th className="px-3 py-2">When</th>
-                  <th className="px-3 py-2">Type</th>
-                  <th className="px-3 py-2">Amount</th>
-                  <th className="px-3 py-2">Balance</th>
-                  <th className="px-3 py-2">Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {wallet.ledger.map((row) => (
-                  <tr key={row.id} className="border-t border-white/5">
-                    <td className="px-3 py-2 text-xs text-white/60">{formatWhen(row.created_at)}</td>
-                    <td className="px-3 py-2">{formatLedgerEntryType(row.entry_type)}</td>
-                    <td className={`px-3 py-2 ${Number(row.amount) < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-                      {formatMoney(row.amount)}
-                    </td>
-                    <td className="px-3 py-2">{formatMoney(row.balance_after)}</td>
-                    <td className="px-3 py-2 text-xs text-white/50">{row.note || '—'}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead className="bg-surface-container text-left text-xs text-on-surface-variant">
+                  <tr>
+                    <th className="px-3 py-2">When</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Amount</th>
+                    <th className="px-3 py-2">Balance</th>
+                    <th className="px-3 py-2">Note</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {wallet.ledger.map((row) => (
+                    <tr key={row.id} className="border-t border-glass-stroke">
+                      <td className="px-3 py-2 text-xs text-on-surface-variant whitespace-nowrap">
+                        {formatWhen(row.created_at)}
+                      </td>
+                      <td className="px-3 py-2">{formatLedgerEntryType(row.entry_type)}</td>
+                      <td
+                        className={`px-3 py-2 ${
+                          Number(row.amount) < 0 ? 'text-red-400' : 'text-emerald-500'
+                        }`}
+                      >
+                        {formatMoney(row.amount)}
+                      </td>
+                      <td className="px-3 py-2">{formatMoney(row.balance_after)}</td>
+                      <td className="px-3 py-2 text-xs text-on-surface-variant">{row.note || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {!wallet.ledger.length && (
-              <p className="p-4 text-sm text-white/50">No wallet activity yet.</p>
+              <p className="p-4 text-sm text-on-surface-variant">No wallet activity yet.</p>
             )}
           </div>
         </div>
@@ -994,13 +1004,13 @@ export default function MarketplaceDashboard() {
 
       {selectedLead && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-[#0d1520] p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-glass-stroke bg-surface-elevated p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start gap-2">
               <div>
-                <div className="font-mono text-xs text-white/45">{selectedLead.leadCode}</div>
-                <h3 className="text-lg font-semibold">{selectedLead.homeownerName}</h3>
+                <div className="font-mono text-xs text-on-surface-variant">{selectedLead.leadCode}</div>
+                <h3 className="text-lg font-semibold text-on-surface">{selectedLead.homeownerName}</h3>
               </div>
-              <button type="button" className="text-white/50" onClick={() => setSelectedLead(null)}>
+              <button type="button" className="text-on-surface-variant" onClick={() => setSelectedLead(null)}>
                 ✕
               </button>
             </div>
@@ -1024,28 +1034,28 @@ export default function MarketplaceDashboard() {
               </div>
             )}
             {selectedLead.projectDetails && (
-              <p className="text-xs text-white/60 border border-white/10 rounded-lg p-3">
+              <p className="text-xs text-on-surface-variant border border-glass-stroke rounded-lg p-3">
                 {selectedLead.projectDetails}
               </p>
             )}
             {selectedLead.showActions !== false && (
               <>
                 <div>
-                  <div className="text-xs text-white/50 mb-2">Update outcome</div>
+                  <div className="text-xs text-on-surface-variant mb-2">Update outcome</div>
                   <div className="flex flex-wrap gap-2">
                     {OUTCOME_OPTIONS.map((s) => (
                       <button
                         key={s}
                         type="button"
                         onClick={() => updateOutcome(selectedLead.id, s)}
-                        className="rounded-lg border border-white/15 px-2.5 py-1 text-xs hover:bg-white/10"
+                        className="rounded-lg border border-glass-stroke px-2.5 py-1 text-xs hover:bg-surface-container-high"
                       >
                         {s}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="border-t border-white/10 pt-3 space-y-2">
+                <div className="border-t border-glass-stroke pt-3 space-y-2">
                   <div className="text-xs font-semibold text-amber-200">Report invalid lead</div>
                   <select
                     className={inputCls}
@@ -1079,7 +1089,7 @@ export default function MarketplaceDashboard() {
               </>
             )}
             {selectedLead.showActions === false && (
-              <p className="text-xs text-white/45 border border-white/10 rounded-lg p-3">
+              <p className="text-xs text-on-surface-variant border border-glass-stroke rounded-lg p-3">
                 This lead is closed. Contact and outcome updates are available from Active / Won tabs
                 while the lead is still in progress.
               </p>
@@ -1099,13 +1109,13 @@ function LeadList({ leads, loading, onSelect, showActions, emptyHint }) {
           key={lead.id}
           type="button"
           onClick={() => onSelect({ ...lead, showActions: Boolean(showActions) })}
-          className="text-left rounded-xl border border-white/10 bg-white/[0.04] p-4 hover:border-primary/40 transition"
+          className="text-left rounded-xl border border-glass-stroke bg-surface-container p-4 hover:border-primary/40 transition"
         >
           <div className="flex justify-between gap-2">
             <div>
-              <div className="font-mono text-xs text-white/45">{lead.leadCode}</div>
-              <div className="font-semibold">{lead.homeownerName || 'Unlocked lead'}</div>
-              <div className="text-xs text-white/55 mt-1">{lead.address}</div>
+              <div className="font-mono text-xs text-on-surface-variant">{lead.leadCode}</div>
+              <div className="font-semibold text-on-surface">{lead.homeownerName || 'Unlocked lead'}</div>
+              <div className="text-xs text-on-surface-variant mt-1">{lead.address}</div>
               {isBiddingOpen(lead.status) && lead.biddingClosesAt && (
                 <div className="mt-2">
                   <BiddingCountdown closesAt={lead.biddingClosesAt} compact />
@@ -1126,16 +1136,16 @@ function LeadList({ leads, loading, onSelect, showActions, emptyHint }) {
             <div className="text-xs text-primary font-semibold">{lead.status}</div>
           </div>
           {showActions ? (
-            <div className="text-[11px] text-white/40 mt-2">Click to view contact & update status</div>
+            <div className="text-[11px] text-on-surface-variant mt-2">Click to view contact & update status</div>
           ) : (
-            <div className="text-[11px] text-white/40 mt-2">Click to view details (read only)</div>
+            <div className="text-[11px] text-on-surface-variant mt-2">Click to view details (read only)</div>
           )}
         </button>
       ))}
       {!loading && !leads.length && (
-        <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/55 space-y-1">
+        <div className="rounded-xl border border-dashed border-glass-stroke p-5 text-sm text-on-surface-variant space-y-1">
           <p>No leads in this tab.</p>
-          {emptyHint && <p className="text-xs text-white/40">{emptyHint}</p>}
+          {emptyHint && <p className="text-xs text-on-surface-variant">{emptyHint}</p>}
         </div>
       )}
     </div>
@@ -1145,11 +1155,11 @@ function LeadList({ leads, loading, onSelect, showActions, emptyHint }) {
 function Meta({ label, value }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-white/35">{label}</div>
-      <div className="text-white/80 break-words">{value ?? '—'}</div>
+      <div className="text-[10px] uppercase tracking-wide text-on-surface-variant">{label}</div>
+      <div className="text-on-surface break-words">{value ?? '—'}</div>
     </div>
   );
 }
 
 const inputCls =
-  'mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-sm text-white outline-none focus:border-primary/40';
+  'mt-1 block w-full rounded-lg border border-glass-stroke bg-surface-container-low px-2.5 py-2 text-sm text-on-surface outline-none focus:border-primary/40 placeholder:text-on-surface-variant';

@@ -65,7 +65,7 @@ export default function SatelliteUplinkLoader({
           <button
             type="button"
             onClick={onClose}
-            className="absolute -top-2 -right-2 w-8 h-8 rounded-full border border-glass-stroke bg-surface-elevated/80 text-on-surface-variant hover:text-white hover:border-white/20 transition-colors flex items-center justify-center"
+            className="absolute -top-2 -right-2 w-8 h-8 rounded-full border border-glass-stroke bg-surface-elevated/80 text-on-surface-variant hover:text-on-surface hover:border-white/20 transition-colors flex items-center justify-center"
             aria-label="Close"
           >
             <span className="material-symbols-outlined text-base">close</span>

@@ -40,7 +40,7 @@ export default function BulkScanDialog({
               <p className="text-[10px] text-slate-400">Unlock multiple leads in one run</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1 transition-colors cursor-pointer">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-on-surface p-1 transition-colors cursor-pointer">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         </div>
@@ -74,7 +74,7 @@ export default function BulkScanDialog({
                   className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
                     leadsToCapture === n
                       ? 'bg-primary/20 border-primary text-primary'
-                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-on-surface'
                   }`}
                 >
                   {n}

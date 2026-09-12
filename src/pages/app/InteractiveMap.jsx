@@ -986,7 +986,7 @@ export default function InteractiveMap() {
               </div>
               <button
                 type="button"
-                className="text-amber-100/70 hover:text-white text-sm"
+                className="text-amber-100/70 hover:text-on-surface text-sm"
                 onClick={() => setMapError('')}
                 aria-label="Dismiss"
               >

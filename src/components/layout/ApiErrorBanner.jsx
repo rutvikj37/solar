@@ -9,7 +9,7 @@ export default function ApiErrorBanner({ error, onRetry }) {
         <button
           type="button"
           onClick={onRetry}
-          className="text-xs font-bold uppercase tracking-wider text-red-200 hover:text-white"
+          className="text-xs font-bold uppercase tracking-wider text-red-200 hover:text-on-surface"
         >
           Retry
         </button>
