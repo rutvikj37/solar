@@ -13,6 +13,9 @@ import { API_BASE } from '../../config.js';
 import { buildScoreMarkerIcon } from '../../lib/mapMarkers.js';
 import { resolveGoogleMapsApiKey } from '../../lib/mapsKey.js';
 
+/** Ask Hera chat stub — off for launch until chat is built. Set VITE_ENABLE_ASK_HERA=true to show. */
+const ENABLE_ASK_HERA = import.meta.env.VITE_ENABLE_ASK_HERA === 'true';
+
 function ToggleSwitch({ id, checked, onChange, disabled = false }) {
   return (
     <button
@@ -1173,7 +1176,9 @@ export default function InteractiveMap() {
           setSkipPaneled={setSkipPaneled}
         />
 
-        <AskHeraFab className="absolute bottom-6 right-6 z-40" />
+        {ENABLE_ASK_HERA ? (
+          <AskHeraFab className="absolute bottom-6 right-6 z-40" />
+        ) : null}
       </div>
 
       <UpgradeModal
