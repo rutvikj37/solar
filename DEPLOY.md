@@ -1,5 +1,7 @@
 # Production deployment
 
+For a short go-live ops checklist (env keys, Maps referrer UI, Resend/SES setup, smoke tests), see [`GO_LIVE.md`](GO_LIVE.md).
+
 ## Prerequisites
 
 - Node.js 20+
