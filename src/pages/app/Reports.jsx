@@ -4,11 +4,19 @@ import TerritoryAnalyticsPanel from '../../components/TerritoryAnalyticsPanel.js
 import ApiErrorBanner from '../../components/layout/ApiErrorBanner.jsx';
 import { API_BASE } from '../../config.js';
 import { STATUS_OPTIONS, getStatusLabel } from '../../lib/leads.js';
+import { downloadReportsCsv } from '../../lib/downloadReportsCsv.js';
 
 export default function Reports() {
   const [pipeline, setPipeline] = useState(null);
   const [pipelineError, setPipelineError] = useState('');
   const [pipelineLoading, setPipelineLoading] = useState(true);
+  const [territoryExport, setTerritoryExport] = useState({
+    loading: true,
+    error: '',
+    summary: null,
+    territories: [],
+  });
+  const [exportBusy, setExportBusy] = useState(false);
 
   const fetchPipeline = useCallback(async () => {
     const token = localStorage.getItem('solar_token');
@@ -37,6 +45,15 @@ export default function Reports() {
     fetchPipeline();
   }, [fetchPipeline]);
 
+  const handleTerritoryAnalyticsChange = useCallback((payload) => {
+    setTerritoryExport({
+      loading: Boolean(payload?.loading),
+      error: payload?.error || '',
+      summary: payload?.summary || null,
+      territories: Array.isArray(payload?.territories) ? payload.territories : [],
+    });
+  }, []);
+
   const stages = useMemo(() => {
     const counts = pipeline || {};
     return STATUS_OPTIONS.map((status) => ({
@@ -50,6 +67,37 @@ export default function Reports() {
   const maxStageCount = useMemo(() => Math.max(1, ...stages.map((s) => s.count)), [stages]);
   const wonCount = stages.find((s) => s.status === 'won')?.count || 0;
   const conversionPct = totalLeads > 0 ? ((wonCount / totalLeads) * 100).toFixed(1) : '0.0';
+
+  const canDownload =
+    !pipelineLoading &&
+    !territoryExport.loading &&
+    !exportBusy &&
+    (totalLeads > 0 || (territoryExport.territories?.length || 0) > 0 || territoryExport.summary);
+
+  const handleDownloadReports = useCallback(() => {
+    if (!canDownload) return;
+    try {
+      setExportBusy(true);
+      downloadReportsCsv({
+        stages,
+        pipelineMeta: { totalLeads, wonCount, conversionPct },
+        territorySummary: territoryExport.summary,
+        territories: territoryExport.territories,
+      });
+    } catch (err) {
+      window.alert(err?.message || 'Could not download reports CSV.');
+    } finally {
+      setExportBusy(false);
+    }
+  }, [
+    canDownload,
+    stages,
+    totalLeads,
+    wonCount,
+    conversionPct,
+    territoryExport.summary,
+    territoryExport.territories,
+  ]);
 
   return (
     <>
@@ -85,11 +133,25 @@ export default function Reports() {
           </Link>
           <Link
             to="/map"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-on-surface hover:bg-white/10 hover:text-on-surface transition-all"
           >
             <span className="material-symbols-outlined text-base">radar</span>
             Find leads
           </Link>
+          <button
+            type="button"
+            onClick={handleDownloadReports}
+            disabled={!canDownload}
+            title={
+              canDownload
+                ? 'Download pipeline and territory analytics as CSV'
+                : 'Load report data before downloading'
+            }
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100"
+          >
+            <span className="material-symbols-outlined text-base">download</span>
+            {exportBusy ? 'Preparing…' : 'Download reports'}
+          </button>
         </div>
       </div>
 
@@ -171,7 +233,7 @@ export default function Reports() {
         )}
       </section>
 
-      <TerritoryAnalyticsPanel showIntro />
+      <TerritoryAnalyticsPanel showIntro onAnalyticsChange={handleTerritoryAnalyticsChange} />
     </>
   );
 }

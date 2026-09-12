@@ -53,9 +53,22 @@ function EmptyTerritoryState() {
 
 /**
  * Territory conversion / CPL analytics.
- * @param {{ showIntro?: boolean, className?: string }} props
+ * @param {{
+ *   showIntro?: boolean,
+ *   className?: string,
+ *   onAnalyticsChange?: (payload: {
+ *     loading: boolean,
+ *     error: string,
+ *     summary: object | null,
+ *     territories: Array<object>,
+ *   }) => void,
+ * }} props
  */
-export default function TerritoryAnalyticsPanel({ showIntro = true, className = '' }) {
+export default function TerritoryAnalyticsPanel({
+  showIntro = true,
+  className = '',
+  onAnalyticsChange,
+}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -101,6 +114,16 @@ export default function TerritoryAnalyticsPanel({ showIntro = true, className = 
     });
     return list;
   }, [data?.territories, sortKey, sortDir]);
+
+  useEffect(() => {
+    if (typeof onAnalyticsChange !== 'function') return;
+    onAnalyticsChange({
+      loading,
+      error,
+      summary: data?.summary || null,
+      territories,
+    });
+  }, [loading, error, data, territories, onAnalyticsChange]);
 
   const maxCloseRate = useMemo(
     () => Math.max(1, ...territories.map((t) => Number(t.closingRatePct) || 0)),
