@@ -9,10 +9,12 @@ import {
   formatLeadValue,
   groupLeadsByStage,
   getLeadImageUrl,
+  formatElectricityBillMo,
+  formatKwPotential,
 } from '../../lib/leads.js';
 
 /**
- * Kanban board: property thumb, dual scores, next action, drag-drop.
+ * Kanban board: property thumb, dual scores, bill/kW, next action, drag-drop.
  */
 export default function LeadKanbanBoard({
   leads,
@@ -84,6 +86,8 @@ export default function LeadKanbanBoard({
                 const address = formatLeadValue(lead.address, 'No address');
                 const leadScore = getLeadScore(lead);
                 const solarScore = getSolarScore(lead);
+                const billMo = formatElectricityBillMo(lead);
+                const kwPotential = formatKwPotential(lead);
                 const img = getLeadImageUrl(lead);
                 const dragging = dragId === lead.id;
                 const busy = busyId === lead.id;
@@ -142,6 +146,28 @@ export default function LeadKanbanBoard({
                           {solarScore != null ? solarScore : '—'}
                         </span>
                       </div>
+                      {(billMo || kwPotential) && (
+                        <div className="flex items-center gap-2 mt-2 text-[10px] font-mono text-on-surface-variant">
+                          {billMo && (
+                            <span
+                              className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-amber-200/90"
+                              title="Est. electricity bill"
+                            >
+                              <span className="material-symbols-outlined text-[11px]">bolt</span>
+                              {billMo}
+                            </span>
+                          )}
+                          {kwPotential && (
+                            <span
+                              className="inline-flex items-center gap-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-emerald-200/90"
+                              title="System size / kW potential"
+                            >
+                              <span className="material-symbols-outlined text-[11px]">solar_power</span>
+                              {kwPotential}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {(lead.next_action || lead.follow_up_at) && (
                         <p className="text-[10px] text-amber-300/90 truncate mt-2" title={lead.next_action || ''}>
                           Next: {lead.next_action || 'Follow up'}

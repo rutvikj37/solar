@@ -215,6 +215,97 @@ export function getLeadImageUrl(lead) {
   return lead?.image_url || lead?.imageUrl || null;
 }
 
+function getLeadSolar(lead) {
+  return lead?.solar || parseMaybeJson(lead?.solar_json) || {};
+}
+
+function getLeadPropertyExtra(lead) {
+  return lead?.propertyExtra || parseMaybeJson(lead?.property_json) || {};
+}
+
+function parseMoneyAmount(raw) {
+  if (raw == null || raw === '' || raw === 'Not Available') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return Math.round(raw);
+  const m = String(raw).replace(/,/g, '').match(/\$?\s*([\d]+(?:\.\d+)?)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+function parseKwAmount(raw) {
+  if (raw == null || raw === '' || raw === 'Not Available') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw * 10) / 10;
+  }
+  const m = String(raw).replace(/,/g, '').match(/([\d]+(?:\.\d+)?)\s*kW/i);
+  if (m) {
+    const n = Number(m[1]);
+    return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : null;
+  }
+  const n = Number(String(raw).replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) && n > 0 && n < 500 ? Math.round(n * 10) / 10 : null;
+}
+
+/** Monthly electricity bill ($) when available — does not invent values */
+export function getElectricityBillMo(lead) {
+  if (!lead) return null;
+  const direct = parseMoneyAmount(lead.monthly_bill ?? lead.monthlyBill);
+  if (direct != null) return direct;
+
+  const solar = getLeadSolar(lead);
+  const fromSolar =
+    parseMoneyAmount(solar.estimatedElectricityBill) ||
+    parseMoneyAmount(solar.monthlyBill) ||
+    parseMoneyAmount(solar.electricityBill);
+  if (fromSolar != null) return fromSolar;
+
+  const pe = getLeadPropertyExtra(lead);
+  const fromProp =
+    parseMoneyAmount(pe.monthlyBill) ||
+    parseMoneyAmount(pe.electricityBill) ||
+    parseMoneyAmount(pe.estimatedElectricityBill) ||
+    parseMoneyAmount(pe?.aiLeadScore?.breakdown?.electricityBill?.detail);
+  return fromProp;
+}
+
+export function formatElectricityBillMo(lead) {
+  const n = getElectricityBillMo(lead);
+  if (n == null) return null;
+  return `$${n.toLocaleString('en-US')}/mo`;
+}
+
+/** System size / kW potential when available — does not invent values */
+export function getKwPotential(lead) {
+  if (!lead) return null;
+  const saleKw = parseKwAmount(lead.sale_system_size_kw ?? lead.saleSystemSizeKw);
+  if (saleKw != null) return saleKw;
+
+  const solar = getLeadSolar(lead);
+  const fromSolar =
+    parseKwAmount(solar.recommendedSize) ||
+    parseKwAmount(solar.systemSizeKw) ||
+    parseKwAmount(solar.systemSize) ||
+    parseKwAmount(solar.kwPotential);
+  if (fromSolar != null) return fromSolar;
+
+  const pe = getLeadPropertyExtra(lead);
+  const fromProp = parseKwAmount(pe.recommendedSize) || parseKwAmount(pe.systemSizeKw);
+  if (fromProp != null) return fromProp;
+
+  const roof = Number(lead.roof_size);
+  if (Number.isFinite(roof) && roof > 200) {
+    return Math.round((roof / 250) * 10) / 10;
+  }
+  return null;
+}
+
+export function formatKwPotential(lead) {
+  const n = getKwPotential(lead);
+  if (n == null) return null;
+  const label = Number.isInteger(n) ? String(n) : n.toFixed(1);
+  return `${label} kW`;
+}
+
 export function sortLeads(leads, { key = 'created_at', direction = 'desc' } = {}) {
   const sorted = [...leads];
   const mult = direction === 'asc' ? 1 : -1;
