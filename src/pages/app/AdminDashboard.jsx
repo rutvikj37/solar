@@ -591,7 +591,7 @@ export default function AdminDashboard() {
           <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 font-label-mono text-[9px] font-bold uppercase mb-2">
             SpaceToRoof.com Operator Console
           </div>
-          <h2 className="font-headline-lg text-2xl font-bold text-white">Admin Control Center</h2>
+          <h2 className="font-headline-lg text-2xl font-bold text-on-surface">Admin Control Center</h2>
           <p className="text-on-surface-variant text-sm mt-1">Users, plans, billing, API health, and support.</p>
         </div>
         <Link to="/support" className="text-xs text-primary font-semibold hover:underline">
@@ -657,7 +657,7 @@ export default function AdminDashboard() {
           ].map(([label, value, sub]) => (
             <div key={label} className="glass-card p-5 rounded-xl">
               <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">{label}</p>
-              <h3 className="text-2xl font-bold text-white mt-1.5 font-mono tabular-nums">{value}</h3>
+              <h3 className="text-2xl font-bold text-on-surface mt-1.5 font-mono tabular-nums">{value}</h3>
               <p className="text-on-surface-variant text-[10px] mt-2">{sub}</p>
             </div>
           ))}
@@ -684,7 +684,7 @@ export default function AdminDashboard() {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && loadTab('users')}
                 placeholder="Search users…"
-                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white w-64"
+                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface w-64"
               />
               <button onClick={() => loadTab('users')} className="text-xs bg-white/10 px-3 py-2 rounded-lg">
                 Search
@@ -710,11 +710,11 @@ export default function AdminDashboard() {
                       }`}
                     >
                       <td className="px-4 py-3">
-                        <p className="text-white font-semibold">{u.name}</p>
+                        <p className="text-on-surface font-semibold">{u.name}</p>
                         <p className="text-on-surface-variant">{u.email}</p>
                       </td>
-                      <td className="px-4 py-3 text-white">{u.plan}</td>
-                      <td className="px-4 py-3 font-mono text-white">{u.credits}</td>
+                      <td className="px-4 py-3 text-on-surface">{u.plan}</td>
+                      <td className="px-4 py-3 font-mono text-on-surface">{u.credits}</td>
                       <td className="px-4 py-3">
                         <span
                           className={
@@ -749,7 +749,7 @@ export default function AdminDashboard() {
               <>
                 <div className="flex justify-between gap-3 mb-4">
                   <div>
-                    <h3 className="text-white font-bold text-sm">{userDetail.user.name}</h3>
+                    <h3 className="text-on-surface font-bold text-sm">{userDetail.user.name}</h3>
                     <p className="text-on-surface-variant mt-0.5">{userDetail.user.email}</p>
                   </div>
                   <button
@@ -771,14 +771,14 @@ export default function AdminDashboard() {
                   ].map(([label, value]) => (
                     <div key={label} className="bg-white/5 rounded-lg p-2">
                       <p className="text-[9px] text-on-surface-variant uppercase">{label}</p>
-                      <p className="text-white font-semibold mt-0.5">{value}</p>
+                      <p className="text-on-surface font-semibold mt-0.5">{value}</p>
                     </div>
                   ))}
                 </div>
 
                 <div className="mb-4 p-3 rounded-lg bg-white/5 space-y-2">
                   <p className="text-[9px] text-on-surface-variant uppercase">Package & Subscription</p>
-                  <p className="text-white">
+                  <p className="text-on-surface">
                     Plan: {userDetail.package?.packageName || 'None'}{' '}
                     {userDetail.package?.purchasedLeads != null && (
                       <span className="text-on-surface-variant">
@@ -810,7 +810,7 @@ export default function AdminDashboard() {
                       <select
                         value={assignPlanId}
                         onChange={(e) => setAssignPlanId(e.target.value)}
-                        className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                        className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                       >
                         <option value="">Select plan…</option>
                         {plans.map((p) => (
@@ -826,7 +826,7 @@ export default function AdminDashboard() {
                           if (e.target.value === 'comp') setPlanComplimentary(true);
                           else if (planComplimentary && e.target.value !== 'comp') setPlanComplimentary(false);
                         }}
-                        className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                        className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                       >
                         <option value="manual grant">manual grant</option>
                         <option value="paid offline">paid offline</option>
@@ -849,11 +849,11 @@ export default function AdminDashboard() {
                       value={planNote}
                       onChange={(e) => setPlanNote(e.target.value)}
                       placeholder="Invoice note / reason (optional)"
-                      className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                     />
                     <p className="text-[10px] text-on-surface-variant">
                       Invoice amount:{' '}
-                      <span className="text-white font-semibold">
+                      <span className="text-on-surface font-semibold">
                         ${invoicePreviewAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       {planComplimentary ? ' · comp' : ''}
@@ -873,7 +873,7 @@ export default function AdminDashboard() {
                           type="button"
                           disabled={planBusy}
                           onClick={() => restrictPlan(false)}
-                          className="bg-white/10 text-white px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
+                          className="bg-white/10 text-on-surface px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
                         >
                           Lift restriction
                         </button>
@@ -894,7 +894,7 @@ export default function AdminDashboard() {
 
                 <div className="mb-4 p-3 rounded-lg bg-white/5">
                   <p className="text-[9px] text-on-surface-variant uppercase mb-1">Leads & Support</p>
-                  <p className="text-white">
+                  <p className="text-on-surface">
                     {userDetail.leads?.total ?? 0} total leads
                     {userDetail.leads?.last7d > 0 && (
                       <span className="text-on-surface-variant"> · {userDetail.leads.last7d} in last 7 days</span>
@@ -920,7 +920,7 @@ export default function AdminDashboard() {
                         <span className="text-primary">{a.type}</span>
                         {a.lead_address && <span className="text-on-surface-variant"> · {a.lead_address}</span>}
                         <span className="text-on-surface-variant"> · {new Date(a.created_at).toLocaleString()}</span>
-                        {a.content && <p className="text-white mt-0.5 line-clamp-1">{a.content}</p>}
+                        {a.content && <p className="text-on-surface mt-0.5 line-clamp-1">{a.content}</p>}
                       </div>
                     ))}
                   </div>
@@ -928,12 +928,12 @@ export default function AdminDashboard() {
 
                 <div className="pt-3 border-t border-glass-stroke space-y-2">
                   <p className="text-[9px] text-on-surface-variant uppercase">Adjust Credits</p>
-                  <p className="text-white font-mono text-sm">Current balance: {userDetail.credits}</p>
+                  <p className="text-on-surface font-mono text-sm">Current balance: {userDetail.credits}</p>
                   <div className="flex flex-wrap gap-2 items-center">
                     <select
                       value={creditMode}
                       onChange={(e) => setCreditMode(e.target.value)}
-                      className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                     >
                       <option value="add">Add credits</option>
                       <option value="subtract">Subtract credits</option>
@@ -943,13 +943,13 @@ export default function AdminDashboard() {
                       type="number"
                       value={creditAdjustAmount}
                       onChange={(e) => setCreditAdjustAmount(e.target.value)}
-                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white font-mono"
+                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface font-mono"
                     />
                     <input
                       value={creditNote}
                       onChange={(e) => setCreditNote(e.target.value)}
                       placeholder="Optional note…"
-                      className="flex-1 min-w-[120px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      className="flex-1 min-w-[120px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                     />
                     <button
                       type="button"
@@ -983,7 +983,7 @@ export default function AdminDashboard() {
                       {userDetail.invoices.map((inv) => (
                         <div key={inv.id} className="text-[10px] bg-white/5 rounded p-1.5 flex justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-white">
+                            <p className="text-on-surface">
                               {invoiceNumber(inv.id)} · {inv.package_name || inv.package_id || '—'} · $
                               {(Number(inv.amount_cents || 0) / 100).toLocaleString(undefined, {
                                 minimumFractionDigits: 2,
@@ -1020,7 +1020,7 @@ export default function AdminDashboard() {
                       placeholder="New password (min 8)"
                       minLength={8}
                       autoComplete="new-password"
-                      className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                     />
                     <input
                       type="password"
@@ -1029,7 +1029,7 @@ export default function AdminDashboard() {
                       placeholder="Confirm password"
                       minLength={8}
                       autoComplete="new-password"
-                      className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-white"
+                      className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
                     />
                     <button
                       type="button"
@@ -1043,7 +1043,7 @@ export default function AdminDashboard() {
                       type="button"
                       disabled={passwordBusy}
                       onClick={() => resetUserPassword({ generate: true })}
-                      className="bg-white/10 text-white px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
+                      className="bg-white/10 text-on-surface px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
                     >
                       {passwordBusy ? 'Saving…' : 'Generate temporary password'}
                     </button>
@@ -1051,7 +1051,7 @@ export default function AdminDashboard() {
                   <ActionBanner type={passwordMsgType} message={passwordMsg} />
                   {revealedPassword && (
                     <div className="flex flex-wrap gap-2 items-center bg-white/5 rounded-lg p-2">
-                      <code className="text-white font-mono text-xs break-all flex-1">{revealedPassword}</code>
+                      <code className="text-on-surface font-mono text-xs break-all flex-1">{revealedPassword}</code>
                       <button
                         type="button"
                         onClick={() => {
@@ -1086,13 +1086,13 @@ export default function AdminDashboard() {
               {subs.map((s) => (
                 <tr key={`${s.user_id}-${s.package_id}`}>
                   <td className="px-4 py-3">
-                    <p className="text-white font-semibold">{s.name}</p>
+                    <p className="text-on-surface font-semibold">{s.name}</p>
                     <p className="text-on-surface-variant">{s.email}</p>
                   </td>
-                  <td className="px-4 py-3 text-white">{s.package_name || s.package_id}</td>
-                  <td className="px-4 py-3 font-mono text-white">{s.remaining_leads}</td>
+                  <td className="px-4 py-3 text-on-surface">{s.package_name || s.package_id}</td>
+                  <td className="px-4 py-3 font-mono text-on-surface">{s.remaining_leads}</td>
                   <td className="px-4 py-3 font-mono text-on-surface-variant">{s.purchased_leads}</td>
-                  <td className="px-4 py-3 text-white">${Number(s.price || 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-on-surface">${Number(s.price || 0).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -1103,32 +1103,32 @@ export default function AdminDashboard() {
       {tab === 'plans' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <form onSubmit={createPlan} className="glass-card p-5 rounded-xl space-y-3 text-xs">
-            <h3 className="text-white font-bold text-sm">Create Plan</h3>
+            <h3 className="text-on-surface font-bold text-sm">Create Plan</h3>
             <input required placeholder="id (e.g. Pro50)" value={planForm.id}
               onChange={(e) => setPlanForm({ ...planForm, id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
             <input required placeholder="Display name" value={planForm.name}
               onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
             <div className="grid grid-cols-2 gap-3">
               <input type="number" placeholder="Lead credits / month" value={planForm.lead_limit}
                 onChange={(e) => setPlanForm({ ...planForm, lead_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
               <input type="number" placeholder="Emails / month" value={planForm.email_limit}
                 onChange={(e) => setPlanForm({ ...planForm, email_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <input type="number" step="0.01" placeholder="Price USD / month" value={planForm.price}
                 onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" />
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
             </div>
             <input placeholder="Stripe Price ID (price_...) — optional if using Razorpay" value={planForm.stripe_price_id}
               onChange={(e) => setPlanForm({ ...planForm, stripe_price_id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white font-mono text-[11px]" />
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
             <input placeholder="Razorpay Plan ID (plan_...) — auto-created if keys set" value={planForm.razorpay_plan_id}
               onChange={(e) => setPlanForm({ ...planForm, razorpay_plan_id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white font-mono text-[11px]" />
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
             <div className="flex flex-wrap gap-4 items-center">
               <label className="flex items-center gap-2 text-on-surface-variant">
                 <input
@@ -1141,7 +1141,7 @@ export default function AdminDashboard() {
               <select
                 value={planForm.billing_interval}
                 onChange={(e) => setPlanForm({ ...planForm, billing_interval: e.target.value })}
-                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
               >
                 <option value="month">Bill monthly</option>
                 <option value="one_time">One-time pack</option>
@@ -1149,12 +1149,12 @@ export default function AdminDashboard() {
             </div>
             <textarea placeholder="Description" value={planForm.description}
               onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white" rows={2} />
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" rows={2} />
             <textarea
               placeholder="Features (one per line)"
               value={planForm.features}
               onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
               rows={3}
             />
             <button type="submit" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg">
@@ -1171,7 +1171,7 @@ export default function AdminDashboard() {
             {plans.map((p) => (
               <div key={p.id} className="glass-card p-4 rounded-xl text-xs flex justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-bold">{p.name} <span className="text-on-surface-variant font-normal">({p.id})</span></p>
+                  <p className="text-on-surface font-bold">{p.name} <span className="text-on-surface-variant font-normal">({p.id})</span></p>
                   <p className="text-on-surface-variant mt-1">
                     {p.lead_limit} leads · {Number(p.email_limit) || 0} emails/{Number(p.is_subscription) ? 'mo' : 'pack'} · ${Number(p.price).toLocaleString()}
                     {Number(p.is_subscription) ? '/mo' : ''} ·{' '}
@@ -1185,7 +1185,7 @@ export default function AdminDashboard() {
                       defaultValue={Number(p.email_limit) || 0}
                       key={`${p.id}-${p.email_limit}`}
                       id={`email-limit-${p.id}`}
-                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1 text-white"
+                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1 text-on-surface"
                     />
                     <button
                       type="button"
@@ -1224,14 +1224,14 @@ export default function AdminDashboard() {
           {apis.map((a) => (
             <div key={a.id} className="glass-card p-5 rounded-xl">
               <div className="flex justify-between items-start">
-                <h3 className="text-white font-bold">{a.label}</h3>
+                <h3 className="text-on-surface font-bold">{a.label}</h3>
                 <span className={`text-[10px] font-bold uppercase ${a.configured ? 'text-green-400' : 'text-red-400'}`}>
                   {a.configured ? 'Configured' : 'Missing key'}
                 </span>
               </div>
-              <p className="text-on-surface-variant mt-3">Calls (7d): <span className="text-white font-semibold">{a.calls ?? 0}</span></p>
-              <p className="text-on-surface-variant">Success / Errors: <span className="text-white font-semibold">{a.success ?? 0}</span> / <span className="text-white font-semibold">{a.errors ?? 0}</span></p>
-              <p className="text-on-surface-variant">Avg latency: <span className="text-white font-semibold">{a.avgMs ?? 0}</span> ms</p>
+              <p className="text-on-surface-variant mt-3">Calls (7d): <span className="text-on-surface font-semibold">{a.calls ?? 0}</span></p>
+              <p className="text-on-surface-variant">Success / Errors: <span className="text-on-surface font-semibold">{a.success ?? 0}</span> / <span className="text-on-surface font-semibold">{a.errors ?? 0}</span></p>
+              <p className="text-on-surface-variant">Avg latency: <span className="text-on-surface font-semibold">{a.avgMs ?? 0}</span> ms</p>
             </div>
           ))}
           {apis.length > 0 && apis.every((a) => !a.calls) && (
@@ -1262,7 +1262,7 @@ export default function AdminDashboard() {
                   <td className="px-4 py-3 text-on-surface-variant whitespace-nowrap">
                     {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
                   </td>
-                  <td className="px-4 py-3 text-white font-semibold">{row.name}</td>
+                  <td className="px-4 py-3 text-on-surface font-semibold">{row.name}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{row.company || '—'}</td>
                   <td className="px-4 py-3 text-primary">{row.email}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{row.phone || '—'}</td>
@@ -1297,7 +1297,7 @@ export default function AdminDashboard() {
                 onClick={() => openTicket(t.id)}
                 className="w-full text-left px-4 py-3 hover:bg-white/5"
               >
-                <p className="text-white font-semibold">{t.subject}</p>
+                <p className="text-on-surface font-semibold">{t.subject}</p>
                 <p className="text-on-surface-variant mt-1">
                   #{t.id} · {t.user_email} · <span className="text-primary">{t.status}</span>
                 </p>
@@ -1312,7 +1312,7 @@ export default function AdminDashboard() {
               <>
                 <div className="flex justify-between gap-2 mb-3">
                   <div>
-                    <h3 className="text-white font-bold">{ticketDetail.ticket.subject}</h3>
+                    <h3 className="text-on-surface font-bold">{ticketDetail.ticket.subject}</h3>
                     <p className="text-on-surface-variant">Status: {ticketDetail.ticket.status}</p>
                   </div>
                   <div className="flex gap-2">
@@ -1329,7 +1329,7 @@ export default function AdminDashboard() {
                       <p className="text-[10px] text-on-surface-variant mb-1">
                         {m.sender_name || m.sender_role} · {new Date(m.created_at).toLocaleString()}
                       </p>
-                      <p className="text-white whitespace-pre-wrap">{m.body}</p>
+                      <p className="text-on-surface whitespace-pre-wrap">{m.body}</p>
                     </div>
                   ))}
                 </div>
@@ -1338,7 +1338,7 @@ export default function AdminDashboard() {
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     placeholder="Reply as admin…"
-                    className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+                    className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
                   />
                   <button onClick={sendReply} className="bg-primary text-on-primary px-3 py-2 rounded-lg font-bold">
                     Send

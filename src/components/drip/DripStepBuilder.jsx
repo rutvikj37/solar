@@ -4,13 +4,13 @@ const MERGE_FIELDS = ['{owner_name}', '{address}', '{estimated_savings}', '{comp
 
 const STEP_TEMPLATES = [
   {
-    name: 'SMS Intro',
-    actionType: 'sms',
+    name: 'Email Intro',
+    actionType: 'email',
     delayDays: 0,
     delayHours: 0,
-    subject: '',
+    subject: 'Solar opportunity at {address}',
     templateContent:
-      'Hi {owner_name}, your property at {address} has strong solar potential (~{estimated_savings} in savings). Reply YES for a free assessment!',
+      'Hi {owner_name},\n\nYour property at {address} has strong solar potential (~{estimated_savings} in savings).\n\nWould you like a free assessment?\n\n— {company_name}',
   },
   {
     name: 'Email Follow-up',
@@ -22,35 +22,39 @@ const STEP_TEMPLATES = [
       'Hi {owner_name},\n\nWe analyzed {address} and estimated {estimated_savings} in 25-year bill savings.\n\nWould you like to book a site audit?\n\n— {company_name}',
   },
   {
-    name: 'SMS Reminder',
-    actionType: 'sms',
+    name: 'Email Reminder',
+    actionType: 'email',
     delayDays: 5,
     delayHours: 0,
-    subject: '',
+    subject: 'Still interested in solar for {address}?',
     templateContent:
-      'Hi {owner_name}, just checking in about solar for {address}. Still interested? Reply YES to schedule.',
+      'Hi {owner_name},\n\nJust checking in about solar for {address}. Still interested? Reply to this email to schedule.\n\n— {company_name}',
   },
 ];
 
+function asEmailStep(step) {
+  return { ...step, actionType: 'email' };
+}
+
 export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
   const updateStep = (index, field, value) => {
-    const next = steps.map((s, i) => (i === index ? { ...s, [field]: value } : s));
+    const next = steps.map((s, i) => (i === index ? asEmailStep({ ...s, [field]: value }) : asEmailStep(s)));
     onChange(next);
   };
 
   const addStep = (template) => {
     const base = template || {
-      actionType: 'sms',
+      actionType: 'email',
       delayDays: 1,
       delayHours: 0,
       subject: '',
       templateContent: '',
     };
-    onChange([...steps, { ...base, order: steps.length + 1 }]);
+    onChange([...steps.map(asEmailStep), { ...asEmailStep(base), order: steps.length + 1 }]);
   };
 
   const removeStep = (index) => {
-    onChange(steps.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 })));
+    onChange(steps.filter((_, i) => i !== index).map((s, i) => ({ ...asEmailStep(s), order: i + 1 })));
   };
 
   const moveStep = (fromIndex, toIndex) => {
@@ -58,7 +62,7 @@ export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
     const next = [...steps];
     const [moved] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, moved);
-    onChange(next.map((s, i) => ({ ...s, order: i + 1 })));
+    onChange(next.map((s, i) => ({ ...asEmailStep(s), order: i + 1 })));
   };
 
   const handleDragStart = (e, index) => {
@@ -86,7 +90,7 @@ export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
             onClick={() => addStep()}
             className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-xs font-bold border border-primary/30"
           >
-            + Add Step
+            + Add Email Step
           </button>
           {STEP_TEMPLATES.map((t) => (
             <button
@@ -117,15 +121,9 @@ export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
                   <span className="material-symbols-outlined text-slate-500 cursor-grab text-base">drag_indicator</span>
                 )}
                 <span className="text-primary font-mono text-[10px] font-bold uppercase">Step {index + 1}</span>
-                <select
-                  value={step.actionType}
-                  disabled={readOnly}
-                  onChange={(e) => updateStep(index, 'actionType', e.target.value)}
-                  className="bg-white/5 border border-glass-stroke rounded-lg px-2 py-1 text-xs text-white"
-                >
-                  <option value="sms">SMS</option>
-                  <option value="email">Email</option>
-                </select>
+                <span className="px-2 py-1 rounded-lg bg-white/5 border border-glass-stroke text-xs text-slate-300">
+                  Email
+                </span>
               </div>
               {!readOnly && steps.length > 1 && (
                 <button type="button" onClick={() => removeStep(index)} className="text-red-400 hover:text-red-300">
@@ -143,7 +141,7 @@ export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
                   disabled={readOnly}
                   value={step.delayDays ?? 0}
                   onChange={(e) => updateStep(index, 'delayDays', Number(e.target.value))}
-                  className="w-full mt-1 bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white"
+                  className="w-full mt-1 bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface"
                 />
               </div>
               <div>
@@ -155,23 +153,21 @@ export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
                   disabled={readOnly}
                   value={step.delayHours ?? 0}
                   onChange={(e) => updateStep(index, 'delayHours', Number(e.target.value))}
-                  className="w-full mt-1 bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white"
+                  className="w-full mt-1 bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface"
                 />
               </div>
             </div>
 
-            {step.actionType === 'email' && (
-              <div>
-                <label className="text-[10px] text-slate-400 uppercase font-bold">Subject</label>
-                <input
-                  type="text"
-                  disabled={readOnly}
-                  value={step.subject || ''}
-                  onChange={(e) => updateStep(index, 'subject', e.target.value)}
-                  className="w-full mt-1 bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white"
-                />
-              </div>
-            )}
+            <div>
+              <label className="text-[10px] text-slate-400 uppercase font-bold">Subject</label>
+              <input
+                type="text"
+                disabled={readOnly}
+                value={step.subject || ''}
+                onChange={(e) => updateStep(index, 'subject', e.target.value)}
+                className="w-full mt-1 bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface"
+              />
+            </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -196,7 +192,7 @@ export default function DripStepBuilder({ steps, onChange, readOnly = false }) {
                 disabled={readOnly}
                 value={step.templateContent || ''}
                 onChange={(e) => updateStep(index, 'templateContent', e.target.value)}
-                className="w-full bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-white resize-y"
+                className="w-full bg-white/5 border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface resize-y"
               />
             </div>
           </div>

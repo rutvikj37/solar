@@ -35,7 +35,7 @@ export default function DripEnrollmentTable({ enrollments, onCancel, loading }) 
           {enrollments.map((e) => (
             <tr key={e.id} className="border-t border-glass-stroke/50 hover:bg-white/[0.02]">
               <td className="p-3">
-                <Link to={`/leads/${e.leadId}`} className="text-white font-semibold hover:text-primary">
+                <Link to={`/leads/${e.leadId}`} className="text-on-surface font-semibold hover:text-primary">
                   {e.ownerName || 'Unknown'}
                 </Link>
                 <p className="text-[10px] text-slate-500 truncate max-w-[180px]">{e.address}</p>

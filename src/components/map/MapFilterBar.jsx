@@ -182,7 +182,7 @@ export default function MapFilterBar({
               setShowSuggestions(false);
             }
           }}
-          className="bg-transparent border-none text-white text-xs focus:outline-none w-full placeholder:text-slate-500"
+          className="bg-transparent border-none text-on-surface text-xs focus:outline-none w-full placeholder:text-slate-500"
         />
         {loadingSuggestions && (
           <span className="material-symbols-outlined text-xs text-primary animate-spin">sync</span>
@@ -200,19 +200,19 @@ export default function MapFilterBar({
 
         {/* Floating Location Autocomplete Suggestions Overlay */}
         {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-[#0B1021]/95 border border-glass-stroke rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl z-50 text-xs divide-y divide-white/5">
+          <div className="theme-dark-canvas absolute top-full left-0 right-0 mt-2 bg-[#0B1021]/95 border border-glass-stroke rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl z-50 text-xs divide-y divide-white/5">
             {suggestions.map((item, idx) => (
               <div
                 key={item.id || idx}
                 onClick={() => handleSelectSuggestion(item)}
                 onMouseEnter={() => setHighlightedIndex(idx)}
                 className={`p-2.5 cursor-pointer flex items-center gap-2.5 transition-colors ${
-                  highlightedIndex === idx ? 'bg-primary/20 text-white' : 'hover:bg-white/5 text-slate-300'
+                  highlightedIndex === idx ? 'bg-primary/20 text-on-surface' : 'hover:bg-white/5 text-slate-300'
                 }`}
               >
                 <span className="material-symbols-outlined text-base text-primary shrink-0">location_on</span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white truncate text-xs">{item.mainText}</p>
+                  <p className="font-semibold text-on-surface truncate text-xs">{item.mainText}</p>
                   {item.secondaryText && (
                     <p className="text-[10px] text-slate-400 truncate">{item.secondaryText}</p>
                   )}
@@ -228,7 +228,7 @@ export default function MapFilterBar({
         <select
           value={selectedPresetId}
           onChange={(e) => handleSelectPreset(e.target.value)}
-          className="bg-surface-container-low border border-glass-stroke rounded-xl py-1.5 px-3 text-white text-xs focus:outline-none focus:border-primary"
+          className="bg-surface-container-low border border-glass-stroke rounded-xl py-1.5 px-3 text-on-surface text-xs focus:outline-none focus:border-primary"
           aria-label="Saved filter presets"
         >
           <option value="">Saved filters</option>
@@ -280,7 +280,7 @@ export default function MapFilterBar({
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all border ${
             isDrawingPolygon
               ? 'bg-primary text-on-primary border-primary animate-pulse'
-              : 'bg-white/5 text-white border-glass-stroke hover:bg-white/10'
+              : 'bg-white/5 text-on-surface border-glass-stroke hover:bg-white/10'
           }`}
         >
           <span className="material-symbols-outlined text-sm">polyline</span>
@@ -298,7 +298,7 @@ export default function MapFilterBar({
             <button
               type="button"
               onClick={onOpenScanModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-[10px] uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-95 transition-all border border-emerald-400/40"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-on-surface font-extrabold text-[10px] uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-95 transition-all border border-emerald-400/40"
             >
               <span className="material-symbols-outlined text-sm">radar</span>
               Scan this area
@@ -331,7 +331,7 @@ export default function MapFilterBar({
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-surface-elevated border border-glass-stroke rounded-2xl p-5 shadow-2xl space-y-4 text-left">
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-white text-sm">Save Search Filter Preset</h3>
+              <h3 className="font-bold text-on-surface text-sm">Save Search Filter Preset</h3>
               <button onClick={() => setShowSaveModal(false)} className="text-slate-400 hover:text-on-surface">
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
@@ -344,12 +344,12 @@ export default function MapFilterBar({
               placeholder="e.g. Beverly Hills SFR"
               value={newPresetName}
               onChange={(e) => setNewPresetName(e.target.value)}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white text-xs focus:outline-none focus:border-primary"
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface text-xs focus:outline-none focus:border-primary"
             />
             <div className="flex gap-2 justify-end pt-2">
               <button
                 onClick={() => setShowSaveModal(false)}
-                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-on-surface text-xs font-bold"
               >
                 Cancel
               </button>

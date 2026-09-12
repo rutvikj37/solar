@@ -7,10 +7,10 @@ export default function DripFunnelChart({ funnel }) {
 
   return (
     <div className="space-y-4 p-4 rounded-xl bg-surface-container-low border border-glass-stroke">
-      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Campaign Funnel</h4>
+      <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">Campaign Funnel</h4>
       <div className="grid grid-cols-3 gap-3 text-center">
         <div>
-          <p className="text-2xl font-bold text-white">{funnel.enrolled}</p>
+          <p className="text-2xl font-bold text-on-surface">{funnel.enrolled}</p>
           <p className="text-[10px] text-slate-400 uppercase">Enrolled</p>
         </div>
         <div>
@@ -29,7 +29,7 @@ export default function DripFunnelChart({ funnel }) {
               <span className="text-slate-400">
                 Step {step.stepOrder} · {step.actionType?.toUpperCase()}
               </span>
-              <span className="text-white font-bold">{step.sent} sent</span>
+              <span className="text-on-surface font-bold">{step.sent} sent</span>
             </div>
             <div className="h-2 rounded-full bg-white/5 overflow-hidden">
               <div

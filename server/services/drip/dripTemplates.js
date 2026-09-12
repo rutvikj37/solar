@@ -19,10 +19,10 @@ export const DEFAULT_DRIP_STEPS = [
     order: 1,
     delayDays: 0,
     delayHours: 0,
-    actionType: 'sms',
-    subject: '',
+    actionType: 'email',
+    subject: 'Solar opportunity at {address}',
     templateContent:
-      'Hi {owner_name}, your property at {address} has strong solar potential (~{estimated_savings} in 25-yr savings). Reply YES for a free site assessment!',
+      'Hi {owner_name},\n\nYour property at {address} has strong solar potential (~{estimated_savings} in 25-yr savings).\n\nWould you like a free site assessment?\n\n— {company_name}',
   },
   {
     order: 2,

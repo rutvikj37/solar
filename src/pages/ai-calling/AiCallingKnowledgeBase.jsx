@@ -70,7 +70,7 @@ export default function AiCallingKnowledgeBase() {
     <>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white font-display">AI Knowledge Base</h1>
+          <h1 className="text-2xl font-bold text-on-surface font-display">AI Knowledge Base</h1>
           <p className="text-xs text-on-surface-variant mt-0.5">Train the AI caller on your business policies, technical FAQs, and solar facts</p>
         </div>
         <button
@@ -89,7 +89,7 @@ export default function AiCallingKnowledgeBase() {
       ) : articles.length === 0 ? (
         <div className="glass-card rounded-2xl p-12 text-center">
           <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3 block">menu_book</span>
-          <h3 className="text-base font-bold text-white mb-1">Knowledge Base Empty</h3>
+          <h3 className="text-base font-bold text-on-surface mb-1">Knowledge Base Empty</h3>
           <p className="text-xs text-on-surface-variant mb-4">Add articles to teach the AI how to answer objection questions during calls.</p>
         </div>
       ) : (
@@ -109,7 +109,7 @@ export default function AiCallingKnowledgeBase() {
                   </button>
                 </div>
               </div>
-              <h3 className="font-bold text-white text-sm mb-2">{art.title}</h3>
+              <h3 className="font-bold text-on-surface text-sm mb-2">{art.title}</h3>
               <p className="text-xs text-on-surface-variant line-clamp-3 leading-relaxed">{art.content}</p>
             </div>
           ))}
@@ -119,7 +119,7 @@ export default function AiCallingKnowledgeBase() {
       {showModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-2xl w-full max-w-lg p-6">
-            <h2 className="text-lg font-bold text-white mb-4 font-display">
+            <h2 className="text-lg font-bold text-on-surface mb-4 font-display">
               {editingArticle ? 'Edit Knowledge Article' : 'New Knowledge Article'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -128,7 +128,7 @@ export default function AiCallingKnowledgeBase() {
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 >
                   {categories.map((c) => (
                     <option key={c} value={c}>{c}</option>
@@ -144,7 +144,7 @@ export default function AiCallingKnowledgeBase() {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g. 30% Federal Investment Tax Credit (ITC)"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
 
@@ -156,7 +156,7 @@ export default function AiCallingKnowledgeBase() {
                   value={formData.content}
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                   placeholder="Explain the detailed answer that the AI should convey..."
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
 

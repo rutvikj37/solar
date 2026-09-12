@@ -71,14 +71,14 @@ export default function AiCallingPrompts() {
     <>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white font-display">AI Prompt & Script Engineering</h1>
+          <h1 className="text-2xl font-bold text-on-surface font-display">AI Prompt & Script Engineering</h1>
           <p className="text-xs text-on-surface-variant mt-0.5">Customize conversation flows and persona prompts per campaign</p>
         </div>
         {campaigns.length > 0 && (
           <select
             value={selectedCampaignId}
             onChange={(e) => setSelectedCampaignId(e.target.value)}
-            className="bg-surface-container-low border border-glass-stroke rounded-xl px-3 py-2 text-xs text-white"
+            className="bg-surface-container-low border border-glass-stroke rounded-xl px-3 py-2 text-xs text-on-surface"
           >
             {campaigns.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -94,35 +94,35 @@ export default function AiCallingPrompts() {
       ) : (
         <form onSubmit={handleSave} className="space-y-6 text-xs">
           <div className="glass-card rounded-2xl p-6 space-y-4">
-            <h2 className="font-bold text-white text-sm">System Prompt Persona</h2>
+            <h2 className="font-bold text-on-surface text-sm">System Prompt Persona</h2>
             <textarea
               rows={6}
               value={prompts.systemPrompt || ''}
               onChange={(e) => setPrompts({ ...prompts, systemPrompt: e.target.value })}
               placeholder="You are Emily, a friendly solar representative..."
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-3 text-white"
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-3 text-on-surface"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="glass-card rounded-2xl p-6 space-y-4">
-              <h2 className="font-bold text-white text-sm">Opening Greeting Script</h2>
+              <h2 className="font-bold text-on-surface text-sm">Opening Greeting Script</h2>
               <textarea
                 rows={4}
                 value={prompts.greetingScript || ''}
                 onChange={(e) => setPrompts({ ...prompts, greetingScript: e.target.value })}
                 placeholder="Hi {lead_name}, this is calling regarding your property..."
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-3 text-white"
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-3 text-on-surface"
               />
             </div>
             <div className="glass-card rounded-2xl p-6 space-y-4">
-              <h2 className="font-bold text-white text-sm">Appointment Booking Script</h2>
+              <h2 className="font-bold text-on-surface text-sm">Appointment Booking Script</h2>
               <textarea
                 rows={4}
                 value={prompts.bookingScript || ''}
                 onChange={(e) => setPrompts({ ...prompts, bookingScript: e.target.value })}
                 placeholder="We can send a solar specialist to assess your roof..."
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-3 text-white"
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-3 text-on-surface"
               />
             </div>
           </div>

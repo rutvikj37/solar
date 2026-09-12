@@ -301,7 +301,7 @@ export default function LocationSearchField({
                 )}
 
                 {showSuggestions && suggestions.length > 0 && (
-                  <ul className="rounded-xl border border-glass-stroke bg-[#0B1021]/98 shadow-2xl overflow-hidden divide-y divide-white/5">
+                  <ul className="theme-dark-canvas rounded-xl border border-glass-stroke bg-[#0B1021]/98 shadow-2xl overflow-hidden divide-y divide-white/5">
                     {suggestions.map((row, idx) => (
                       <li key={`${row.lat}-${row.lng}-${idx}`}>
                         <button

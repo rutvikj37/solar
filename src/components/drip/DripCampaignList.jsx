@@ -12,9 +12,9 @@ export default function DripCampaignList({
     return (
       <div className="glass-card rounded-2xl p-12 text-center space-y-3 border border-glass-stroke">
         <span className="material-symbols-outlined text-4xl text-slate-500">campaign</span>
-        <h3 className="text-white font-bold text-base">No Drip Campaigns</h3>
+        <h3 className="text-on-surface font-bold text-base">No Drip Campaigns</h3>
         <p className="text-slate-400 max-w-sm mx-auto text-xs">
-          Create an automated SMS → Email nurture sequence. Messages send automatically every minute during business hours.
+          Create an automated email nurture sequence. Messages send automatically every minute during business hours.
         </p>
       </div>
     );
@@ -37,7 +37,7 @@ export default function DripCampaignList({
                 <span className="material-symbols-outlined">reorder</span>
               </div>
               <div>
-                <h3 className="font-bold text-white text-sm">{c.name}</h3>
+                <h3 className="font-bold text-on-surface text-sm">{c.name}</h3>
                 <p className="text-[10px] text-slate-400">
                   {c.enrollmentMode?.replace('_', ' ')} · min score {c.triggerMinScore} · {c.steps?.length || 0} steps
                 </p>
@@ -56,7 +56,7 @@ export default function DripCampaignList({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onToggleStatus(c.id, c.status); }}
-                className="px-2 py-1 rounded-lg bg-white/5 text-xs text-white hover:bg-white/10"
+                className="px-2 py-1 rounded-lg bg-white/5 text-xs text-on-surface hover:bg-white/10"
               >
                 {c.status === 'active' ? 'Pause' : 'Activate'}
               </button>

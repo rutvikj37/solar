@@ -67,7 +67,7 @@ export default function LeadKanbanBoard({
           >
             <div className="px-3 py-3 border-b border-glass-stroke flex items-center justify-between gap-2 sticky top-0 bg-surface-container/95 backdrop-blur-md rounded-t-2xl z-[1]">
               <div className="min-w-0">
-                <p className="text-xs font-bold text-white truncate">{labelFor(stage)}</p>
+                <p className="text-xs font-bold text-on-surface truncate">{labelFor(stage)}</p>
                 <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">
                   {columnLeads.length} Lead{columnLeads.length === 1 ? '' : 's'}
                 </p>
@@ -104,7 +104,7 @@ export default function LeadKanbanBoard({
                       dragging ? 'opacity-50 scale-[0.98]' : ''
                     } ${busy ? 'opacity-60 pointer-events-none' : ''}`}
                   >
-                    <div className="relative h-20 bg-[#0B1220]">
+                    <div className="relative h-20 bg-surface-container-lowest">
                       {img ? (
                         <img src={img} alt="" className="w-full h-full object-cover" />
                       ) : (
@@ -123,7 +123,7 @@ export default function LeadKanbanBoard({
                     <div className="p-3">
                       <Link
                         to={`/lead/${lead.id}`}
-                        className="text-sm font-bold text-white hover:text-primary truncate block leading-tight"
+                        className="text-sm font-bold text-on-surface hover:text-primary truncate block leading-tight"
                         title={name}
                         onClick={(e) => e.stopPropagation()}
                       >

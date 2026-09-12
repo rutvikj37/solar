@@ -344,10 +344,10 @@ export default function Dashboard() {
             <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#0a1224] via-[#0d1a2e] to-[#081018] flex items-center justify-center p-6">
               <div className="text-center max-w-sm space-y-3">
                 <span className="material-symbols-outlined text-4xl text-primary/80">map</span>
-                <h3 className="text-sm font-semibold text-white">
+                <h3 className="text-sm font-semibold text-on-surface">
                   {leads.length === 0 ? 'No saved leads on the map yet' : 'Map preview unavailable'}
                 </h3>
-                <p className="text-xs text-white/50 leading-relaxed">
+                <p className="text-xs text-on-surface/50 leading-relaxed">
                   {leads.length === 0
                     ? 'Unlock leads from Targeting to see them here. Open the map to scan neighborhoods.'
                     : 'Add a Google Maps API key or open Targeting to explore your territory.'}
@@ -533,7 +533,7 @@ export default function Dashboard() {
                   <td className="px-6 py-4 text-on-surface-variant">
                     {lead.address}
                   </td>
-                  <td className="px-6 py-4 font-mono font-bold text-white">
+                  <td className="px-6 py-4 font-mono font-bold text-on-surface">
                     {lead.lead_score}/100
                   </td>
                   <td className="px-6 py-4 text-on-surface-variant">

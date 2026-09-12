@@ -146,7 +146,7 @@ export default function Profile() {
                 {(user?.name || "?").charAt(0).toUpperCase()}
               </span>
             </div>
-            <h3 className="font-headline-md text-lg font-bold text-white mb-1">{user?.name}</h3>
+            <h3 className="font-headline-md text-lg font-bold text-on-surface mb-1">{user?.name}</h3>
             <div className="flex items-center gap-2">
               <span
                 className={`font-label-mono text-[9px] uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${
@@ -161,11 +161,11 @@ export default function Profile() {
             <div className="w-full text-left space-y-3 mt-6 text-xs border-t border-glass-stroke pt-4">
               <div>
                 <p className="text-[10px] font-label-mono text-on-surface-variant">ORGANIZATION</p>
-                <p className="text-white font-semibold mt-0.5">{user?.company || "—"}</p>
+                <p className="text-on-surface font-semibold mt-0.5">{user?.company || "—"}</p>
               </div>
               <div>
                 <p className="text-[10px] font-label-mono text-on-surface-variant">ACCOUNT ROLE</p>
-                <p className="text-white font-semibold mt-0.5">{user?.role || "user"}</p>
+                <p className="text-on-surface font-semibold mt-0.5">{user?.role || "user"}</p>
               </div>
             </div>
           </div>
@@ -183,7 +183,7 @@ export default function Profile() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-on-surface"
                 />
               </div>
               <div className="space-y-1">
@@ -202,7 +202,7 @@ export default function Profile() {
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="Add phone number"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-on-surface"
                 />
               </div>
               <div className="space-y-1">
@@ -212,7 +212,7 @@ export default function Profile() {
                   value={form.jobTitle}
                   onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
                   placeholder="Your role in the company"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-on-surface"
                 />
               </div>
             </div>
@@ -262,7 +262,7 @@ export default function Profile() {
               </div>
               <button
                 onClick={handleCopy}
-                className="bg-surface-container-highest border border-glass-stroke hover:bg-surface-bright text-white py-2 px-3 rounded-lg flex items-center justify-center font-semibold gap-1 min-w-[70px]"
+                className="bg-surface-container-highest border border-glass-stroke hover:bg-surface-bright text-on-surface py-2 px-3 rounded-lg flex items-center justify-center font-semibold gap-1 min-w-[70px]"
               >
                 <span className="material-symbols-outlined text-sm">{copied ? "check" : "content_copy"}</span>
                 <span>{copied ? "Copied" : "Copy"}</span>

@@ -24,10 +24,10 @@ const DEFAULT_STEPS = [
     order: 1,
     delayDays: 0,
     delayHours: 0,
-    actionType: 'sms',
-    subject: '',
+    actionType: 'email',
+    subject: 'Solar opportunity at {address}',
     templateContent:
-      'Hi {owner_name}, your property at {address} has strong solar potential (~{estimated_savings} in 25-yr savings). Reply YES for a free site assessment!',
+      'Hi {owner_name},\n\nYour property at {address} has strong solar potential (~{estimated_savings} in 25-yr savings).\n\nWould you like a free site assessment?\n\n— {company_name}',
   },
   {
     order: 2,
@@ -218,7 +218,7 @@ export default function DripCampaigns() {
               </span>
             </div>
             <p className="text-on-surface-variant text-xs">
-              SMS and email nurture sequences with score-gated enrollment, business hours, and stop-on-reply. Delivery runs on the API process, not this browser.
+              Email nurture sequences with score-gated enrollment, business hours, and stop-on-reply. Delivery runs on the API process, not this browser.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -260,17 +260,17 @@ export default function DripCampaigns() {
 
             {(showCreate || (selectedId && editMode)) && (
               <div className="glass-card rounded-2xl p-6 border border-glass-stroke space-y-5">
-                <h3 className="font-bold text-white">{showCreate ? 'Create Campaign' : 'Edit Campaign'}</h3>
+                <h3 className="font-bold text-on-surface">{showCreate ? 'Create Campaign' : 'Edit Campaign'}</h3>
                 <DripCampaignEditor form={form} onChange={setForm} />
                 <div>
-                  <h4 className="text-xs font-bold text-white mb-3 uppercase tracking-wider">Workflow Steps</h4>
+                  <h4 className="text-xs font-bold text-on-surface mb-3 uppercase tracking-wider">Workflow Steps</h4>
                   <DripStepBuilder steps={steps} onChange={setSteps} />
                 </div>
                 <div className="flex gap-2 justify-end">
                   <button
                     type="button"
                     onClick={() => { setShowCreate(false); setEditMode(false); }}
-                    className="px-4 py-2 rounded-xl bg-white/5 text-white font-bold text-xs"
+                    className="px-4 py-2 rounded-xl bg-white/5 text-on-surface font-bold text-xs"
                   >
                     Cancel
                   </button>
@@ -291,14 +291,14 @@ export default function DripCampaigns() {
                 <div className="glass-card rounded-2xl p-6 border border-glass-stroke space-y-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-bold text-white text-lg">{detail.name}</h3>
+                      <h3 className="font-bold text-on-surface text-lg">{detail.name}</h3>
                       {detail.description && <p className="text-slate-400 text-xs mt-1">{detail.description}</p>}
                     </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => setEditMode(true)}
-                        className="px-3 py-1.5 rounded-lg bg-white/5 text-white text-xs font-bold hover:bg-white/10"
+                        className="px-3 py-1.5 rounded-lg bg-white/5 text-on-surface text-xs font-bold hover:bg-white/10"
                       >
                         Edit
                       </button>
@@ -316,12 +316,12 @@ export default function DripCampaigns() {
                 </div>
 
                 <div className="glass-card rounded-2xl p-6 border border-glass-stroke space-y-4">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">Workflow Steps</h4>
+                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">Workflow Steps</h4>
                   <DripStepBuilder steps={detail.steps || []} onChange={() => {}} readOnly />
                 </div>
 
                 <div className="glass-card rounded-2xl p-6 border border-glass-stroke space-y-4">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">Enrollments</h4>
+                  <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">Enrollments</h4>
                   <DripEnrollmentTable
                     enrollments={enrollments}
                     onCancel={handleCancelEnrollment}

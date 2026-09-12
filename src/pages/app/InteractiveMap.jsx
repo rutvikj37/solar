@@ -1047,7 +1047,7 @@ export default function InteractiveMap() {
 
           {/* Territory Builder Toolbar Banner (Flows dynamically below MapFilterBar) */}
           {isDrawingPolygon && (
-            <div className="pointer-events-auto bg-[#0A0E23]/95 border border-glass-stroke rounded-2xl p-2.5 shadow-2xl backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 text-white max-w-2xl w-auto">
+            <div className="theme-dark-canvas pointer-events-auto bg-[#0A0E23]/95 border border-glass-stroke rounded-2xl p-2.5 shadow-2xl backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 text-white max-w-2xl w-auto">
               <div className="flex items-center gap-2 pl-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse shrink-0" />
                 <span className="text-xs font-bold whitespace-nowrap">

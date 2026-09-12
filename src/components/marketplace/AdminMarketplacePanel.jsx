@@ -440,14 +440,14 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               type="button"
               onClick={() => setSub(t.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                sub === t.id ? 'bg-primary text-black' : 'bg-white/5 text-white/70'
+                sub === t.id ? 'bg-primary text-black' : 'bg-white/5 text-on-surface/70'
               }`}
             >
               {t.label}
             </button>
           ))}
         </div>
-        {loading && <span className="text-xs text-white/45">Loading…</span>}
+        {loading && <span className="text-xs text-on-surface/45">Loading…</span>}
       </div>
 
       {sub === 'overview' && metrics && (
@@ -470,7 +470,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             <Stat label="Approved claims" value={metrics.disputeStats?.approved_disputes} />
           </div>
           <div className="rounded-xl border border-white/10 p-3">
-            <h3 className="text-xs font-semibold text-white/60 mb-2">By status</h3>
+            <h3 className="text-xs font-semibold text-on-surface/60 mb-2">By status</h3>
             <ul className="grid sm:grid-cols-3 gap-1 text-xs">
               {(metrics.byStatus || []).map((row) => (
                 <li key={row.status} className="flex justify-between gap-2 border-b border-white/5 py-1">
@@ -480,7 +480,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               ))}
             </ul>
           </div>
-          <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-xs text-white/60 space-y-2">
+          <div __KEEP_WHITE_0__>
             <p className="font-semibold text-red-200/90">Danger zone</p>
             <p>
               Marketplace uses real homeowner inquiries. Only use this if old demo seed rows are still
@@ -499,7 +499,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
       )}
 
       {sub === 'overview' && !metrics && loading && (
-        <p className="text-sm text-white/50">Loading overview…</p>
+        <p className="text-sm text-on-surface/50">Loading overview…</p>
       )}
 
       {sub === 'settings' && (
@@ -508,20 +508,20 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
           className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-4 max-w-lg"
         >
           <div>
-            <h3 className="text-sm font-semibold text-white">Bidding window</h3>
-            <p className="text-xs text-white/50 mt-1">
+            <h3 className="text-sm font-semibold text-on-surface">Bidding window</h3>
+            <p className="text-xs text-on-surface/50 mt-1">
               Applies to new homeowner leads and leads reopened after a no-bid cycle.
             </p>
           </div>
           <label className="block space-y-1">
-            <span className="text-xs text-white/60">Bid window (hours)</span>
+            <span className="text-xs text-on-surface/60">Bid window (hours)</span>
             <input
               type="number"
               min="1"
               max="720"
               step="1"
               required
-              className="w-full bg-black/30 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
               value={settingsForm.defaultBidWindowHours}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, defaultBidWindowHours: e.target.value }))
@@ -529,13 +529,13 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-white/60">Minimum bid (USD)</span>
+            <span className="text-xs text-on-surface/60">Minimum bid (USD)</span>
             <input
               type="number"
               min="1"
               step="0.01"
               required
-              className="w-full bg-black/30 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
               value={settingsForm.defaultMinBid}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, defaultMinBid: e.target.value }))
@@ -543,13 +543,13 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-white/60">Max expansion stages (no-bid cycles)</span>
+            <span className="text-xs text-on-surface/60">Max expansion stages (no-bid cycles)</span>
             <input
               type="number"
               min="1"
               max="10"
               required
-              className="w-full bg-black/30 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
               value={settingsForm.maxExpansionStages}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, maxExpansionStages: e.target.value }))
@@ -557,12 +557,12 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-white/60">Expansion radii (miles, comma-separated)</span>
+            <span className="text-xs text-on-surface/60">Expansion radii (miles, comma-separated)</span>
             <input
               type="text"
               required
               placeholder="25,50,100"
-              className="w-full bg-black/30 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
               value={settingsForm.expansionRadii}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, expansionRadii: e.target.value }))
@@ -570,14 +570,14 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-white/60">Min bid reduction per stage (%)</span>
+            <span className="text-xs text-on-surface/60">Min bid reduction per stage (%)</span>
             <input
               type="number"
               min="0"
               max="90"
               step="0.1"
               required
-              className="w-full bg-black/30 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
               value={settingsForm.minBidReductionPct}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, minBidReductionPct: e.target.value }))
@@ -585,13 +585,13 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-white/60">Low-price floor min bid (USD)</span>
+            <span className="text-xs text-on-surface/60">Low-price floor min bid (USD)</span>
             <input
               type="number"
               min="1"
               step="0.01"
               required
-              className="w-full bg-black/30 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
               value={settingsForm.lowPriceMinBid}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, lowPriceMinBid: e.target.value }))
@@ -599,7 +599,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             />
           </label>
           {settings?.updated_at && (
-            <p className="text-[10px] text-white/40">
+            <p className="text-[10px] text-on-surface/40">
               Last updated {formatWhen(settings.updated_at)}
             </p>
           )}
@@ -621,12 +621,12 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               <input
                 type="text"
                 placeholder="Search by code, name, phone, city, ZIP..."
-                className="bg-black/30 border border-white/15 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-white/40 min-w-[240px] flex-1 outline-none focus:border-primary/50"
+                className="bg-surface-container border border-white/15 rounded-lg px-3 py-1.5 text-xs text-on-surface placeholder:text-on-surface/40 min-w-[240px] flex-1 outline-none focus:border-primary/50"
                 value={leadSearch}
                 onChange={(e) => setLeadSearch(e.target.value)}
               />
               <select
-                className="bg-black/30 border border-white/15 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-primary/50"
+                className="bg-surface-container border border-white/15 rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none focus:border-primary/50"
                 value={leadFilter}
                 onChange={(e) => setLeadFilter(e.target.value)}
               >
@@ -649,7 +649,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               {(leadFilter !== 'all' || leadSearch.trim()) && (
                 <button
                   type="button"
-                  className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-white/70 hover:bg-white/10"
+                  className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-on-surface/70 hover:bg-white/10"
                   onClick={() => {
                     setLeadFilter('all');
                     setLeadSearch('');
@@ -659,7 +659,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 </button>
               )}
             </div>
-            <div className="text-xs text-white/50">
+            <div className="text-xs text-on-surface/50">
               Showing {leads.filter((l) => {
                 if (leadFilter !== 'all' && l.status !== leadFilter) return false;
                 if (leadSearch.trim()) {
@@ -706,7 +706,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                     }`}
                   >
                     <div className="flex justify-between items-start gap-2">
-                      <span className="font-mono text-white/45 text-[11px]">{l.leadCode}</span>
+                      <span className="font-mono text-on-surface/45 text-[11px]">{l.leadCode}</span>
                       <div className="flex flex-col items-end gap-1.5">
                         {isBiddingOpen(l.status) && l.biddingClosesAt && (
                           <BiddingCountdown closesAt={l.biddingClosesAt} compact />
@@ -719,15 +719,15 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                                 ? 'bg-green-500/20 text-green-300 border-green-500/30'
                                 : l.status === 'invalid_refunded'
                                   ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                                  : 'bg-white/10 text-white/70 border-white/15'
+                                  : 'bg-white/10 text-on-surface/70 border-white/15'
                           }`}
                         >
                           {l.status}
                         </span>
                       </div>
                     </div>
-                    <div className="font-bold text-sm text-white mt-1">{l.homeownerName}</div>
-                    <div className="text-white/60 text-[11px] mt-1 flex flex-wrap gap-2">
+                    <div className="font-bold text-sm text-on-surface mt-1">{l.homeownerName}</div>
+                    <div className="text-on-surface/60 text-[11px] mt-1 flex flex-wrap gap-2">
                       <span>ZIP: {l.zip || '—'}</span>
                       <span>·</span>
                       <span>
@@ -742,7 +742,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                   </button>
                 ))}
               {leads.length === 0 && !loading && (
-                <div className="text-center py-8 text-white/40 text-xs">No marketplace leads found.</div>
+                <div className="text-center py-8 text-on-surface/40 text-xs">No marketplace leads found.</div>
               )}
               {leads.length > 0 &&
                 leads.filter((l) => {
@@ -759,11 +759,11 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                   }
                   return true;
                 }).length === 0 && (
-                  <div className="text-center py-8 text-white/40 text-xs space-y-2">
+                  <div className="text-center py-8 text-on-surface/40 text-xs space-y-2">
                     <p>No leads match this filter.</p>
                     <button
                       type="button"
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] text-white/70 hover:bg-white/10"
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] text-on-surface/70 hover:bg-white/10"
                       onClick={() => {
                         setLeadFilter('all');
                         setLeadSearch('');
@@ -774,7 +774,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                   </div>
                 )}
               {loading && leads.length === 0 && (
-                <div className="text-center py-8 text-white/40 text-xs">Loading leads…</div>
+                <div className="text-center py-8 text-on-surface/40 text-xs">Loading leads…</div>
               )}
             </div>
 
@@ -782,8 +782,8 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
                 <div className="flex justify-between items-start border-b border-white/10 pb-3 gap-3">
                   <div>
-                    <span className="font-mono text-xs text-white/45">{selected.leadCode}</span>
-                    <h3 className="text-base font-bold text-white">{selected.homeownerName}</h3>
+                    <span className="font-mono text-xs text-on-surface/45">{selected.leadCode}</span>
+                    <h3 className="text-base font-bold text-on-surface">{selected.homeownerName}</h3>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     {isBiddingOpen(selected.status) && selected.biddingClosesAt && (
@@ -797,7 +797,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                             ? 'bg-green-500/20 text-green-300 border-green-500/30'
                             : selected.status === 'invalid_refunded'
                               ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                              : 'bg-white/10 text-white/80 border-white/20'
+                              : 'bg-white/10 text-on-surface/80 border-white/20'
                       }`}
                     >
                       {selected.status}
@@ -806,8 +806,8 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 </div>
 
                 {/* Visual Marketplace Workflow Tracker */}
-                <div className="bg-black/30 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                <div className="bg-surface-container border border-white/10 rounded-xl p-3 space-y-2">
+                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
                     Marketplace Workflow Pipeline Stage
                   </div>
                   <div className="grid grid-cols-3 gap-1 text-[11px] text-center">
@@ -815,7 +815,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                       className={`p-2 rounded-lg border font-semibold ${
                         ['bidding', 'no_bid_expanding'].includes(selected.status)
                           ? 'bg-primary/20 border-primary text-primary'
-                          : 'bg-white/5 border-white/10 text-white/40'
+                          : 'bg-white/5 border-white/10 text-on-surface/40'
                       }`}
                     >
                       1. Bidding / Open
@@ -824,7 +824,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                       className={`p-2 rounded-lg border font-semibold ${
                         ['lead_unlocked', 'closed_unsold', 'won', 'lost', 'contacted', 'interested', 'appointment', 'proposal'].includes(selected.status)
                           ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                          : 'bg-white/5 border-white/10 text-white/40'
+                          : 'bg-white/5 border-white/10 text-on-surface/40'
                       }`}
                     >
                       2. Winner Selected
@@ -835,7 +835,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                           ? 'bg-green-500/20 border-green-500 text-green-300'
                           : selected.status === 'invalid_refunded'
                             ? 'bg-red-500/20 border-red-500 text-red-300'
-                            : 'bg-white/5 border-white/10 text-white/40'
+                            : 'bg-white/5 border-white/10 text-on-surface/40'
                       }`}
                     >
                       3. Converted / Final
@@ -846,14 +846,14 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 {isBiddingOpen(selected.status) && (
                   <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                      <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
                         Bidding window
                       </div>
                       <div className="text-lg font-bold text-primary mt-1">
                         <BiddingCountdown closesAt={selected.biddingClosesAt} />
                       </div>
                     </div>
-                    <div className="text-xs text-white/55 text-right">
+                    <div className="text-xs text-on-surface/55 text-right">
                       <div>Opens {formatWhen(selected.biddingOpensAt)}</div>
                       <div>Closes {formatWhen(selected.biddingClosesAt)}</div>
                     </div>
@@ -862,7 +862,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
 
                 {/* Admin Status Override Form */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
                     Admin actions
                   </div>
                   {['new', 'ai_qualified', 'pending_admin'].includes(selected.status) && (
@@ -883,7 +883,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg bg-white/10 text-white/80 text-xs font-semibold px-3 py-1.5 hover:bg-white/15"
+                        className="rounded-lg bg-white/10 text-on-surface/80 text-xs font-semibold px-3 py-1.5 hover:bg-white/15"
                         onClick={() => reQualifyLead(selected.id)}
                       >
                         Re-qualify
@@ -892,7 +892,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                   )}
                   <div className="flex flex-wrap gap-2 items-center">
                     <select
-                      className="bg-black/40 border border-white/15 rounded-lg px-2.5 py-1.5 text-xs text-white flex-1 outline-none"
+                      className="bg-surface-container-high border border-white/15 rounded-lg px-2.5 py-1.5 text-xs text-on-surface flex-1 outline-none"
                       value={statusDraft}
                       onChange={(e) => setStatusDraft(e.target.value)}
                     >
@@ -913,14 +913,14 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                     </select>
                     <button
                       type="button"
-                      className="rounded-lg bg-white/15 text-white text-xs font-semibold px-3 py-1.5 hover:bg-white/25"
+                      className="rounded-lg bg-white/15 text-on-surface text-xs font-semibold px-3 py-1.5 hover:bg-white/25"
                       onClick={() => updateLeadStatus(selected.id, statusDraft)}
                     >
                       Update Status
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg bg-white/10 text-white text-xs font-semibold px-3 py-1.5 hover:bg-white/20"
+                      className="rounded-lg bg-white/10 text-on-surface text-xs font-semibold px-3 py-1.5 hover:bg-white/20"
                       onClick={() => closeBidding(selected.id)}
                     >
                       Close Bidding
@@ -930,17 +930,17 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
 
                 {/* Admin contact verification (Verifalia + Twilio Lookup — no OTP to homeowner) */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
                     Contact verification (admin)
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-white/45">Email status: </span>
-                      <span className="text-white font-semibold">{selected.emailStatus || selected.email_status || 'Not checked'}</span>
+                      <span className="text-on-surface/45">Email status: </span>
+                      <span className="text-on-surface font-semibold">{selected.emailStatus || selected.email_status || 'Not checked'}</span>
                     </div>
                     <div>
-                      <span className="text-white/45">Phone type: </span>
-                      <span className="text-white font-semibold">{selected.phoneType || selected.phone_type || 'Not checked'}</span>
+                      <span className="text-on-surface/45">Phone type: </span>
+                      <span className="text-on-surface font-semibold">{selected.phoneType || selected.phone_type || 'Not checked'}</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -958,54 +958,54 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
 
                 {/* Homeowner & Property Details */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
                     Homeowner & Property Info
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-white/45">Phone: </span>
-                      <span className="text-white font-semibold">{selected.phone || '—'}</span>
+                      <span className="text-on-surface/45">Phone: </span>
+                      <span className="text-on-surface font-semibold">{selected.phone || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-white/45">Email: </span>
-                      <span className="text-white font-semibold">{selected.email || '—'}</span>
+                      <span className="text-on-surface/45">Email: </span>
+                      <span className="text-on-surface font-semibold">{selected.email || '—'}</span>
                     </div>
                     <div className="sm:col-span-2">
-                      <span className="text-white/45">Address: </span>
-                      <span className="text-white font-semibold">{selected.address || '—'}</span>
+                      <span className="text-on-surface/45">Address: </span>
+                      <span className="text-on-surface font-semibold">{selected.address || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-white/45">Monthly Bill: </span>
-                      <span className="text-white font-semibold">{selected.electricityBillRange || selected.monthlyBill || '—'}</span>
+                      <span className="text-on-surface/45">Monthly Bill: </span>
+                      <span className="text-on-surface font-semibold">{selected.electricityBillRange || selected.monthlyBill || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-white/45">Timeline: </span>
-                      <span className="text-white font-semibold">{selected.installationTimeline || '—'}</span>
+                      <span className="text-on-surface/45">Timeline: </span>
+                      <span className="text-on-surface font-semibold">{selected.installationTimeline || '—'}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Bids & Winner Details */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider">
+                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
                     Bids ({bids.length}) & Winning Installer
                   </div>
                   <ul className="space-y-1.5">
                     {bids.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between gap-2 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs bg-black/20"
+                        className="flex items-center justify-between gap-2 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs bg-surface-container-low"
                       >
                         <div>
-                          <span className="font-semibold text-white">{b.installerName || b.installerEmail}</span>
-                          <span className="text-white/45"> · {formatMoney(b.amount)} · </span>
+                          <span className="font-semibold text-on-surface">{b.installerName || b.installerEmail}</span>
+                          <span className="text-on-surface/45"> · {formatMoney(b.amount)} · </span>
                           <span
                             className={
                               b.status === 'won'
                                 ? 'text-emerald-400 font-bold'
                                 : b.status === 'active'
                                   ? 'text-sky-300'
-                                  : 'text-white/40'
+                                  : 'text-on-surface/40'
                             }
                           >
                             {b.status}
@@ -1022,12 +1022,12 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                         )}
                       </li>
                     ))}
-                    {!bids.length && <li className="text-white/40 italic">No bids submitted yet for this lead.</li>}
+                    {!bids.length && <li className="text-on-surface/40 italic">No bids submitted yet for this lead.</li>}
                   </ul>
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-white/15 p-8 text-center text-white/40 text-xs">
+              <div className="rounded-xl border border-dashed border-white/15 p-8 text-center text-on-surface/40 text-xs">
                 Select any lead on the left to view full workflow, homeowner details, and bids.
               </div>
             )}
@@ -1049,7 +1049,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               <div>
                 {d.claim_type} · {d.installer_name || d.installer_email}
               </div>
-              <div className="text-white/50">{d.details || 'No details'}</div>
+              <div className="text-on-surface/50">{d.details || 'No details'}</div>
               {d.status === 'pending' && (
                 <div className="flex gap-2">
                   <button
@@ -1070,7 +1070,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               )}
             </div>
           ))}
-          {!disputes.length && <p className="text-sm text-white/50">No disputes.</p>}
+          {!disputes.length && <p className="text-sm text-on-surface/50">No disputes.</p>}
         </div>
       )}
 
@@ -1078,7 +1078,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
         <div className="space-y-4">
           <div className="overflow-x-auto rounded-xl border border-white/10">
             <table className="w-full text-xs">
-              <thead className="bg-white/5 text-left text-white/50">
+              <thead className="bg-white/5 text-left text-on-surface/50">
                 <tr>
                   <th className="p-3">Installer</th>
                   <th className="p-3">Verification</th>
@@ -1091,8 +1091,8 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 {installers.map((u) => (
                   <tr key={u.id} className="hover:bg-white/[0.02]">
                     <td className="p-3 align-top">
-                      <div className="font-bold text-white text-sm">{u.name}</div>
-                      <div className="text-white/45 text-[11px] font-mono">{u.email}</div>
+                      <div className="font-bold text-on-surface text-sm">{u.name}</div>
+                      <div className="text-on-surface/45 text-[11px] font-mono">{u.email}</div>
                       {u.company_name && (
                         <div className="text-primary/80 text-[11px] font-semibold mt-0.5">{u.company_name}</div>
                       )}
@@ -1104,7 +1104,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                             : u.verification_status === 'pending'
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                              : 'bg-white/10 text-white/50 border-white/15'
+                              : 'bg-white/10 text-on-surface/50 border-white/15'
                         }`}
                       >
                         {u.verification_status || 'unverified'}
@@ -1140,7 +1140,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                         )}
                       </div>
                     </td>
-                    <td className="p-3 align-top font-bold text-white font-mono">{formatMoney(u.wallet_balance)}</td>
+                    <td className="p-3 align-top font-bold text-on-surface font-mono">{formatMoney(u.wallet_balance)}</td>
                     <td className="p-3 align-top">
                       <div className="flex flex-wrap gap-1.5">
                         <button
@@ -1174,7 +1174,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
           {areaUserId && (
             <div className="rounded-xl border border-white/10 p-4 space-y-3 bg-white/5">
               <div className="flex justify-between items-center">
-                <h4 className="text-xs font-bold text-white">
+                <h4 className="text-xs font-bold text-on-surface">
                   Service Areas for{' '}
                   {installers.find((u) => Number(u.id) === Number(areaUserId))?.name ||
                     installers.find((u) => Number(u.id) === Number(areaUserId))?.email ||
@@ -1183,15 +1183,15 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 <button
                   type="button"
                   onClick={() => setAreaUserId(null)}
-                  className="text-xs text-white/40 hover:text-on-surface"
+                  className="text-xs text-on-surface/40 hover:text-on-surface"
                 >
                   Close
                 </button>
               </div>
               <ul className="text-xs space-y-1.5 max-h-48 overflow-y-auto">
                 {areas.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-2 border border-white/10 rounded-lg px-3 py-1.5 bg-black/20">
-                    <span className="text-white/80">
+                  <li key={a.id} className="flex items-center justify-between gap-2 border border-white/10 rounded-lg px-3 py-1.5 bg-surface-container-low">
+                    <span className="text-on-surface/80">
                       {[a.zip && `ZIP: ${a.zip}`, a.state && `State: ${a.state}`, a.radius_miles && `${a.radius_miles} mi`]
                         .filter(Boolean)
                         .join(' · ')}
@@ -1206,11 +1206,11 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                   </li>
                 ))}
                 {!areas.length && (
-                  <li className="text-white/40 italic">No service areas set for this installer yet.</li>
+                  <li className="text-on-surface/40 italic">No service areas set for this installer yet.</li>
                 )}
               </ul>
               <form onSubmit={addArea} className="flex flex-wrap gap-2 items-end pt-2 border-t border-white/10">
-                <label className="text-[11px] text-white/60">
+                <label className="text-[11px] text-on-surface/60">
                   ZIP
                   <input
                     className={inputCls}
@@ -1219,7 +1219,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                     onChange={(e) => setAreaForm((f) => ({ ...f, zip: e.target.value }))}
                   />
                 </label>
-                <label className="text-[11px] text-white/60">
+                <label className="text-[11px] text-on-surface/60">
                   State
                   <input
                     className={inputCls}
@@ -1228,7 +1228,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                     onChange={(e) => setAreaForm((f) => ({ ...f, state: e.target.value }))}
                   />
                 </label>
-                <label className="text-[11px] text-white/60">
+                <label className="text-[11px] text-on-surface/60">
                   Radius (mi)
                   <input
                     type="number"
@@ -1304,7 +1304,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
           </form>
           <div className="overflow-x-auto rounded-xl border border-white/10">
             <table className="w-full text-xs">
-              <thead className="bg-white/5 text-left text-white/50">
+              <thead className="bg-white/5 text-left text-on-surface/50">
                 <tr>
                   <th className="p-2">User</th>
                   <th className="p-2">Balance</th>
@@ -1315,7 +1315,7 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
                 {wallets.map((w) => (
                   <tr key={w.user_id} className="border-t border-white/5">
                     <td className="p-2">
-                      #{w.user_id} {w.name} <span className="text-white/40">{w.email}</span>
+                      #{w.user_id} {w.name} <span className="text-on-surface/40">{w.email}</span>
                     </td>
                     <td className="p-2 font-semibold">{formatMoney(w.balance)}</td>
                     <td className="p-2">{formatWhen(w.updated_at)}</td>
@@ -1325,14 +1325,14 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
             </table>
           </div>
           <div>
-            <h4 className="text-xs font-semibold text-white/50 mb-2">Recent ledger</h4>
+            <h4 className="text-xs font-semibold text-on-surface/50 mb-2">Recent ledger</h4>
             <ul className="text-xs space-y-1 max-h-60 overflow-y-auto">
               {ledger.map((row) => (
                 <li key={row.id} className="border-b border-white/5 py-1 flex justify-between gap-2">
                   <span>
                     {row.user_name || row.user_id} · {row.entry_type} · {formatMoney(row.amount)}
                   </span>
-                  <span className="text-white/40">{formatWhen(row.created_at)}</span>
+                  <span className="text-on-surface/40">{formatWhen(row.created_at)}</span>
                 </li>
               ))}
             </ul>
@@ -1346,11 +1346,11 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
 function Stat({ label, value }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-white/45">{label}</div>
+      <div className="text-[10px] uppercase tracking-wide text-on-surface/45">{label}</div>
       <div className="text-xl font-bold mt-1">{value ?? '—'}</div>
     </div>
   );
 }
 
 const inputCls =
-  'mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-sm text-white outline-none';
+  'mt-1 block w-full rounded-lg border border-white/10 bg-surface-container px-2.5 py-2 text-sm text-on-surface outline-none';

@@ -516,14 +516,38 @@ html.light .hover\:bg-white\/25:hover {
 }
 html.light .border-white\/5,
 html.light .border-white\/10,
-html.light .border-white\/15 {
+html.light .border-white\/15,
+html.light .border-white\/20,
+html.light .border-white\/25 {
   border-color: oklch(0.35 0.03 260 / 0.12);
 }
 
+/* Hardcoded navy canvases → light surfaces (except .theme-dark-canvas) */
 html.light .bg-\[\#0B1220\],
 html.light .bg-\[\#0F172A\],
-html.light .bg-\[\#0d1520\] {
-  background-color: oklch(0.94 0.012 250) !important;
+html.light .bg-\[\#0d1520\],
+html.light .bg-\[\#0D111E\],
+html.light .bg-\[\#0A0D16\],
+html.light .bg-\[\#0B1021\],
+html.light .bg-\[\#0A0E23\],
+html.light .bg-\[\#0D1122\],
+html.light .bg-\[\#0A0E1C\],
+html.light .bg-\[\#080B1A\] {
+  background-color: oklch(0.985 0.005 250) !important;
+}
+html.light .bg-\[\#0B1220\]\/90,
+html.light .bg-\[\#0B1021\]\/95,
+html.light .bg-\[\#0B1021\]\/98,
+html.light .bg-\[\#0A0E23\]\/95,
+html.light .bg-\[\#0D1122\]\/90 {
+  background-color: oklch(0.985 0.005 250 / 0.96) !important;
+}
+
+/* Soft black fills used as panel/input chrome → light tint */
+html.light .bg-black\/20,
+html.light .bg-black\/30,
+html.light .bg-black\/40 {
+  background-color: oklch(0.3 0.04 260 / 0.06);
 }
 
 html.light select,
@@ -531,6 +555,54 @@ html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 html.light textarea {
   color-scheme: light;
   color: var(--color-on-surface);
+}
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: var(--color-on-surface-variant);
+  opacity: 0.75;
+}
+
+/* Tables / thead readable on light glass */
+html.light table thead,
+html.light thead tr {
+  background-color: oklch(0.3 0.04 260 / 0.04);
+}
+html.light table tbody tr {
+  border-color: oklch(0.35 0.03 260 / 0.1);
+}
+html.light .divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-y.divide-white\/5 > :not([hidden]) ~ :not([hidden]) {
+  border-color: oklch(0.35 0.03 260 / 0.1);
+}
+
+/* Saturated CTA chips keep light label on dark/colored fills */
+html.light .bg-green-500.text-white,
+html.light .bg-emerald-500.text-white,
+html.light .bg-red-500\/80.text-white,
+html.light .bg-red-600.text-white,
+html.light [class*="from-emerald-"].text-white,
+html.light [class*="from-amber-"].text-white,
+html.light [class*="from-teal-"].text-white,
+html.light [class*="bg-gradient"].text-white {
+  color: #ffffff !important;
+}
+
+/* Map / photo badges: keep contrast on dark scrims */
+html.light .bg-black\/65,
+html.light .bg-black\/70,
+html.light .bg-black\/75,
+html.light .bg-black\/80,
+html.light .bg-black\/85 {
+  background-color: rgb(0 0 0 / 0.7) !important;
+  color: #ffffff;
+}
+html.light .bg-black\/65.text-white,
+html.light .bg-black\/70.text-white,
+html.light .bg-black\/75.text-white,
+html.light .bg-black\/65 .text-white,
+html.light .bg-black\/70 .text-white,
+html.light .bg-black\/75 .text-white {
+  color: #ffffff !important;
 }
 
 /* Interactive affordance — global */
@@ -631,4 +703,140 @@ html.light .text-red-300 {
 }
 html.light .text-emerald-300 {
   color: oklch(0.42 0.12 155);
+}
+
+/*
+ * Intentional dark canvases (proposal docs, map overlays, dark dialogs).
+ * Undo light remaps so white text / glass strokes stay readable.
+ */
+html.light .theme-dark-canvas,
+html.light .solar-proposal-document,
+html.light .public-proposal-shell {
+  color-scheme: dark;
+  --color-on-surface: #f8fafc;
+  --color-on-surface-variant: #94a3b8;
+  --color-glass-stroke: rgb(255 255 255 / 0.12);
+  --color-on-background: #f8fafc;
+  color: #f8fafc;
+}
+html.light .theme-dark-canvas .text-white,
+html.light .theme-dark-canvas.text-white,
+html.light .solar-proposal-document .text-white,
+html.light .public-proposal-shell .text-white {
+  color: #ffffff !important;
+}
+html.light .theme-dark-canvas .text-slate-200,
+html.light .theme-dark-canvas .text-slate-300,
+html.light .solar-proposal-document .text-slate-200,
+html.light .public-proposal-shell .text-slate-200,
+html.light .solar-proposal-document .text-slate-300,
+html.light .public-proposal-shell .text-slate-300 {
+  color: #cbd5e1 !important;
+}
+html.light .theme-dark-canvas .text-slate-400,
+html.light .theme-dark-canvas .text-slate-500,
+html.light .solar-proposal-document .text-slate-400,
+html.light .public-proposal-shell .text-slate-400,
+html.light .solar-proposal-document .text-slate-500,
+html.light .public-proposal-shell .text-slate-500 {
+  color: #94a3b8 !important;
+}
+html.light .theme-dark-canvas .text-on-surface,
+html.light .solar-proposal-document .text-on-surface,
+html.light .public-proposal-shell .text-on-surface {
+  color: #f8fafc !important;
+}
+html.light .theme-dark-canvas .text-on-surface-variant,
+html.light .solar-proposal-document .text-on-surface-variant,
+html.light .public-proposal-shell .text-on-surface-variant {
+  color: #94a3b8 !important;
+}
+html.light .theme-dark-canvas [class*="text-white/"],
+html.light .solar-proposal-document [class*="text-white/"],
+html.light .public-proposal-shell [class*="text-white/"] {
+  color: rgb(255 255 255 / 0.85) !important;
+}
+html.light .theme-dark-canvas .hover\:text-white:hover,
+html.light .theme-dark-canvas .hover\:text-on-surface:hover,
+html.light .theme-dark-canvas .group:hover .group-hover\:text-white,
+html.light .theme-dark-canvas .group:hover .group-hover\:text-on-surface,
+html.light .solar-proposal-document .hover\:text-white:hover,
+html.light .solar-proposal-document .hover\:text-on-surface:hover,
+html.light .solar-proposal-document .group:hover .group-hover\:text-white,
+html.light .solar-proposal-document .group:hover .group-hover\:text-on-surface,
+html.light .public-proposal-shell .hover\:text-white:hover,
+html.light .public-proposal-shell .hover\:text-on-surface:hover {
+  color: #ffffff !important;
+}
+html.light .theme-dark-canvas .bg-white\/5,
+html.light .theme-dark-canvas .bg-white\/10,
+html.light .theme-dark-canvas .bg-white\/15,
+html.light .solar-proposal-document .bg-white\/5,
+html.light .solar-proposal-document .bg-white\/10,
+html.light .solar-proposal-document .bg-white\/15,
+html.light .public-proposal-shell .bg-white\/5,
+html.light .public-proposal-shell .bg-white\/10,
+html.light .public-proposal-shell .bg-white\/15 {
+  background-color: rgb(255 255 255 / 0.06) !important;
+}
+html.light .theme-dark-canvas .border-white\/5,
+html.light .theme-dark-canvas .border-white\/10,
+html.light .theme-dark-canvas .border-white\/15,
+html.light .solar-proposal-document .border-white\/5,
+html.light .solar-proposal-document .border-white\/10,
+html.light .solar-proposal-document .border-white\/15,
+html.light .public-proposal-shell .border-white\/5,
+html.light .public-proposal-shell .border-white\/10,
+html.light .public-proposal-shell .border-white\/15 {
+  border-color: rgb(255 255 255 / 0.12) !important;
+}
+html.light .theme-dark-canvas .bg-black\/20,
+html.light .theme-dark-canvas .bg-black\/30,
+html.light .theme-dark-canvas .bg-black\/40 {
+  background-color: rgb(0 0 0 / 0.3) !important;
+}
+html.light .theme-dark-canvas.bg-\[\#0D111E\],
+html.light .theme-dark-canvas .bg-\[\#0D111E\] { background-color: #0d111e !important; }
+html.light .theme-dark-canvas.bg-\[\#0A0D16\],
+html.light .theme-dark-canvas .bg-\[\#0A0D16\] { background-color: #0a0d16 !important; }
+html.light .theme-dark-canvas.bg-\[\#0B1021\],
+html.light .theme-dark-canvas .bg-\[\#0B1021\],
+html.light .theme-dark-canvas.bg-\[\#0B1021\]\/95,
+html.light .theme-dark-canvas .bg-\[\#0B1021\]\/95,
+html.light .theme-dark-canvas.bg-\[\#0B1021\]\/98,
+html.light .theme-dark-canvas .bg-\[\#0B1021\]\/98 { background-color: #0b1021 !important; }
+html.light .theme-dark-canvas.bg-\[\#0A0E23\],
+html.light .theme-dark-canvas .bg-\[\#0A0E23\],
+html.light .theme-dark-canvas.bg-\[\#0A0E23\]\/95,
+html.light .theme-dark-canvas .bg-\[\#0A0E23\]\/95 { background-color: #0a0e23 !important; }
+html.light .theme-dark-canvas.bg-\[\#0D1122\],
+html.light .theme-dark-canvas .bg-\[\#0D1122\] { background-color: #0d1122 !important; }
+html.light .theme-dark-canvas .bg-\[\#0A0E1C\] { background-color: #0a0e1c !important; }
+html.light .theme-dark-canvas .bg-\[\#080B1A\],
+html.light .solar-proposal-document.bg-\[\#080B1A\],
+html.light .solar-proposal-document .bg-\[\#080B1A\] { background-color: #080b1a !important; }
+html.light .theme-dark-canvas .bg-\[\#0B1220\],
+html.light .solar-proposal-document .bg-\[\#0B1220\] { background-color: #0b1220 !important; }
+html.light .theme-dark-canvas .bg-\[\#0F172A\],
+html.light .solar-proposal-document .bg-\[\#0F172A\] { background-color: #0f172a !important; }
+html.light .solar-proposal-document .bg-\[\#0d1520\] { background-color: #0d1520 !important; }
+html.light .solar-proposal-document .bg-\[\#0D1122\] { background-color: #0d1122 !important; }
+html.light .solar-proposal-document .bg-\[\#0A0E1C\] { background-color: #0a0e1c !important; }
+html.light .public-proposal-shell.bg-\[\#060914\],
+html.light .public-proposal-shell .bg-\[\#060914\] { background-color: #060914 !important; }
+html.light .public-proposal-shell .bg-\[\#080C1D\],
+html.light .public-proposal-shell.bg-\[\#080C1D\]\/90 { background-color: #080c1d !important; }
+html.light .public-proposal-shell .bg-\[\#0A0E23\] { background-color: #0a0e23 !important; }
+html.light .theme-dark-canvas select,
+html.light .theme-dark-canvas input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html.light .theme-dark-canvas textarea,
+html.light .solar-proposal-document select,
+html.light .solar-proposal-document input:not([type='checkbox']):not([type='radio']),
+html.light .solar-proposal-document textarea,
+html.light .public-proposal-shell select,
+html.light .public-proposal-shell input:not([type='checkbox']):not([type='radio']),
+html.light .public-proposal-shell textarea {
+  color-scheme: dark;
+  color: #f8fafc;
+  background-color: rgb(255 255 255 / 0.06);
 }

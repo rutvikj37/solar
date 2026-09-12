@@ -100,10 +100,10 @@ export default function AiCallingDashboard() {
         <div>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
-              <span className="material-symbols-outlined text-white text-xl">smart_toy</span>
+              <span className="material-symbols-outlined text-on-surface text-xl">smart_toy</span>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white font-display">AI Calling Automation</h1>
+              <h1 className="text-2xl font-bold text-on-surface font-display">AI Calling Automation</h1>
               <p className="text-xs text-on-surface-variant mt-0.5">Autonomous solar lead qualification & appointment booking</p>
             </div>
           </div>
@@ -111,7 +111,7 @@ export default function AiCallingDashboard() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowTestModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold text-xs hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-amber-500/20"
+            __KEEP_WHITE_0__
           >
             <span className="material-symbols-outlined text-sm">phone_iphone</span>
             ⚡ Test Call Personally
@@ -149,7 +149,7 @@ export default function AiCallingDashboard() {
         {/* Active Campaigns */}
         <div className="lg:col-span-1 glass-card rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-glass-stroke flex items-center justify-between">
-            <h3 className="font-bold text-white text-sm">Active Campaigns</h3>
+            <h3 className="font-bold text-on-surface text-sm">Active Campaigns</h3>
             <Link to="/ai-calling/campaigns" className="text-primary text-[10px] font-bold uppercase hover:underline">View all</Link>
           </div>
           <div className="divide-y divide-glass-stroke max-h-[400px] overflow-y-auto">
@@ -163,7 +163,7 @@ export default function AiCallingDashboard() {
             {campaigns.slice(0, 8).map((c) => (
               <Link key={c.id} to={`/ai-calling/campaigns`} className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{c.name}</p>
+                  <p className="text-xs font-semibold text-on-surface truncate">{c.name}</p>
                   <p className="text-[10px] text-on-surface-variant mt-0.5">
                     {c.queue_done || 0}/{c.queue_total || 0} calls · {c.completed_calls || 0} completed
                   </p>
@@ -177,7 +177,7 @@ export default function AiCallingDashboard() {
         {/* Recent Calls */}
         <div className="lg:col-span-2 glass-card rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-glass-stroke flex items-center justify-between">
-            <h3 className="font-bold text-white text-sm">Recent Calls</h3>
+            <h3 className="font-bold text-on-surface text-sm">Recent Calls</h3>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] text-on-surface-variant">Auto-refreshing</span>
@@ -207,11 +207,11 @@ export default function AiCallingDashboard() {
                 {recentCalls.map((call) => (
                   <tr key={call.id} className="hover:bg-white/5 cursor-pointer transition-colors" onClick={() => navigate(`/ai-calling/calls/${call.id}`)}>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-white">{call.owner_name || 'Unknown'}</p>
+                      <p className="font-semibold text-on-surface">{call.owner_name || 'Unknown'}</p>
                       <p className="text-[10px] text-on-surface-variant truncate max-w-[160px]">{call.address || ''}</p>
                     </td>
                     <td className="px-4 py-3 font-mono text-on-surface-variant">{call.phone || '—'}</td>
-                    <td className="px-4 py-3 font-mono text-white">
+                    <td className="px-4 py-3 font-mono text-on-surface">
                       {call.duration_seconds > 0 ? `${Math.floor(call.duration_seconds / 60)}:${String(call.duration_seconds % 60).padStart(2, '0')}` : '—'}
                     </td>
                     <td className="px-4 py-3"><DispositionBadge status={call.status} /></td>
@@ -233,28 +233,28 @@ export default function AiCallingDashboard() {
         <Link to="/ai-calling/knowledge-base" className="glass-card rounded-xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
           <span className="material-symbols-outlined text-lg text-violet-400 group-hover:scale-110 transition-transform">auto_stories</span>
           <div>
-            <p className="text-xs font-bold text-white">Knowledge Base</p>
+            <p className="text-xs font-bold text-on-surface">Knowledge Base</p>
             <p className="text-[10px] text-on-surface-variant">Edit AI answers</p>
           </div>
         </Link>
         <Link to="/ai-calling/analytics" className="glass-card rounded-xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
           <span className="material-symbols-outlined text-lg text-blue-400 group-hover:scale-110 transition-transform">analytics</span>
           <div>
-            <p className="text-xs font-bold text-white">Analytics</p>
+            <p className="text-xs font-bold text-on-surface">Analytics</p>
             <p className="text-[10px] text-on-surface-variant">Performance data</p>
           </div>
         </Link>
         <Link to="/ai-calling/settings" className="glass-card rounded-xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
           <span className="material-symbols-outlined text-lg text-teal-400 group-hover:scale-110 transition-transform">settings</span>
           <div>
-            <p className="text-xs font-bold text-white">Settings</p>
+            <p className="text-xs font-bold text-on-surface">Settings</p>
             <p className="text-[10px] text-on-surface-variant">API keys & config</p>
           </div>
         </Link>
         <Link to="/ai-calling/campaigns" className="glass-card rounded-xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors group">
           <span className="material-symbols-outlined text-lg text-amber-400 group-hover:scale-110 transition-transform">campaign</span>
           <div>
-            <p className="text-xs font-bold text-white">Campaigns</p>
+            <p className="text-xs font-bold text-on-surface">Campaigns</p>
             <p className="text-[10px] text-on-surface-variant">Manage campaigns</p>
           </div>
         </Link>
@@ -267,7 +267,7 @@ export default function AiCallingDashboard() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-amber-400 text-xl">phone_iphone</span>
-                <h2 className="text-lg font-bold text-white font-display">Personal AI Test Call</h2>
+                <h2 className="text-lg font-bold text-on-surface font-display">Personal AI Test Call</h2>
               </div>
               <button onClick={() => setShowTestModal(false)} className="text-slate-400 hover:text-on-surface">
                 <span className="material-symbols-outlined text-lg">close</span>
@@ -286,7 +286,7 @@ export default function AiCallingDashboard() {
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
                   placeholder="+19876543210"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white font-mono"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface font-mono"
                 />
               </div>
 
@@ -297,7 +297,7 @@ export default function AiCallingDashboard() {
                     type="text"
                     value={testCallerName}
                     onChange={(e) => setTestCallerName(e.target.value)}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                   />
                 </div>
                 <div>
@@ -306,7 +306,7 @@ export default function AiCallingDashboard() {
                     type="text"
                     value={testBusinessName}
                     onChange={(e) => setTestBusinessName(e.target.value)}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                   />
                 </div>
               </div>

@@ -126,7 +126,7 @@ export default function AiCallingSettings() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white font-display">AI Calling Settings</h1>
+        <h1 className="text-2xl font-bold text-on-surface font-display">AI Calling Settings</h1>
         <p className="text-xs text-on-surface-variant mt-0.5">Configure Telephony, Voice Synthesis, AI Models, and Solar Agency Routing</p>
       </div>
 
@@ -134,7 +134,7 @@ export default function AiCallingSettings() {
         <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
           {/* Telephony Settings */}
           <div className="glass-card rounded-2xl p-6 space-y-4 text-xs">
-            <h2 className="font-bold text-white text-sm flex items-center gap-2">
+            <h2 className="font-bold text-on-surface text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-base">call</span>
               Twilio Telephony Integration
             </h2>
@@ -145,7 +145,7 @@ export default function AiCallingSettings() {
                 value={form.twilioPhoneNumber || ''}
                 onChange={(e) => setForm({ ...form, twilioPhoneNumber: e.target.value })}
                 placeholder="+18005550199"
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
               />
               <p className="text-[10px] text-on-surface-variant mt-1">Credentials (Account SID / Auth Token) are securely referenced from your server .env configuration.</p>
             </div>
@@ -153,7 +153,7 @@ export default function AiCallingSettings() {
 
           {/* Voice Synthesis & AI Model */}
           <div className="glass-card rounded-2xl p-6 space-y-4 text-xs">
-            <h2 className="font-bold text-white text-sm flex items-center gap-2">
+            <h2 className="font-bold text-on-surface text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-violet-400 text-base">graphic_eq</span>
               Voice & AI Model Selection
             </h2>
@@ -163,7 +163,7 @@ export default function AiCallingSettings() {
                 <select
                   value={form.elevenlabsVoiceId || ''}
                   onChange={(e) => setForm({ ...form, elevenlabsVoiceId: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 >
                   <option value="">Default (Sarah — American sales)</option>
                   {voices.map((v) => (
@@ -183,7 +183,7 @@ export default function AiCallingSettings() {
                   value={form.elevenlabsAgentId || ''}
                   onChange={(e) => setForm({ ...form, elevenlabsAgentId: e.target.value })}
                   placeholder="Auto-created per campaign if empty"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
               <div>
@@ -191,7 +191,7 @@ export default function AiCallingSettings() {
                 <select
                   value={form.openaiModel || 'gpt-4o'}
                   onChange={(e) => setForm({ ...form, openaiModel: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 >
                   <option value="gpt-4o">GPT-4o (Summary + QA)</option>
                   <option value="gpt-4o-mini">GPT-4o Mini (Cost Optimized)</option>
@@ -205,7 +205,7 @@ export default function AiCallingSettings() {
 
           {/* Call Controls & Limits */}
           <div className="glass-card rounded-2xl p-6 space-y-4 text-xs">
-            <h2 className="font-bold text-white text-sm flex items-center gap-2">
+            <h2 className="font-bold text-on-surface text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-amber-400 text-base">tune</span>
               Business Hours & Rate Limits
             </h2>
@@ -216,7 +216,7 @@ export default function AiCallingSettings() {
                   type="time"
                   value={form.businessHoursStart || '09:00'}
                   onChange={(e) => setForm({ ...form, businessHoursStart: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
               <div>
@@ -225,7 +225,7 @@ export default function AiCallingSettings() {
                   type="time"
                   value={form.businessHoursEnd || '20:00'}
                   onChange={(e) => setForm({ ...form, businessHoursEnd: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
               <div>
@@ -234,7 +234,7 @@ export default function AiCallingSettings() {
                   type="number"
                   value={form.dailyCallLimit || 100}
                   onChange={(e) => setForm({ ...form, dailyCallLimit: Number(e.target.value) })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
               <div>
@@ -243,7 +243,7 @@ export default function AiCallingSettings() {
                   type="number"
                   value={form.concurrentCallLimit || 5}
                   onChange={(e) => setForm({ ...form, concurrentCallLimit: Number(e.target.value) })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
             </div>
@@ -262,7 +262,7 @@ export default function AiCallingSettings() {
         <div className="space-y-6">
           <div className="glass-card rounded-2xl p-6 space-y-4 text-xs">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-white text-sm">Partner Agencies</h2>
+              <h2 className="font-bold text-on-surface text-sm">Partner Agencies</h2>
               <button
                 onClick={() => setShowAgencyModal(true)}
                 className="px-2.5 py-1 rounded-lg bg-primary/20 text-primary font-bold text-[10px]"
@@ -277,7 +277,7 @@ export default function AiCallingSettings() {
               {agencies.map((agency) => (
                 <div key={agency.id} className="py-3 flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-white">{agency.name}</p>
+                    <p className="font-semibold text-on-surface">{agency.name}</p>
                     <p className="text-[10px] text-on-surface-variant">{agency.phone || 'No phone'} · {agency.email || 'No email'}</p>
                   </div>
                   <button onClick={() => handleDeleteAgency(agency.id)} className="text-red-400 hover:text-red-300">
@@ -293,7 +293,7 @@ export default function AiCallingSettings() {
       {showAgencyModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-2xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-white mb-4 font-display">Add Partner Agency</h2>
+            <h2 className="text-lg font-bold text-on-surface mb-4 font-display">Add Partner Agency</h2>
             <form onSubmit={handleCreateAgency} className="space-y-3 text-xs">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Agency Name</label>
@@ -303,7 +303,7 @@ export default function AiCallingSettings() {
                   value={agencyForm.name}
                   onChange={(e) => setAgencyForm({ ...agencyForm, name: e.target.value })}
                   placeholder="SunPower Local Agency"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-on-surface"
                 />
               </div>
               <div>
@@ -312,7 +312,7 @@ export default function AiCallingSettings() {
                   type="text"
                   value={agencyForm.phone}
                   onChange={(e) => setAgencyForm({ ...agencyForm, phone: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-on-surface"
                 />
               </div>
               <div>
@@ -321,7 +321,7 @@ export default function AiCallingSettings() {
                   type="email"
                   value={agencyForm.email}
                   onChange={(e) => setAgencyForm({ ...agencyForm, email: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-on-surface"
                 />
               </div>
               <div>
@@ -331,7 +331,7 @@ export default function AiCallingSettings() {
                   value={agencyForm.zipCodes}
                   onChange={(e) => setAgencyForm({ ...agencyForm, zipCodes: e.target.value })}
                   placeholder="90210, 90211, 90212"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2 text-on-surface"
                 />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-glass-stroke">

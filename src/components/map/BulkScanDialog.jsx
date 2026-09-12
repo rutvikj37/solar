@@ -31,7 +31,7 @@ export default function BulkScanDialog({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-[#0D111E] border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden text-left flex flex-col animate-fade-in max-h-[90vh]">
+      <div className="theme-dark-canvas w-full sm:max-w-md bg-[#0D111E] border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden text-left flex flex-col animate-fade-in max-h-[90vh]">
         <div className="p-4 border-b border-white/5 flex justify-between items-center bg-[#0A0D16]">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-primary text-xl">radar</span>

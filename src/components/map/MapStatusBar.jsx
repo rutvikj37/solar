@@ -36,7 +36,7 @@ function Pill({ label, value, live = false }) {
     <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-deep/90 border border-glass-stroke backdrop-blur-md text-[9px] font-bold tracking-wider uppercase whitespace-nowrap">
       {live && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
       <span className="text-slate-500">{label}</span>
-      <span className="text-white font-mono normal-case tracking-normal">{value}</span>
+      <span className="text-on-surface font-mono normal-case tracking-normal">{value}</span>
     </div>
   );
 }

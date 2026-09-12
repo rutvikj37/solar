@@ -18,7 +18,7 @@ export default function DripStatsBar({ stats }) {
             <span className={`material-symbols-outlined text-sm ${item.color}`}>{item.icon}</span>
             <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{item.label}</span>
           </div>
-          <p className="text-xl font-bold text-white">{item.value ?? 0}</p>
+          <p className="text-xl font-bold text-on-surface">{item.value ?? 0}</p>
         </div>
       ))}
     </div>

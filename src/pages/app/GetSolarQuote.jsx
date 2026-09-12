@@ -56,17 +56,17 @@ export default function GetSolarQuote() {
   if (result) {
     return (
       <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-white/5 p-8 text-center space-y-4">
+        <div className="w-full max-w-lg rounded-2xl border border-glass-stroke bg-white/5 p-8 text-center space-y-4">
           <span className="material-symbols-outlined text-5xl text-emerald-400">check_circle</span>
           <h1 className="text-2xl font-display font-bold">Inquiry received</h1>
-          <p className="text-sm text-white/70">{result.message}</p>
-          <div className="rounded-xl bg-black/30 border border-white/10 p-4 text-left text-sm space-y-1">
+          <p className="text-sm text-on-surface/70">{result.message}</p>
+          <div className="rounded-xl bg-surface-container border border-glass-stroke p-4 text-left text-sm space-y-1">
             <div>
-              <span className="text-white/50">Lead ID:</span>{' '}
+              <span className="text-on-surface/50">Lead ID:</span>{' '}
               <span className="font-mono text-primary">{result.leadCode}</span>
             </div>
             <div>
-              <span className="text-white/50">Status:</span> {result.status}
+              <span className="text-on-surface/50">Status:</span> {result.status}
             </div>
           </div>
           <Link to="/" className="inline-block text-sm text-primary hover:underline">
@@ -85,7 +85,7 @@ export default function GetSolarQuote() {
             SpaceToRoof.com
           </Link>
           <h1 className="mt-3 text-3xl font-display font-bold">Get a solar quote</h1>
-          <p className="mt-2 text-sm text-white/60">
+          <p className="mt-2 text-sm text-on-surface/60">
             Submit one inquiry. Qualified installers bid for your project — your contact details stay
             private until an installer wins.
           </p>
@@ -93,7 +93,7 @@ export default function GetSolarQuote() {
 
         <form
           onSubmit={onSubmit}
-          className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4"
+          className="rounded-2xl border border-glass-stroke bg-white/5 p-6 space-y-4"
         >
           {error && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm px-3 py-2">
@@ -188,12 +188,12 @@ export default function GetSolarQuote() {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-primary/50';
+  'w-full rounded-lg border border-glass-stroke bg-surface-container px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary/50';
 
 function Field({ label, required, children }) {
   return (
     <label className="block text-sm space-y-1.5">
-      <span className="text-white/70">
+      <span className="text-on-surface/70">
         {label}
         {required ? <span className="text-red-400"> *</span> : null}
       </span>

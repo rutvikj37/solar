@@ -20,7 +20,7 @@ export default function AskHeraFab({ className = '' }) {
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-lg">auto_awesome</span>
               <div>
-                <p className="text-xs font-bold text-white">Ask Hera</p>
+                <p className="text-xs font-bold text-on-surface">Ask Hera</p>
                 <p className="text-[10px] text-on-surface-variant">AI mission assistant</p>
               </div>
             </div>
@@ -52,7 +52,7 @@ export default function AskHeraFab({ className = '' }) {
         className={`flex items-center gap-2 px-4 py-2.5 rounded-full shadow-xl border text-xs font-bold transition-all active:scale-[0.98] ${
           open
             ? 'bg-primary text-on-primary border-primary'
-            : 'bg-deep/95 text-white border-glass-stroke backdrop-blur-xl hover:bg-white/10'
+            : 'bg-deep/95 text-on-surface border-glass-stroke backdrop-blur-xl hover:bg-white/10'
         }`}
         aria-expanded={open}
         aria-label="Ask Hera"

@@ -37,7 +37,7 @@ export default function AiCallingAnalytics() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white font-display">AI Call Analytics & Reporting</h1>
+        <h1 className="text-2xl font-bold text-on-surface font-display">AI Call Analytics & Reporting</h1>
         <p className="text-xs text-on-surface-variant mt-0.5">Performance tracking across campaigns and voice interactions</p>
       </div>
 
@@ -51,7 +51,7 @@ export default function AiCallingAnalytics() {
       {/* Campaign Comparison Table */}
       <div className="glass-card rounded-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-glass-stroke">
-          <h3 className="font-bold text-white text-sm">Campaign Performance Breakdown</h3>
+          <h3 className="font-bold text-on-surface text-sm">Campaign Performance Breakdown</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -72,7 +72,7 @@ export default function AiCallingAnalytics() {
               )}
               {data.campaigns.map((c) => (
                 <tr key={c.id} className="hover:bg-white/5">
-                  <td className="px-4 py-3 font-semibold text-white">{c.name}</td>
+                  <td className="px-4 py-3 font-semibold text-on-surface">{c.name}</td>
                   <td className="px-4 py-3 uppercase text-[10px] text-on-surface-variant">{c.status}</td>
                   <td className="px-4 py-3 font-mono">{c.total_calls || 0}</td>
                   <td className="px-4 py-3 font-mono text-emerald-400">{c.bookings || 0}</td>

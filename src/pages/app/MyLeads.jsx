@@ -310,7 +310,7 @@ export default function MyLeads() {
           <button
             type="button"
             onClick={() => setShowPipelineModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-white hover:bg-white/10 transition-all"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-on-surface hover:bg-white/10 transition-all"
           >
             <span className="material-symbols-outlined text-base">tune</span>
             Customize
@@ -318,7 +318,7 @@ export default function MyLeads() {
           <button
             type="button"
             onClick={fetchLeads}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-white hover:bg-white/10 transition-all"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-on-surface hover:bg-white/10 transition-all"
           >
             <span className={`material-symbols-outlined text-base ${loading ? 'animate-spin' : ''}`}>sync</span>
             Refresh
@@ -326,7 +326,7 @@ export default function MyLeads() {
           <button
             type="button"
             onClick={handleExport}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-white hover:bg-white/10 transition-all"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 border border-glass-stroke text-xs font-bold text-on-surface hover:bg-white/10 transition-all"
           >
             <span className="material-symbols-outlined text-base">download</span>
             Export CSV
@@ -395,7 +395,7 @@ export default function MyLeads() {
                 placeholder="Search name, address, phone, email, or ID…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30"
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-xl py-2 pl-10 pr-4 text-sm text-on-surface placeholder:text-slate-500 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30"
               />
             </div>
 
@@ -425,7 +425,7 @@ export default function MyLeads() {
               </div>
 
               <p className="text-[11px] text-on-surface-variant shrink-0">
-                Showing <span className="text-white font-bold">{filteredLeads.length}</span> of {leads.length} leads
+                Showing <span className="text-on-surface font-bold">{filteredLeads.length}</span> of {leads.length} leads
               </p>
             </div>
           </div>
@@ -440,7 +440,7 @@ export default function MyLeads() {
                 <button
                   type="button"
                   onClick={() => setSelectedIds([])}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white hover:bg-white/10 transition-all"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-on-surface hover:bg-white/10 transition-all"
                 >
                   Clear
                 </button>
@@ -576,7 +576,7 @@ export default function MyLeads() {
                             </td>
                             <td className="px-3 py-3">
                               <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-[#0B1220] border border-glass-stroke shrink-0">
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-surface-container-lowest border border-glass-stroke shrink-0">
                                   {img ? (
                                     <img src={img} alt="" className="w-full h-full object-cover" />
                                   ) : (
@@ -588,7 +588,7 @@ export default function MyLeads() {
                                 <div className="min-w-0 flex-1">
                                   <Link
                                     to={`/lead/${lead.id}`}
-                                    className="text-sm font-semibold text-white truncate block hover:text-primary transition-colors leading-tight"
+                                    className="text-sm font-semibold text-on-surface truncate block hover:text-primary transition-colors leading-tight"
                                     title={ownerName}
                                   >
                                     {ownerName}
@@ -622,7 +622,7 @@ export default function MyLeads() {
                                   }
                                   onChange={(e) => handleStatusChange(lead.id, e.target.value)}
                                   disabled={statusBusyId === lead.id}
-                                  className="w-full min-w-0 bg-surface-container-low border border-glass-stroke rounded-md py-1 px-1.5 text-white text-[11px] focus:outline-none focus:border-primary/50 cursor-pointer disabled:opacity-50"
+                                  className="w-full min-w-0 bg-surface-container-low border border-glass-stroke rounded-md py-1 px-1.5 text-on-surface text-[11px] focus:outline-none focus:border-primary/50 cursor-pointer disabled:opacity-50"
                                   aria-label={`Update stage for ${ownerName}`}
                                 >
                                   {!statusOptions.includes(lead.status || 'new') && lead.status ? (
@@ -751,7 +751,7 @@ export default function MyLeads() {
                           setPageSize(Number(e.target.value));
                           setTablePage(1);
                         }}
-                        className="bg-surface-container-low border border-glass-stroke rounded-lg py-1 px-2 text-white text-xs"
+                        className="bg-surface-container-low border border-glass-stroke rounded-lg py-1 px-2 text-on-surface text-xs"
                       >
                         <option value={15}>15</option>
                         <option value={25}>25</option>
@@ -766,7 +766,7 @@ export default function MyLeads() {
                       type="button"
                       disabled={tablePage === 1}
                       onClick={() => setTablePage((p) => Math.max(1, p - 1))}
-                      className="px-3 py-1.5 rounded-lg bg-white/5 border border-glass-stroke text-white font-bold disabled:opacity-40 hover:bg-white/10 transition-all"
+                      className="px-3 py-1.5 rounded-lg bg-white/5 border border-glass-stroke text-on-surface font-bold disabled:opacity-40 hover:bg-white/10 transition-all"
                     >
                       Prev
                     </button>
@@ -777,7 +777,7 @@ export default function MyLeads() {
                       type="button"
                       disabled={tablePage >= totalPages}
                       onClick={() => setTablePage((p) => Math.min(totalPages, p + 1))}
-                      className="px-3 py-1.5 rounded-lg bg-white/5 border border-glass-stroke text-white font-bold disabled:opacity-40 hover:bg-white/10 transition-all"
+                      className="px-3 py-1.5 rounded-lg bg-white/5 border border-glass-stroke text-on-surface font-bold disabled:opacity-40 hover:bg-white/10 transition-all"
                     >
                       Next
                     </button>

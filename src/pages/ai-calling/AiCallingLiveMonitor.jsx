@@ -93,7 +93,7 @@ export default function AiCallingLiveMonitor() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white font-display">Live Call Monitor & Calling Logs</h1>
+          <h1 className="text-2xl font-bold text-on-surface font-display">Live Call Monitor & Calling Logs</h1>
           <p className="text-xs text-on-surface-variant mt-0.5">Real-time status of active AI voice calls and complete execution history</p>
         </div>
         <div className="flex items-center gap-3">
@@ -137,7 +137,7 @@ export default function AiCallingLiveMonitor() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search phone, lead, transcript..."
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary"
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-xl pl-9 pr-3 py-1.5 text-xs text-on-surface placeholder-slate-500 focus:outline-none focus:border-primary"
             />
           </div>
 
@@ -145,7 +145,7 @@ export default function AiCallingLiveMonitor() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-surface-container-low border border-glass-stroke rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
+              className="bg-surface-container-low border border-glass-stroke rounded-xl px-3 py-1.5 text-xs text-on-surface focus:outline-none"
             >
               <option value="">All Statuses</option>
               <option value="initiated">Initiated</option>
@@ -161,7 +161,7 @@ export default function AiCallingLiveMonitor() {
       {/* Live coach panel */}
       {activeTab === 'live' && liveSessions.length > 0 && (
         <div className="glass-card rounded-2xl p-4 mb-6 space-y-3">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-on-surface flex items-center gap-2">
             <span className="material-symbols-outlined text-emerald-400 text-base">hearing</span>
             Live Coach Whisper
           </h3>
@@ -175,7 +175,7 @@ export default function AiCallingLiveMonitor() {
                   value={whisperNote}
                   onChange={(e) => setWhisperNote(e.target.value)}
                   placeholder="Private coach note for the AI (not heard by customer)..."
-                  className="flex-1 bg-black/20 border border-glass-stroke rounded-lg px-3 py-1.5 text-white"
+                  className="flex-1 bg-black/20 border border-glass-stroke rounded-lg px-3 py-1.5 text-on-surface"
                 />
                 <button
                   onClick={() => sendWhisper(s.callRecordId)}
@@ -198,7 +198,7 @@ export default function AiCallingLiveMonitor() {
       ) : filteredCalls.length === 0 ? (
         <div className="glass-card rounded-2xl p-12 text-center">
           <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3 block">graphic_eq</span>
-          <h3 className="text-base font-bold text-white mb-1">No Call Logs Found</h3>
+          <h3 className="text-base font-bold text-on-surface mb-1">No Call Logs Found</h3>
           <p className="text-xs text-on-surface-variant">There are no calls matching your selected filter parameters.</p>
         </div>
       ) : (
@@ -220,7 +220,7 @@ export default function AiCallingLiveMonitor() {
                 {filteredCalls.map((call) => (
                   <tr key={call.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="py-3 px-4">
-                      <p className="font-semibold text-white">{call.owner_name || 'Homeowner'}</p>
+                      <p className="font-semibold text-on-surface">{call.owner_name || 'Homeowner'}</p>
                       <p className="text-[10px] text-on-surface-variant">{call.campaign_name || 'Default Campaign'}</p>
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-300">
@@ -262,7 +262,7 @@ export default function AiCallingLiveMonitor() {
           <div className="glass-card rounded-2xl w-full max-w-2xl p-6 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-glass-stroke mb-4">
               <div>
-                <h3 className="text-lg font-bold text-white font-display">Call Details #{selectedCall.id}</h3>
+                <h3 className="text-lg font-bold text-on-surface font-display">Call Details #{selectedCall.id}</h3>
                 <p className="text-xs text-on-surface-variant">Twilio SID: <span className="font-mono text-slate-300">{selectedCall.twilio_call_sid || 'N/A'}</span></p>
               </div>
               <button
@@ -277,11 +277,11 @@ export default function AiCallingLiveMonitor() {
               <div className="grid grid-cols-2 gap-4 bg-surface-container-low p-4 rounded-xl">
                 <div>
                   <p className="text-on-surface-variant mb-0.5">Lead Name</p>
-                  <p className="font-bold text-white">{selectedCall.owner_name || 'Homeowner'}</p>
+                  <p className="font-bold text-on-surface">{selectedCall.owner_name || 'Homeowner'}</p>
                 </div>
                 <div>
                   <p className="text-on-surface-variant mb-0.5">Phone Number</p>
-                  <p className="font-mono font-bold text-white">{selectedCall.phone || '—'}</p>
+                  <p className="font-mono font-bold text-on-surface">{selectedCall.phone || '—'}</p>
                 </div>
                 <div>
                   <p className="text-on-surface-variant mb-0.5">Call Status</p>
@@ -289,7 +289,7 @@ export default function AiCallingLiveMonitor() {
                 </div>
                 <div>
                   <p className="text-on-surface-variant mb-0.5">Duration</p>
-                  <p className="font-mono font-bold text-white">{selectedCall.duration_seconds || 0} seconds</p>
+                  <p className="font-mono font-bold text-on-surface">{selectedCall.duration_seconds || 0} seconds</p>
                 </div>
               </div>
 
@@ -307,17 +307,17 @@ export default function AiCallingLiveMonitor() {
                 <div className="bg-surface-container-low p-4 rounded-xl grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-on-surface-variant mb-0.5">Voice Provider</p>
-                    <p className="font-bold text-white capitalize">{selectedCall.voice_provider || '—'}</p>
+                    <p className="font-bold text-on-surface capitalize">{selectedCall.voice_provider || '—'}</p>
                   </div>
                   <div>
                     <p className="text-on-surface-variant mb-0.5">QA Score</p>
-                    <p className="font-bold text-white">{selectedCall.qa_score != null ? `${selectedCall.qa_score}/100` : '—'}</p>
+                    <p className="font-bold text-on-surface">{selectedCall.qa_score != null ? `${selectedCall.qa_score}/100` : '—'}</p>
                   </div>
                 </div>
               )}
 
               <div>
-                <p className="font-bold text-white mb-2 flex items-center gap-1.5">
+                <p className="font-bold text-on-surface mb-2 flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-sm text-violet-400">forum</span>
                   Conversation Transcript
                 </p>
@@ -334,7 +334,7 @@ export default function AiCallingLiveMonitor() {
 
               {selectedCall.recording_url && (
                 <div className="bg-surface-container-low p-4 rounded-xl">
-                  <p className="font-bold text-white mb-2 flex items-center gap-1.5">
+                  <p className="font-bold text-on-surface mb-2 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm text-emerald-400">play_circle</span>
                     Call Audio Recording
                   </p>

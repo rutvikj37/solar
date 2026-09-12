@@ -98,10 +98,10 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-xl max-h-[90vh] overflow-hidden rounded-2xl border border-glass-stroke bg-[#0F172A] shadow-2xl flex flex-col">
+      <div className="w-full max-w-xl max-h-[90vh] overflow-hidden rounded-2xl border border-glass-stroke bg-surface-elevated shadow-2xl flex flex-col crm-panel">
         <div className="px-5 py-4 border-b border-glass-stroke flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-white font-bold text-base">Customize Pipeline</h2>
+            <h2 className="text-on-surface font-bold text-base">Customize Pipeline</h2>
             <p className="text-[11px] text-on-surface-variant mt-1">
               Rename and reorder stages. System stages stay for drip, appointments, and proposals.
               Add custom stages for your process.
@@ -147,12 +147,12 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
                 type="text"
                 value={stage.label}
                 onChange={(e) => updateField(index, { label: e.target.value })}
-                className="flex-1 min-w-0 bg-surface-container-low border border-glass-stroke rounded-lg py-1.5 px-2.5 text-white text-xs"
+                className="flex-1 min-w-0 bg-surface-container-low border border-glass-stroke rounded-lg py-1.5 px-2.5 text-on-surface text-xs"
               />
               <select
                 value={stage.color || 'slate'}
                 onChange={(e) => updateField(index, { color: e.target.value })}
-                className="bg-surface-container-low border border-glass-stroke rounded-lg py-1.5 px-2 text-white text-[11px]"
+                className="bg-surface-container-low border border-glass-stroke rounded-lg py-1.5 px-2 text-on-surface text-[11px]"
               >
                 {COLORS.map((c) => (
                   <option key={c} value={c}>
@@ -181,7 +181,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder="New custom stage label…"
-              className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+              className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') addCustom();
               }}
@@ -189,7 +189,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
             <button
               type="button"
               onClick={addCustom}
-              className="px-3 py-2 rounded-lg bg-white/10 text-white text-xs font-bold"
+              className="px-3 py-2 rounded-lg bg-white/10 text-on-surface text-xs font-bold"
             >
               Add
             </button>
@@ -210,7 +210,7 @@ export default function PipelineCustomizeModal({ open, onClose, onSaved }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-lg bg-white/5 border border-glass-stroke text-xs font-bold text-white"
+              className="px-3.5 py-2 rounded-lg bg-white/5 border border-glass-stroke text-xs font-bold text-on-surface"
             >
               Cancel
             </button>

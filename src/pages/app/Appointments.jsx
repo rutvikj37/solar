@@ -211,7 +211,7 @@ export default function Appointments() {
                     <span className="block text-[10px] text-slate-500">{a.duration_minutes || 60} min</span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-white font-semibold truncate max-w-[180px]">
+                    <p className="text-on-surface font-semibold truncate max-w-[180px]">
                       {a.owner_name || '—'}
                     </p>
                     {a.address && (
@@ -223,7 +223,7 @@ export default function Appointments() {
                       </Link>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-white font-semibold">{a.title}</td>
+                  <td className="px-4 py-3 text-on-surface font-semibold">{a.title}</td>
                   <td className="px-4 py-3 text-slate-300">
                     {a.title?.toLowerCase().includes('consult')
                       ? 'Consultation'
@@ -267,7 +267,7 @@ export default function Appointments() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-lg glass-card rounded-2xl border border-glass-stroke p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-bold text-white">Create New Appointment</h3>
+              <h3 className="text-sm font-bold text-on-surface">Create New Appointment</h3>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
@@ -280,7 +280,7 @@ export default function Appointments() {
               <div>
                 <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Title</label>
                 <input
-                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   required
@@ -289,7 +289,7 @@ export default function Appointments() {
               <div>
                 <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Lead</label>
                 <select
-                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                   value={form.leadId}
                   onChange={(e) => setForm({ ...form, leadId: e.target.value })}
                 >
@@ -305,7 +305,7 @@ export default function Appointments() {
                 <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">When</label>
                 <input
                   type="datetime-local"
-                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                   value={form.scheduledAt}
                   onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
                   required
@@ -316,7 +316,7 @@ export default function Appointments() {
                   <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Duration (min)</label>
                   <input
                     type="number"
-                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                     value={form.durationMinutes}
                     onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
                   />
@@ -324,7 +324,7 @@ export default function Appointments() {
                 <div>
                   <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Type</label>
                   <select
-                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                     value={form.type}
                     onChange={(e) =>
                       setForm({
@@ -343,7 +343,7 @@ export default function Appointments() {
               <div>
                 <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Location</label>
                 <input
-                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                   value={form.location}
                   onChange={(e) => setForm({ ...form, location: e.target.value })}
                   placeholder="Property address"
@@ -352,7 +352,7 @@ export default function Appointments() {
               <div>
                 <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Notes</label>
                 <textarea
-                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[80px]"
+                  className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface min-h-[80px]"
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 />
@@ -361,7 +361,7 @@ export default function Appointments() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 bg-white/10 text-white py-2.5 rounded-lg font-bold"
+                  className="flex-1 bg-white/10 text-on-surface py-2.5 rounded-lg font-bold"
                 >
                   Cancel
                 </button>

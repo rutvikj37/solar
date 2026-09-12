@@ -238,7 +238,7 @@ export default function PublicProposalView() {
 
   if (loading) {
     return (
-      <div className="bg-[#060914] min-h-screen flex flex-col items-center justify-center gap-3 text-primary">
+      <div className="public-proposal-shell bg-[#060914] min-h-screen flex flex-col items-center justify-center gap-3 text-primary">
         <span className="material-symbols-outlined text-4xl animate-spin">sync</span>
         <p className="font-mono text-xs uppercase tracking-widest text-slate-300">Loading Solar Proposal...</p>
       </div>
@@ -247,7 +247,7 @@ export default function PublicProposalView() {
 
   if (error) {
     return (
-      <div className="bg-[#060914] min-h-screen flex items-center justify-center p-4">
+      <div className="public-proposal-shell bg-[#060914] min-h-screen flex items-center justify-center p-4">
         <div className="glass-card max-w-md w-full p-8 rounded-2xl border border-red-500/30 text-center space-y-4">
           <span className="material-symbols-outlined text-5xl text-red-400">error</span>
           <h2 className="text-xl font-bold text-white">Proposal Not Available</h2>
@@ -261,7 +261,7 @@ export default function PublicProposalView() {
   }
 
   return (
-    <div className="bg-[#060914] min-h-screen text-slate-100 font-sans antialiased selection:bg-primary/30">
+    <div className="public-proposal-shell bg-[#060914] min-h-screen text-slate-100 font-sans antialiased selection:bg-primary/30">
       {/* Top Header Bar */}
       <header className="sticky top-0 z-40 bg-[#080C1D]/90 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5 flex justify-between items-center">
         <div className="flex items-center gap-3">

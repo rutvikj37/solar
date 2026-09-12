@@ -26,7 +26,7 @@ export default function KpiCard({ icon, label, value, suffix, color = 'blue', tr
         <div className="space-y-1.5">
           <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{label}</p>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-extrabold text-white font-display tabular-nums">
+            <span className="text-2xl font-extrabold text-on-surface font-display tabular-nums">
               {typeof value === 'number' ? value.toLocaleString() : value}
             </span>
             {suffix && <span className="text-[10px] font-bold opacity-60">{suffix}</span>}

@@ -35,7 +35,7 @@ export default function AiCallingCallDetail() {
   if (!call) {
     return (
       <>
-        <div className="p-8 text-center text-white">
+        <div className="p-8 text-center text-on-surface">
           <p>Call record not found.</p>
           <button onClick={() => navigate('/ai-calling')} className="mt-4 px-4 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs">
             Back to Dashboard
@@ -52,7 +52,7 @@ export default function AiCallingCallDetail() {
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-white font-display">Call Recording & Analysis</h1>
+          <h1 className="text-2xl font-bold text-on-surface font-display">Call Recording & Analysis</h1>
           <p className="text-xs text-on-surface-variant mt-0.5">Call #{call.id} · {call.owner_name || 'Homeowner'}</p>
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function AiCallingCallDetail() {
           {/* Audio Recording */}
           {call.recording_url && (
             <div className="glass-card rounded-2xl p-6">
-              <h3 className="font-bold text-white text-sm mb-3">Call Audio Recording</h3>
+              <h3 className="font-bold text-on-surface text-sm mb-3">Call Audio Recording</h3>
               <audio controls className="w-full">
                 <source src={call.recording_url} type="audio/mpeg" />
                 Your browser does not support audio playback.
@@ -72,7 +72,7 @@ export default function AiCallingCallDetail() {
 
           {/* Transcript */}
           <div className="glass-card rounded-2xl p-6">
-            <h3 className="font-bold text-white text-sm mb-4">Call Transcript</h3>
+            <h3 className="font-bold text-on-surface text-sm mb-4">Call Transcript</h3>
             {call.transcript ? (
               <div className="space-y-3 text-xs leading-relaxed max-h-[500px] overflow-y-auto pr-2">
                 <p className="text-slate-300 whitespace-pre-wrap">{call.transcript}</p>
@@ -86,7 +86,7 @@ export default function AiCallingCallDetail() {
         {/* Call Summary & Meta */}
         <div className="space-y-6">
           <div className="glass-card rounded-2xl p-6 space-y-4 text-xs">
-            <h3 className="font-bold text-white text-sm">Call Overview</h3>
+            <h3 className="font-bold text-on-surface text-sm">Call Overview</h3>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Status:</span>
@@ -102,21 +102,21 @@ export default function AiCallingCallDetail() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Duration:</span>
-                <span className="font-mono text-white">{call.duration_seconds || 0}s</span>
+                <span className="font-mono text-on-surface">{call.duration_seconds || 0}s</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Voice:</span>
-                <span className="font-mono text-white capitalize">{call.voice_provider || '—'}</span>
+                <span className="font-mono text-on-surface capitalize">{call.voice_provider || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">QA Score:</span>
-                <span className="font-mono text-white">{call.qa_score != null ? `${call.qa_score}/100` : '—'}</span>
+                <span className="font-mono text-on-surface">{call.qa_score != null ? `${call.qa_score}/100` : '—'}</span>
               </div>
             </div>
           </div>
 
           <div className="glass-card rounded-2xl p-6 space-y-3 text-xs">
-            <h3 className="font-bold text-white text-sm">AI Summary</h3>
+            <h3 className="font-bold text-on-surface text-sm">AI Summary</h3>
             <p className="text-slate-300 leading-relaxed">{call.ai_summary || 'No AI summary generated.'}</p>
             {call.qa_notes && (
               <p className="text-on-surface-variant mt-2">

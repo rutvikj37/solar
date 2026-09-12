@@ -354,7 +354,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
     <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
       <div
         ref={proposalDocRef}
-        className="solar-proposal-document w-full max-w-3xl bg-[#080B1A] border border-glass-stroke rounded-2xl overflow-hidden shadow-2xl text-left my-8"
+        className="solar-proposal-document w-full max-w-3xl bg-[#080B1A] border border-white/10 rounded-2xl overflow-hidden shadow-2xl text-left my-8 text-white"
       >
         {/* Action bar — excluded from iframe print clone via data-print-hide */}
         <div

@@ -72,11 +72,11 @@ export default function Support() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
         <form onSubmit={createTicket} className="glass-card p-6 rounded-xl space-y-3">
-          <h3 className="text-white font-bold text-sm">New Ticket</h3>
+          <h3 className="text-on-surface font-bold text-sm">New Ticket</h3>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+            className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
           >
             <option value="billing">Billing / Credits</option>
             <option value="data">Lead Data Quality</option>
@@ -88,7 +88,7 @@ export default function Support() {
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Subject"
-            className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+            className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
           />
           <textarea
             required
@@ -96,7 +96,7 @@ export default function Support() {
             onChange={(e) => setBody(e.target.value)}
             placeholder="Describe your issue…"
             rows={5}
-            className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-white"
+            className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
           />
           <button
             disabled={creating}
@@ -108,14 +108,14 @@ export default function Support() {
         </form>
 
         <div className="glass-card rounded-xl divide-y divide-glass-stroke">
-          <div className="px-4 py-3 text-white font-bold text-sm">My Tickets</div>
+          <div className="px-4 py-3 text-on-surface font-bold text-sm">My Tickets</div>
           {loading && <p className="p-4 text-on-surface-variant">Loading…</p>}
           {!loading && tickets.length === 0 && (
             <p className="p-4 text-on-surface-variant">No tickets yet.</p>
           )}
           {tickets.map((t) => (
             <Link key={t.id} to={`/support/${t.id}`} className="block px-4 py-3 hover:bg-white/5">
-              <p className="text-white font-semibold">{t.subject}</p>
+              <p className="text-on-surface font-semibold">{t.subject}</p>
               <p className="text-on-surface-variant mt-1">
                 #{t.id} · {t.status} · {new Date(t.updated_at).toLocaleString()}
               </p>

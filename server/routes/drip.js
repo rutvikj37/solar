@@ -147,6 +147,8 @@ router.post('/campaigns', authenticateToken, asyncHandler(async (req, res) => {
 
   const stepList = steps.length > 0 ? steps : DEFAULT_DRIP_STEPS;
   for (const s of stepList) {
+    // Drip is email-only — coerce any legacy sms/ai_call to email.
+    const actionType = 'email';
     await db.query(
       `INSERT INTO drip_steps (campaign_id, step_order, delay_days, delay_hours, action_type, subject, template_content)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -155,7 +157,7 @@ router.post('/campaigns', authenticateToken, asyncHandler(async (req, res) => {
         s.order,
         s.delayDays || 0,
         s.delayHours || 0,
-        s.actionType,
+        actionType,
         s.subject || '',
         s.templateContent,
       ]
@@ -244,7 +246,8 @@ router.put('/campaigns/:id/steps', authenticateToken, asyncHandler(async (req, r
   await db.query('DELETE FROM drip_steps WHERE campaign_id = ?', [campaign.id]);
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
-    const actionType = s.actionType === 'ai_call' ? 'sms' : s.actionType;
+    // Drip is email-only — coerce any legacy sms/ai_call to email.
+    const actionType = 'email';
     await db.query(
       `INSERT INTO drip_steps (campaign_id, step_order, delay_days, delay_hours, action_type, subject, template_content)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,

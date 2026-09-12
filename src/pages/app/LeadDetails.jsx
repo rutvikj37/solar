@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import CrmPushPanel from '../../components/CrmPushPanel';
 import SolarProposalModal from '../../components/SolarProposalModal';
+import LeadProposalPanel from '../../components/leads/LeadProposalPanel.jsx';
 import LeadStatusBadge from '../../components/leads/LeadStatusBadge';
 import { API_BASE } from '../../config.js';
 import { apiService } from '../../services/api.js';
@@ -139,10 +139,10 @@ function LeadMapBlock({
 }) {
   return (
     <div className="glass-card rounded-2xl overflow-hidden border border-glass-stroke">
-      <div className={`relative w-full ${heightClass} bg-[#0B1220]`}>
+      <div className={`relative w-full ${heightClass} bg-surface-container-lowest`}>
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
         {!mapReady && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0B1220]/90 pointer-events-none">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface-container-lowest/90 pointer-events-none">
             {mapError ? (
               <>
                 <span className="material-symbols-outlined text-3xl text-on-surface-variant">satellite_alt</span>
@@ -156,7 +156,7 @@ function LeadMapBlock({
             )}
           </div>
         )}
-        <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/65 text-[10px] text-white font-semibold backdrop-blur-sm">
+        <div className="theme-dark-canvas absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded-lg bg-black/65 text-[10px] text-white font-semibold backdrop-blur-sm">
           Google Satellite · {Number.isNaN(lat) ? '—' : lat.toFixed(5)}, {Number.isNaN(lng) ? '—' : lng.toFixed(5)}
         </div>
       </div>
@@ -832,7 +832,7 @@ export default function LeadDetails() {
     return (
       <>
         <div className="glass-card rounded-xl p-8 text-center">
-          <h3 className="text-white font-bold mb-2">Lead Record Not Found</h3>
+          <h3 className="text-on-surface font-bold mb-2">Lead Record Not Found</h3>
           <Link to="/my-leads" className="text-primary text-xs">
             Back to My Leads
           </Link>
@@ -919,7 +919,7 @@ export default function LeadDetails() {
         <div className="crm-panel lead-360-shell relative z-0 overflow-visible">
           <div className="p-4 sm:p-5 space-y-4">
             <div className="flex flex-col lg:flex-row gap-4">
-              <div className="w-full lg:w-44 h-36 lg:h-auto rounded-xl overflow-hidden bg-[#0B1220] border border-glass-stroke shrink-0">
+              <div className="w-full lg:w-44 h-36 lg:h-auto rounded-xl overflow-hidden bg-surface-container-lowest border border-glass-stroke shrink-0">
                 {leadImage ? (
                   <img src={leadImage} alt="" className="w-full h-full object-cover min-h-[9rem]" />
                 ) : (
@@ -931,7 +931,7 @@ export default function LeadDetails() {
 
               <div className="min-w-0 flex-1 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-headline-lg text-2xl font-bold text-white truncate">{displayName}</h2>
+                  <h2 className="font-headline-lg text-2xl font-bold text-on-surface truncate">{displayName}</h2>
                   <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
                 </div>
                 <p className="text-on-surface-variant break-words text-sm">{lead.address}</p>
@@ -974,17 +974,17 @@ export default function LeadDetails() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
                   <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
                     <p className="text-[9px] uppercase tracking-wider text-slate-500">Stage</p>
-                    <p className="text-white font-semibold mt-0.5">{stageLabel(lead.status)}</p>
+                    <p className="text-on-surface font-semibold mt-0.5">{stageLabel(lead.status)}</p>
                   </div>
                   <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
                     <p className="text-[9px] uppercase tracking-wider text-slate-500">Assignee</p>
-                    <p className="text-white font-semibold mt-0.5 truncate" title={assigneeLabel}>
+                    <p className="text-on-surface font-semibold mt-0.5 truncate" title={assigneeLabel}>
                       {assigneeLabel}
                     </p>
                   </div>
                   <div className="rounded-lg bg-white/5 border border-glass-stroke px-3 py-2">
                     <p className="text-[9px] uppercase tracking-wider text-slate-500">Last activity</p>
-                    <p className="text-white font-semibold mt-0.5">{lastActivityLabel}</p>
+                    <p className="text-on-surface font-semibold mt-0.5">{lastActivityLabel}</p>
                   </div>
                 </div>
               </div>
@@ -993,7 +993,7 @@ export default function LeadDetails() {
                 {nba ? (
                   <div className="rounded-xl border border-primary/30 bg-primary/10 p-3.5 h-full flex flex-col">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Next Action</p>
-                    <p className="text-sm font-bold text-white">{nba.title}</p>
+                    <p className="text-sm font-bold text-on-surface">{nba.title}</p>
                     <p className="text-[11px] text-on-surface-variant mt-1 flex-1">{nba.detail}</p>
                     {proposalEngagement?.viewCount > 0 && (
                       <p className="text-[10px] text-amber-300 mt-2">
@@ -1031,7 +1031,7 @@ export default function LeadDetails() {
               <button
                 type="button"
                 onClick={() => setTab('outreach')}
-                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs"
+                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-on-surface font-bold py-2 px-3 rounded-lg text-xs"
               >
                 <span className="material-symbols-outlined text-base">mail</span>
                 Email
@@ -1039,7 +1039,7 @@ export default function LeadDetails() {
               <button
                 type="button"
                 onClick={() => setTab('outreach')}
-                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs"
+                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-on-surface font-bold py-2 px-3 rounded-lg text-xs"
               >
                 <span className="material-symbols-outlined text-base">sms</span>
                 SMS
@@ -1048,7 +1048,7 @@ export default function LeadDetails() {
                 type="button"
                 onClick={handleShareWhatsApp}
                 disabled={busy === 'share-wa'}
-                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-on-surface font-bold py-2 px-3 rounded-lg text-xs disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-base">chat</span>
                 WhatsApp
@@ -1062,7 +1062,7 @@ export default function LeadDetails() {
                     setShowShareMenu((v) => !v);
                   }}
                   disabled={busy === 'share-pdf' || busy === 'share-wa'}
-                  className="bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
+                  className="bg-white/10 hover:bg-white/15 text-on-surface font-bold py-2 px-3 rounded-lg text-xs flex items-center gap-1.5"
                   title="More share options"
                   aria-expanded={showShareMenu}
                   aria-haspopup="menu"
@@ -1079,14 +1079,14 @@ export default function LeadDetails() {
                 {showShareMenu && (
                   <div
                     role="menu"
-                    className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-[#0F172A] shadow-xl overflow-hidden"
+                    className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 z-30 min-w-[220px] rounded-xl border border-glass-stroke bg-surface-elevated shadow-xl overflow-hidden"
                   >
                     <button
                       type="button"
                       role="menuitem"
                       onClick={handleDownloadSharePdf}
                       disabled={!!busy}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 disabled:opacity-50"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-on-surface hover:bg-white/10 disabled:opacity-50"
                     >
                       <span className="material-symbols-outlined text-base text-primary">picture_as_pdf</span>
                       <span>
@@ -1099,7 +1099,7 @@ export default function LeadDetails() {
                       role="menuitem"
                       onClick={handleShareWhatsApp}
                       disabled={!!busy}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-white hover:bg-white/10 border-t border-glass-stroke disabled:opacity-50"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-xs text-on-surface hover:bg-white/10 border-t border-glass-stroke disabled:opacity-50"
                     >
                       <span className="material-symbols-outlined text-base text-secondary">chat</span>
                       <span>
@@ -1123,13 +1123,11 @@ export default function LeadDetails() {
                 Create & send proposal
               </button>
 
-              <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
-
               <select
                 value={lead.status || 'new'}
                 onChange={(e) => handleStatus(e.target.value)}
                 disabled={busy === 'status'}
-                className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                className="bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                 aria-label="Change pipeline stage"
               >
                 {!statusOptions.includes(lead.status || 'new') && lead.status ? (
@@ -1148,7 +1146,7 @@ export default function LeadDetails() {
             {dripEnrollments.length > 0 && (
               <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-primary/10 border border-primary/25">
                 <span className="material-symbols-outlined text-primary text-base">reorder</span>
-                <span className="text-xs font-bold text-white">Active Drip:</span>
+                <span className="text-xs font-bold text-on-surface">Active Drip:</span>
                 {dripEnrollments.map((e) => (
                   <Link
                     key={e.id}
@@ -1211,7 +1209,7 @@ export default function LeadDetails() {
                   </p>
                   <p
                     className={`text-base font-bold mt-1.5 truncate font-mono tabular-nums ${
-                      k.accent ? 'text-primary' : 'text-white'
+                      k.accent ? 'text-primary' : 'text-on-surface'
                     }`}
                   >
                     {k.value}
@@ -1342,7 +1340,7 @@ export default function LeadDetails() {
                   value={lead.status || 'new'}
                   onChange={(e) => handleStatus(e.target.value)}
                   disabled={busy === 'status'}
-                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                 >
                   {!statusOptions.includes(lead.status || 'new') && lead.status ? (
                     <option value={lead.status}>{lead.status}</option>
@@ -1359,7 +1357,7 @@ export default function LeadDetails() {
                 <select
                   value={lostReason}
                   onChange={(e) => setLostReason(e.target.value)}
-                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                  className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                 >
                   <option value="">Select reason…</option>
                   {LOST_REASONS.map((r) => (
@@ -1374,7 +1372,7 @@ export default function LeadDetails() {
                   Schedule follow-up
                   <input
                     type="datetime-local"
-                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                     value={followUpAt}
                     onChange={(e) => setFollowUpAt(e.target.value)}
                   />
@@ -1383,7 +1381,7 @@ export default function LeadDetails() {
                   Next action
                   <input
                     type="text"
-                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                     placeholder="e.g. Send proposal, call back, site visit"
                     value={nextAction}
                     onChange={(e) => setNextAction(e.target.value)}
@@ -1392,7 +1390,7 @@ export default function LeadDetails() {
                 <label className="block text-[10px] text-slate-400 uppercase tracking-wider">
                   What they talked about
                   <textarea
-                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs min-h-[80px]"
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs min-h-[80px]"
                     placeholder="Conversation notes…"
                     value={conversationNotes}
                     onChange={(e) => setConversationNotes(e.target.value)}
@@ -1420,7 +1418,7 @@ export default function LeadDetails() {
                     <input
                       type="number"
                       step="0.1"
-                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                       value={saleForm.saleSystemSizeKw}
                       onChange={(e) => setSaleForm((f) => ({ ...f, saleSystemSizeKw: e.target.value }))}
                     />
@@ -1430,7 +1428,7 @@ export default function LeadDetails() {
                     <input
                       type="number"
                       step="1"
-                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                       value={saleForm.saleValue}
                       onChange={(e) => setSaleForm((f) => ({ ...f, saleValue: e.target.value }))}
                     />
@@ -1439,7 +1437,7 @@ export default function LeadDetails() {
                     Equipment
                     <input
                       type="text"
-                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                       placeholder="Panels / inverter / battery"
                       value={saleForm.saleEquipment}
                       onChange={(e) => setSaleForm((f) => ({ ...f, saleEquipment: e.target.value }))}
@@ -1449,7 +1447,7 @@ export default function LeadDetails() {
                     Financing
                     <input
                       type="text"
-                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                       placeholder="Cash / Loan / Lease"
                       value={saleForm.saleFinancing}
                       onChange={(e) => setSaleForm((f) => ({ ...f, saleFinancing: e.target.value }))}
@@ -1459,7 +1457,7 @@ export default function LeadDetails() {
                     Closing date
                     <input
                       type="date"
-                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                       value={saleForm.saleClosedAt}
                       onChange={(e) => setSaleForm((f) => ({ ...f, saleClosedAt: e.target.value }))}
                     />
@@ -1468,7 +1466,7 @@ export default function LeadDetails() {
                     Sales representative
                     <input
                       type="text"
-                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                      className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                       value={saleForm.saleRepName}
                       onChange={(e) => setSaleForm((f) => ({ ...f, saleRepName: e.target.value }))}
                     />
@@ -1487,7 +1485,7 @@ export default function LeadDetails() {
                     <p className="font-bold text-emerald-300 uppercase tracking-wider text-[10px]">
                       Conversion summary
                     </p>
-                    <p className="text-white">
+                    <p className="text-on-surface">
                       Sale value:{' '}
                       <span className="font-mono">
                         {lead.sale_value != null
@@ -1633,7 +1631,7 @@ export default function LeadDetails() {
               ) : emailIntegration?.connected ? (
                 <>
                   <textarea
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white min-h-[100px]"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface min-h-[100px]"
                     value={emailBody}
                     onChange={(e) => setEmailBody(e.target.value)}
                   />
@@ -1657,7 +1655,7 @@ export default function LeadDetails() {
                       busy === 'email' ||
                       (emailQuota && !emailQuota.unlimited && Number(emailQuota.remaining) <= 0)
                     }
-                    className="mt-3 w-full bg-white/10 text-white py-2 rounded-lg font-bold disabled:opacity-50"
+                    className="mt-3 w-full bg-white/10 text-on-surface py-2 rounded-lg font-bold disabled:opacity-50"
                   >
                     {busy === 'email' ? 'Sending...' : 'Send Email'}
                   </button>
@@ -1684,7 +1682,7 @@ export default function LeadDetails() {
                   <select
                     value={callOutcome}
                     onChange={(e) => setCallOutcome(e.target.value)}
-                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                    className="mt-1 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                   >
                     <option value="">Select…</option>
                     {CALL_OUTCOMES.map((o) => (
@@ -1698,7 +1696,7 @@ export default function LeadDetails() {
                   type="button"
                   onClick={handleSaveCallOutcome}
                   disabled={busy === 'outcome' || !callOutcome}
-                  className="bg-white/10 text-white px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
+                  className="bg-white/10 text-on-surface px-4 py-2 rounded-lg font-bold text-xs disabled:opacity-50"
                 >
                   {busy === 'outcome' ? 'Saving…' : 'Save Outcome'}
                 </button>
@@ -1737,7 +1735,7 @@ export default function LeadDetails() {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="text-sm font-bold text-white">{a.title}</p>
+                          <p className="text-sm font-bold text-on-surface">{a.title}</p>
                           <p className="text-[11px] text-on-surface-variant">
                             {a.scheduled_at ? new Date(a.scheduled_at).toLocaleString() : '—'}
                             {a.location ? ` · ${a.location}` : ''}
@@ -1766,7 +1764,7 @@ export default function LeadDetails() {
                                     : '',
                                 );
                               }}
-                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-white"
+                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-on-surface"
                             >
                               Reschedule
                             </button>
@@ -1786,7 +1784,7 @@ export default function LeadDetails() {
                             type="datetime-local"
                             value={rescheduleAt}
                             onChange={(e) => setRescheduleAt(e.target.value)}
-                            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white text-xs"
+                            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
                           />
                           <button
                             type="button"
@@ -1813,7 +1811,7 @@ export default function LeadDetails() {
                   <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Date & time</label>
                   <input
                     type="datetime-local"
-                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-white"
+                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
                     value={apptAt}
                     onChange={(e) => setApptAt(e.target.value)}
                   />
@@ -1843,132 +1841,17 @@ export default function LeadDetails() {
         )}
 
         {activeTab === 'proposal' && (
-          <div className="space-y-4">
-            <Card title="Proposal status">
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                <span
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
-                    proposalEngagement?.signedAt
-                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                      : proposalEngagement?.viewCount > 0
-                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                        : proposalEngagement
-                          ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
-                          : 'bg-white/5 text-slate-400 border-glass-stroke'
-                  }`}
-                >
-                  {proposalEngagement?.signedAt
-                    ? 'Accepted'
-                    : proposalEngagement?.viewCount > 0
-                      ? `Viewed ${proposalEngagement.viewCount}×`
-                      : proposalEngagement
-                        ? 'Sent'
-                        : 'Not created'}
-                </span>
-                {proposalEngagement?.summary && (
-                  <p className="text-sm text-white font-semibold">{proposalEngagement.summary}</p>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2 mb-2 text-[10px] text-on-surface-variant">
-                <span className="px-2 py-1 rounded-lg bg-white/5">1. Configure</span>
-                <span className="material-symbols-outlined text-sm">chevron_right</span>
-                <span className="px-2 py-1 rounded-lg bg-white/5">2. Review</span>
-                <span className="material-symbols-outlined text-sm">chevron_right</span>
-                <span className="px-2 py-1 rounded-lg bg-white/5">3. Send & track</span>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowProposalModal(true)}
-                  className="bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg text-xs flex items-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-base">picture_as_pdf</span>
-                  {proposalEngagement ? 'Create / resend proposal' : 'Create & send proposal'}
-                </button>
-                <CrmPushPanel leadId={id} leadName={displayName} onPushed={() => load()} />
-              </div>
-            </Card>
-
-            <Card title="Engagement tracking">
-              {proposalEngagement ? (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-primary/25 bg-primary/10 p-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-bold text-white">
-                        Viewed {proposalEngagement.viewCount || 0} time
-                        {(proposalEngagement.viewCount || 0) === 1 ? '' : 's'}
-                      </p>
-                      {proposalEngagement.viewCount > 0 && (
-                        <p className="text-[11px] text-amber-300 mt-1">
-                          High engagement — recommended: follow up today.
-                        </p>
-                      )}
-                    </div>
-                    {proposalEngagement.viewCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNextAction('Follow up — proposal viewed');
-                          setTab('followups');
-                        }}
-                        className="bg-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold"
-                      >
-                        Follow Up
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                    <div className="p-2.5 rounded-lg bg-white/5">
-                      <p className="text-on-surface-variant uppercase text-[9px]">Status</p>
-                      <p className="text-white font-bold capitalize">{proposalEngagement.status}</p>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-white/5">
-                      <p className="text-on-surface-variant uppercase text-[9px]">Views</p>
-                      <p className="text-white font-bold font-mono">{proposalEngagement.viewCount}</p>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-white/5">
-                      <p className="text-on-surface-variant uppercase text-[9px]">Downloads</p>
-                      <p className="text-white font-bold font-mono">{proposalEngagement.downloadCount}</p>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-white/5">
-                      <p className="text-on-surface-variant uppercase text-[9px]">Financing</p>
-                      <p className="text-white font-bold">
-                        {proposalEngagement.financingViewedAt ? 'Viewed' : '—'}
-                      </p>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-white/5">
-                      <p className="text-on-surface-variant uppercase text-[9px]">Equipment</p>
-                      <p className="text-white font-bold">
-                        {proposalEngagement.equipmentViewedAt ? 'Viewed' : '—'}
-                      </p>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-white/5">
-                      <p className="text-on-surface-variant uppercase text-[9px]">Accepted</p>
-                      <p className="text-white font-bold">
-                        {proposalEngagement.signedAt ? 'Yes' : '—'}
-                      </p>
-                    </div>
-                  </div>
-                  {proposalEvents.length > 0 && (
-                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                      {proposalEvents.slice(0, 12).map((ev) => (
-                        <div key={ev.id} className="flex justify-between gap-2 text-[10px]">
-                          <span className="text-primary font-bold uppercase">{ev.event_type.replace(/_/g, ' ')}</span>
-                          <span className="text-on-surface-variant">
-                            {new Date(ev.created_at).toLocaleString()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-[11px] text-on-surface-variant">
-                  No proposal yet. Create one to start tracking opens, financing views, and acceptance.
-                </p>
-              )}
-            </Card>
-          </div>
+          <LeadProposalPanel
+            lead={lead}
+            leadId={id}
+            displayName={displayName}
+            phoneDisplay={phoneDisplay}
+            emailDisplay={emailDisplay}
+            proposalEngagement={proposalEngagement}
+            proposalEvents={proposalEvents}
+            onOpenPreview={() => setShowProposalModal(true)}
+            onRefresh={() => load()}
+          />
         )}
 
         {activeTab === 'activity' && (
@@ -2078,7 +1961,7 @@ export default function LeadDetails() {
               type="button"
               onClick={handleDownloadSharePdf}
               disabled={busy === 'share-pdf'}
-              className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white font-bold py-2 px-3 rounded-lg text-xs disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-on-surface font-bold py-2 px-3 rounded-lg text-xs disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-base">picture_as_pdf</span>
               {busy === 'share-pdf' ? 'Preparing…' : 'Download lead PDF'}

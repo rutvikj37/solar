@@ -438,7 +438,7 @@ export default function Billing() {
     planDescription = (
       <>
         Monthly plan with{' '}
-        <span className="text-white font-semibold">{planLeadLimit?.toLocaleString() ?? '—'}</span> credits
+        <span className="text-on-surface font-semibold">{planLeadLimit?.toLocaleString() ?? '—'}</span> credits
         per billing cycle
         {subscription.billingInterval === 'year'
           ? ', billed yearly.'
@@ -459,7 +459,7 @@ export default function Billing() {
   if (subscription?.currentPeriodEnd) {
     renewalBody = (
       <>
-        <p className="text-2xl font-bold text-white tracking-tight mt-1">{formatDate(subscription.currentPeriodEnd)}</p>
+        <p className="text-2xl font-bold text-on-surface tracking-tight mt-1">{formatDate(subscription.currentPeriodEnd)}</p>
         <p className="text-xs text-on-surface-variant mt-3 leading-relaxed">
           {subscription.cancelAtPeriodEnd
             ? 'Access continues until this date. Credits will not refresh after cancellation.'
@@ -475,7 +475,7 @@ export default function Billing() {
   } else {
     renewalBody = (
       <>
-        <p className="text-lg font-semibold text-white mt-1">No renewal scheduled</p>
+        <p className="text-lg font-semibold text-on-surface mt-1">No renewal scheduled</p>
         <p className="text-xs text-on-surface-variant mt-3 leading-relaxed">
           Subscribe to a monthly plan for automatic credit refresh each billing cycle.
         </p>
@@ -531,7 +531,7 @@ export default function Billing() {
               <span className="font-label-mono text-[9px] text-primary uppercase tracking-[0.2em] block mb-2">
                 Active plan
               </span>
-              <h3 className="text-xl font-bold text-white tracking-tight">{planName}</h3>
+              <h3 className="text-xl font-bold text-on-surface tracking-tight">{planName}</h3>
             </div>
             <StatusPill status={subscription?.status || (isFreeTier ? 'Free' : null)} cancelAtPeriodEnd={subscription?.cancelAtPeriodEnd} />
           </div>
@@ -641,7 +641,7 @@ export default function Billing() {
             <div className="w-12 h-12 rounded-2xl bg-white/5 border border-glass-stroke flex items-center justify-center mb-4">
               <span className="material-symbols-outlined text-2xl text-on-surface-variant">receipt_long</span>
             </div>
-            <p className="text-sm font-semibold text-white mb-1">No invoices yet</p>
+            <p className="text-sm font-semibold text-on-surface mb-1">No invoices yet</p>
             <p className="text-xs text-on-surface-variant max-w-sm leading-relaxed mb-5">
               Lead plan purchases, bid wallet top-ups, and account adjustments will appear here after
               payment.
@@ -675,7 +675,7 @@ export default function Billing() {
                     className="hover:bg-white/[0.03] transition-colors cursor-pointer"
                     onClick={() => openInvoice(tx)}
                   >
-                    <td className="px-6 py-4 text-white">
+                    <td className="px-6 py-4 text-on-surface">
                       <p className="font-semibold font-mono text-[11px]">{invoiceNumber(tx.id)}</p>
                       {tx.description && (
                         <p className="text-[10px] text-on-surface-variant mt-0.5 leading-snug max-w-xs">
@@ -693,7 +693,7 @@ export default function Billing() {
                     <td className="px-6 py-4 text-on-surface-variant capitalize">
                       {formatBillingReason(tx.billing_reason)}
                     </td>
-                    <td className="px-6 py-4 font-semibold text-white tabular-nums">
+                    <td className="px-6 py-4 font-semibold text-on-surface tabular-nums">
                       {formatAmount(tx.amount_cents)}
                     </td>
                     <td className="px-6 py-4 text-on-surface-variant tabular-nums">
@@ -772,7 +772,7 @@ export default function Billing() {
                     <td className="px-6 py-3 text-on-surface-variant whitespace-nowrap">
                       {formatWhen(row.created_at)}
                     </td>
-                    <td className="px-6 py-3 text-white">{formatLedgerEntryType(row.entry_type)}</td>
+                    <td className="px-6 py-3 text-on-surface">{formatLedgerEntryType(row.entry_type)}</td>
                     <td
                       className={`px-6 py-3 font-semibold ${
                         Number(row.amount) < 0 ? 'text-red-300' : 'text-emerald-300'
@@ -831,7 +831,7 @@ export default function Billing() {
                     </p>
                     <h4 className="font-headline-md text-xl font-bold text-on-surface">{pkg.name}</h4>
                     <div className="mt-4 flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-white">${Number(pkg.price).toLocaleString()}</span>
+                      <span className="text-3xl font-bold text-on-surface">${Number(pkg.price).toLocaleString()}</span>
                       <span className="text-xs text-on-surface-variant">
                         {isMonthly ? '/ month' : ''} · {pkg.lead_limit} leads
                         {Number(pkg.email_limit) > 0
@@ -895,7 +895,7 @@ export default function Billing() {
                 <p className="font-label-mono text-[9px] text-primary uppercase tracking-[0.2em] mb-1">
                   Invoice
                 </p>
-                <h3 id="invoice-detail-title" className="text-lg font-bold text-white font-mono">
+                <h3 id="invoice-detail-title" className="text-lg font-bold text-on-surface font-mono">
                   {invoiceNumber(viewingInvoice.id)}
                 </h3>
               </div>
@@ -932,7 +932,7 @@ export default function Billing() {
                   <dt className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
                     {label}
                   </dt>
-                  <dd className="text-white font-semibold mt-1 break-words">{value}</dd>
+                  <dd className="text-on-surface font-semibold mt-1 break-words">{value}</dd>
                 </div>
               ))}
               <div className="bg-white/5 rounded-lg p-3">
@@ -950,7 +950,7 @@ export default function Billing() {
                 <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
                   Description
                 </p>
-                <p className="text-white text-xs mt-1 leading-relaxed">{viewingInvoice.description}</p>
+                <p className="text-on-surface text-xs mt-1 leading-relaxed">{viewingInvoice.description}</p>
               </div>
             )}
 
@@ -959,7 +959,7 @@ export default function Billing() {
                 <p className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest">
                   Admin
                 </p>
-                <p className="text-white text-xs mt-1">
+                <p className="text-on-surface text-xs mt-1">
                   {viewingInvoice.admin_name}
                   {viewingInvoice.admin_email ? ` · ${viewingInvoice.admin_email}` : ''}
                 </p>

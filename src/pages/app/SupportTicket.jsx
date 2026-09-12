@@ -69,7 +69,7 @@ export default function SupportTicket() {
         <Link to="/support" className="text-xs text-primary font-semibold hover:underline">
           ← Back to Support
         </Link>
-        <h2 className="font-headline-lg text-2xl font-bold text-white mt-2">{ticket.subject}</h2>
+        <h2 className="font-headline-lg text-2xl font-bold text-on-surface mt-2">{ticket.subject}</h2>
         <p className="text-on-surface-variant text-xs mt-1">
           #{ticket.id} · {ticket.category} · <span className="text-primary">{ticket.status}</span>
         </p>
@@ -84,7 +84,7 @@ export default function SupportTicket() {
             <p className="text-[10px] text-on-surface-variant mb-1">
               {m.sender_name || m.sender_role} · {new Date(m.created_at).toLocaleString()}
             </p>
-            <p className="text-white whitespace-pre-wrap">{m.body}</p>
+            <p className="text-on-surface whitespace-pre-wrap">{m.body}</p>
           </div>
         ))}
       </div>
@@ -95,7 +95,7 @@ export default function SupportTicket() {
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             placeholder="Write a reply…"
-            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2.5 text-white"
+            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2.5 text-on-surface"
           />
           <button type="submit" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg">
             Send

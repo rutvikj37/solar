@@ -70,19 +70,19 @@ export default function DashboardTour({ forceOpen = false, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0D1122] shadow-2xl p-5 space-y-4">
+      <div className="w-full max-w-md rounded-2xl border border-glass-stroke bg-surface-elevated shadow-2xl p-5 space-y-4 crm-panel">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
               Tutorial · {step + 1}/{STEPS.length}
             </p>
-            <h3 className="text-lg font-bold text-white mt-1">{current.title}</h3>
+            <h3 className="text-lg font-bold text-on-surface mt-1">{current.title}</h3>
           </div>
-          <button type="button" onClick={() => close(true)} className="text-slate-400 hover:text-on-surface p-1">
+          <button type="button" onClick={() => close(true)} className="text-on-surface-variant hover:text-on-surface p-1">
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         </div>
-        <p className="text-sm text-white/70 leading-relaxed">{current.body}</p>
+        <p className="text-sm text-on-surface-variant leading-relaxed">{current.body}</p>
         <div className="flex flex-wrap gap-2 pt-1">
           <Link
             to={current.to}
@@ -95,7 +95,7 @@ export default function DashboardTour({ forceOpen = false, onClose }) {
             <button
               type="button"
               onClick={() => setStep((s) => s + 1)}
-              className="rounded-lg border border-white/15 bg-white/5 text-xs font-bold px-3 py-2 text-white"
+              className="rounded-lg border border-glass-stroke bg-surface-container text-xs font-bold px-3 py-2 text-on-surface"
             >
               Next
             </button>
@@ -103,7 +103,7 @@ export default function DashboardTour({ forceOpen = false, onClose }) {
             <button
               type="button"
               onClick={() => close(true)}
-              className="rounded-lg border border-white/15 bg-white/5 text-xs font-bold px-3 py-2 text-white"
+              className="rounded-lg border border-glass-stroke bg-white/5 text-xs font-bold px-3 py-2 text-on-surface"
             >
               Done
             </button>
@@ -130,7 +130,7 @@ export function DashboardTourButton() {
       <button
         type="button"
         onClick={() => setForce(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-white/10"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-glass-stroke bg-white/5 px-3 py-1.5 text-[11px] font-bold text-on-surface hover:bg-white/10"
       >
         <span className="material-symbols-outlined text-sm">school</span>
         Start tutorial

@@ -125,7 +125,7 @@ export default function AiCallingCampaigns() {
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white font-display">AI Calling Campaigns</h1>
+          <h1 className="text-2xl font-bold text-on-surface font-display">AI Calling Campaigns</h1>
           <p className="text-xs text-on-surface-variant mt-0.5">Manage automated cold-calling sequences</p>
         </div>
         <button
@@ -141,7 +141,7 @@ export default function AiCallingCampaigns() {
         {campaigns.length === 0 && (
           <div className="col-span-full glass-card rounded-2xl p-12 text-center">
             <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3 block">campaign</span>
-            <h3 className="text-base font-bold text-white mb-1">No Campaigns Created</h3>
+            <h3 className="text-base font-bold text-on-surface mb-1">No Campaigns Created</h3>
             <p className="text-xs text-on-surface-variant mb-4">Set up an automated AI calling campaign to qualify leads 24/7.</p>
             <button
               onClick={() => setShowModal(true)}
@@ -156,7 +156,7 @@ export default function AiCallingCampaigns() {
           <div key={c.id} className="glass-card rounded-2xl p-6 flex flex-col justify-between space-y-4">
             <div>
               <div className="flex items-start justify-between gap-2 mb-3">
-                <h3 className="text-base font-bold text-white font-display">{c.name}</h3>
+                <h3 className="text-base font-bold text-on-surface font-display">{c.name}</h3>
                 <DispositionBadge status={c.status} />
               </div>
               <div className="space-y-1.5 text-xs text-on-surface-variant">
@@ -218,7 +218,7 @@ export default function AiCallingCampaigns() {
       {showModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-2xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-bold text-white mb-4 font-display">Create AI Calling Campaign</h2>
+            <h2 className="text-lg font-bold text-on-surface mb-4 font-display">Create AI Calling Campaign</h2>
             <form onSubmit={handleCreateCampaign} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Campaign Name</label>
@@ -228,7 +228,7 @@ export default function AiCallingCampaigns() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g. Q3 Cold Lead Outreach"
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 />
               </div>
 
@@ -239,7 +239,7 @@ export default function AiCallingCampaigns() {
                     type="text"
                     value={formData.callerName}
                     onChange={(e) => setFormData({ ...formData, callerName: e.target.value })}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                   />
                 </div>
                 <div>
@@ -248,7 +248,7 @@ export default function AiCallingCampaigns() {
                     type="text"
                     value={formData.businessName}
                     onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                   />
                 </div>
               </div>
@@ -258,7 +258,7 @@ export default function AiCallingCampaigns() {
                 <select
                   value={formData.elevenlabsVoiceId}
                   onChange={(e) => setFormData({ ...formData, elevenlabsVoiceId: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                 >
                   <option value="">Default (Sarah)</option>
                   {voices.map((v) => (
@@ -277,7 +277,7 @@ export default function AiCallingCampaigns() {
                     type="time"
                     value={formData.callingWindowStart}
                     onChange={(e) => setFormData({ ...formData, callingWindowStart: e.target.value })}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                   />
                 </div>
                 <div>
@@ -286,7 +286,7 @@ export default function AiCallingCampaigns() {
                     type="time"
                     value={formData.callingWindowEnd}
                     onChange={(e) => setFormData({ ...formData, callingWindowEnd: e.target.value })}
-                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-white"
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-xl p-2.5 text-on-surface"
                   />
                 </div>
               </div>
@@ -315,11 +315,11 @@ export default function AiCallingCampaigns() {
       {showAddLeadsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-bold text-white mb-4 font-display">Add Leads to Queue</h2>
+            <h2 className="text-lg font-bold text-on-surface mb-4 font-display">Add Leads to Queue</h2>
             <form onSubmit={handleAddLeadsSubmit} className="space-y-4">
               <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
                 {leads.map((l) => (
-                  <label key={l.id} className="flex items-center gap-3 p-2 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 text-xs text-white">
+                  <label key={l.id} className="flex items-center gap-3 p-2 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 text-xs text-on-surface">
                     <input
                       type="checkbox"
                       checked={selectedLeadIds.includes(l.id)}
