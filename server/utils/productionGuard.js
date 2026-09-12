@@ -10,6 +10,8 @@ const REQUIRED_IN_PRODUCTION = [
 const FORBIDDEN_IN_PRODUCTION = [
   { key: 'ALLOW_DEV_CHECKOUT', values: ['1', 'true'] },
   { key: 'ALLOW_ADMIN_BOOTSTRAP', values: ['1', 'true'] },
+  { key: 'ALLOW_BOOTSTRAP_SUPER_ADMIN', values: ['1', 'true'] },
+  { key: 'ALLOW_EMAIL_SIMULATION', values: ['1', 'true'] },
 ];
 
 export function validateProductionSecurityConfig() {

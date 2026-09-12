@@ -215,50 +215,75 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
 
   await normalizeDetailsCoordinates(full);
 
-  const [leadResult] = await db.query(
-    `INSERT INTO leads (user_id, address, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      req.user.id,
-      full.address,
-      parseFloat(full.lat) || null,
-      parseFloat(full.lng) || null,
-      full.propertyData?.ownerName,
-      full.contact?.phone,
-      full.contact?.phoneType || 'Not Available',
-      full.contact?.email,
-      full.contact?.emailStatus || 'Not Available',
-      full.contact?.linkedIn || 'Not Available',
-      full.propertyData?.mailingAddress,
-      propValueNum,
-      full.propertyData?.ownerOccupied === 'Yes' ? 1 : 0,
-      full.propertyData?.parcelNumber,
-      roofAreaNum,
-      full.solar?.potential,
-      savingsNum,
-      full.aiLeadScore?.overall,
-      'new',
-      JSON.stringify(full.solar || {}),
-      JSON.stringify({
-        ...(full.propertyData || {}),
-        latitude: parseFloat(full.lat) || null,
-        longitude: parseFloat(full.lng) || null,
-        livingArea: full.livingArea,
-        lotSize: full.lotSize,
-        stories: full.stories,
-        propertyType: full.propertyType,
-        yearBuilt: full.yearBuilt,
-        aiLeadScore: full.aiLeadScore || null
-      }),
-      full.imageUrl || null
-    ]
-  );
-
-  if (!adminBypass && packageRecord) {
-    await db.query(
-      'UPDATE user_packages SET remaining_leads = remaining_leads - 1 WHERE id = ?',
-      [packageRecord.id]
+  const conn = await db.getConnection();
+  let leadResult;
+  try {
+    await conn.beginTransaction();
+    const [ins] = await conn.query(
+      `INSERT INTO leads (user_id, address, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.user.id,
+        full.address,
+        parseFloat(full.lat) || null,
+        parseFloat(full.lng) || null,
+        full.propertyData?.ownerName,
+        full.contact?.phone,
+        full.contact?.phoneType || 'Not Available',
+        full.contact?.email,
+        full.contact?.emailStatus || 'Not Available',
+        full.contact?.linkedIn || 'Not Available',
+        full.propertyData?.mailingAddress,
+        propValueNum,
+        full.propertyData?.ownerOccupied === 'Yes' ? 1 : 0,
+        full.propertyData?.parcelNumber,
+        roofAreaNum,
+        full.solar?.potential,
+        savingsNum,
+        full.aiLeadScore?.overall,
+        'new',
+        JSON.stringify(full.solar || {}),
+        JSON.stringify({
+          ...(full.propertyData || {}),
+          latitude: parseFloat(full.lat) || null,
+          longitude: parseFloat(full.lng) || null,
+          livingArea: full.livingArea,
+          lotSize: full.lotSize,
+          stories: full.stories,
+          propertyType: full.propertyType,
+          yearBuilt: full.yearBuilt,
+          aiLeadScore: full.aiLeadScore || null
+        }),
+        full.imageUrl || null
+      ]
     );
+    leadResult = ins;
+
+    if (!adminBypass && packageRecord) {
+      const [upd] = await conn.query(
+        'UPDATE user_packages SET remaining_leads = remaining_leads - 1 WHERE id = ? AND remaining_leads >= 1',
+        [packageRecord.id]
+      );
+      if (upd.affectedRows === 0) {
+        await conn.rollback();
+        return res.status(402).json({
+          error: 'Insufficient lead credits',
+          credits: 0,
+          upgradeRequired: true,
+          reason: 'no_credits',
+        });
+      }
+    }
+    await conn.commit();
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  } finally {
+    conn.release();
   }
 
   // Auto-enroll lead into active drip campaigns
@@ -413,6 +438,25 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   const packageRecord = creditCheck.packageRecord || packages[0] || null;
+
+  // Atomically reserve the max quota so concurrent unlocks cannot overspend.
+  let reservedCredits = 0;
+  if (!adminBypass && packageRecord) {
+    const [upd] = await db.query(
+      'UPDATE user_packages SET remaining_leads = remaining_leads - ? WHERE id = ? AND remaining_leads >= ?',
+      [requestedQuota, packageRecord.id, requestedQuota],
+    );
+    if (upd.affectedRows === 0) {
+      return res.status(402).json({
+        error: `Insufficient lead credits. Bulk scan requires at least ${requestedQuota} credits.`,
+        credits: creditCheck.credits,
+        upgradeRequired: true,
+        reason: 'no_credits',
+      });
+    }
+    reservedCredits = requestedQuota;
+  }
+
   const queryLimit = requestedQuota;
   const minSavingsNum = parseMinSavingsThreshold(minSavings);
   const wantSingleFamily = singleFamily === true || singleFamily === 'true' || singleFamily === 1 || singleFamily === '1';
@@ -800,10 +844,11 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   }
   const uniqueLeadsPreview = Array.from(previewById.values());
 
-  if (!adminBypass && packageRecord && summary.leadsCount > 0) {
+  const creditsUsed = adminBypass ? 0 : summary.leadsCount;
+  if (!adminBypass && reservedCredits > creditsUsed) {
     await db.query(
-      'UPDATE user_packages SET remaining_leads = remaining_leads - ? WHERE id = ?',
-      [summary.leadsCount, packageRecord.id]
+      'UPDATE user_packages SET remaining_leads = remaining_leads + ? WHERE id = ?',
+      [reservedCredits - creditsUsed, packageRecord.id],
     );
   }
 
@@ -813,7 +858,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   summary.phase = 'completed';
   res.status(200).json({
     message: `Bulk scan complete. Created ${summary.leadsCount} leads (${summary.withContact} with contact details).`,
-    creditsDeducted: adminBypass ? 0 : summary.leadsCount,
+    creditsDeducted: creditsUsed,
     creditsRemaining: currentCredits,
     createdLeadIds: [...new Set(createdLeadIds)],
     leads: uniqueLeadsPreview,
@@ -1165,6 +1210,7 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
     saleFinancing,
     saleClosedAt,
     saleRepName,
+    outreachOptOut,
   } = req.body;
 
   const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id, l.user_id, l.created_at, l.status');
@@ -1224,10 +1270,22 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
     updates.push('sale_rep_name = ?');
     params.push(saleRepName || null);
   }
+  if (outreachOptOut !== undefined) {
+    updates.push('outreach_opt_out = ?');
+    params.push(outreachOptOut ? 1 : 0);
+  }
 
   if (updates.length > 0) {
     params.push(id, lead.user_id);
     await db.query(`UPDATE leads SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+  }
+
+  if (outreachOptOut !== undefined && outreachOptOut) {
+    await db.query(
+      `UPDATE drip_enrollments SET status = 'cancelled'
+       WHERE lead_id = ? AND user_id = ? AND status = 'active'`,
+      [id, lead.user_id],
+    );
   }
 
   // Activity breadcrumbs for conversion / call outcome

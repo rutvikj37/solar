@@ -53,6 +53,9 @@ export const apiService = {
   getLeads: () => apiRequest('/api/leads'),
   getLead: (id) => apiRequest(`/api/leads/${id}`),
   updateLeadStatus: (id, status) => apiRequest(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  updateLead: (id, payload) => apiRequest(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  setLeadOutreachOptOut: (id, outreachOptOut) =>
+    apiRequest(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ outreachOptOut: !!outreachOptOut }) }),
   bulkDeleteLeads: (leadIds) => apiRequest('/api/leads/bulk-delete', { method: 'POST', body: JSON.stringify({ leadIds }) }),
   bulkScan: (payload, options) => bulkScan(payload, options),
   pushLeadToCrm: (leadId, provider) =>

@@ -54,6 +54,11 @@ export const BIDDING_OPEN_STATUSES = new Set(['bidding', 'no_bid_expanding']);
 /** Minimum USD bid wallet balance required before placing marketplace bids. */
 export const MIN_WALLET_BALANCE_TO_BID = 25;
 
+/**
+ * Verified-installer gate is controlled by env MARKETPLACE_REQUIRE_VERIFIED.
+ * Default: true when NODE_ENV=production (see marketplaceRequireVerified in routes).
+ */
+
 export function billRangeFromAmount(bill) {
   const n = Number(bill);
   if (!Number.isFinite(n) || n <= 0) return 'Not provided';

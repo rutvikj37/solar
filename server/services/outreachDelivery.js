@@ -14,6 +14,28 @@ function isKeyValid(key) {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
 }
 
+/** Simulated platform email is only allowed outside production when explicitly opted in. */
+export function allowEmailSimulation() {
+  if (process.env.NODE_ENV === 'production') return false;
+  const v = String(process.env.ALLOW_EMAIL_SIMULATION || '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
+
+export function isPlatformEmailConfigured() {
+  if (isSesConfigured()) return true;
+  return (
+    isKeyValid(process.env.RESEND_API_KEY) || isKeyValid(process.env.SENDGRID_API_KEY)
+  );
+}
+
+function emailNotConfiguredError() {
+  const err = new Error(
+    'Email delivery is not configured. Set Amazon SES (AWS_REGION + credentials + SES_FROM_EMAIL) or RESEND_API_KEY / SENDGRID_API_KEY.',
+  );
+  err.code = 'EMAIL_NOT_CONFIGURED';
+  return err;
+}
+
 export async function sendTwilioSms(to, body) {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
@@ -46,6 +68,7 @@ async function sendViaResendOrSendGrid(to, subject, body) {
   const from = process.env.OUTREACH_FROM_EMAIL || BRAND_NOREPLY;
 
   if (!isKeyValid(apiKey)) {
+    if (!allowEmailSimulation()) throw emailNotConfiguredError();
     return { ok: false, simulated: true, id: `sim_email_${Date.now()}`, provider: 'none' };
   }
 
@@ -88,10 +111,13 @@ async function sendViaResendOrSendGrid(to, subject, body) {
   };
 }
 
-/** Platform transport: SES preferred, then Resend/SendGrid, else simulate. Auth / system only. */
+/** Platform transport: SES preferred, then Resend/SendGrid, else simulate (non-prod only). */
 async function sendPlatformTransport({ to, subject, body, html, replyTo }) {
   if (isSesConfigured()) {
     return sendViaSes({ to, subject, body, html, replyTo });
+  }
+  if (!isPlatformEmailConfigured() && !allowEmailSimulation()) {
+    throw emailNotConfiguredError();
   }
   return sendViaResendOrSendGrid(to, subject, body);
 }

@@ -178,7 +178,8 @@ export default function EmailIntegrationsSection({ onToast }) {
       {!connected && (
         <p className="text-[11px] text-on-surface-variant">
           Enter your SMTP host and credentials above. Platform noreply is never used as From for
-          customer outreach.
+          customer outreach. For inbox placement, ask your DNS admin to set SPF, DKIM, and DMARC
+          for the From domain (see DEPLOY.md — Custom SMTP deliverability).
         </p>
       )}
     </div>

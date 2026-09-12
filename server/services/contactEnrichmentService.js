@@ -137,7 +137,7 @@ export async function validateEmailWithVerifalia(email) {
   
   if (isKeyValid(process.env.VERIFALIA_USERNAME)) {
     try {
-      console.log(`[Verifalia SMTP] Verifying email deliverability: ${email}`);
+      console.log('[Verifalia SMTP] Verifying email deliverability');
       const verifalia = new VerifaliaRestClient({
         username: process.env.VERIFALIA_USERNAME,
         password: process.env.VERIFALIA_PASSWORD || ''
@@ -163,7 +163,7 @@ export async function lookupPhoneWithTwilio(phone) {
 
   if (isKeyValid(process.env.TWILIO_ACCOUNT_SID) && isKeyValid(process.env.TWILIO_AUTH_TOKEN)) {
     try {
-      console.log(`[Twilio Lookup] Querying carrier information for: ${phone}`);
+      console.log('[Twilio Lookup] Querying carrier information');
       const cleanPhone = phone.replace(/[^\d+]/g, '');
       const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(cleanPhone)}?Fields=line_type_intelligence`;
       

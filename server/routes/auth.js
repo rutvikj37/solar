@@ -121,7 +121,21 @@ router.post(
       [userId, "Free", initialCredits, initialCredits, "active"],
     );
 
-    await issueEmailVerification(userId, email, name);
+    try {
+      await issueEmailVerification(userId, email, name);
+    } catch (err) {
+      // Fail closed: do not leave an unverified account when email cannot be delivered.
+      try {
+        await db.query("DELETE FROM user_packages WHERE user_id = ?", [userId]);
+        await db.query("DELETE FROM users WHERE id = ?", [userId]);
+      } catch {
+        /* ignore cleanup errors */
+      }
+      return res.status(err.status || 503).json({
+        error: err.message || "Unable to send verification email",
+        code: err.code || "EMAIL_SEND_FAILED",
+      });
+    }
 
     setAuthNoStore(res);
     res.status(201).json({
@@ -201,7 +215,14 @@ router.post(
     if (!users.length || Number(users[0].email_verified) === 1) {
       return res.json({ message: "If an unverified account exists, a new link was sent." });
     }
-    await issueEmailVerification(users[0].id, email, users[0].name);
+    try {
+      await issueEmailVerification(users[0].id, email, users[0].name);
+    } catch (err) {
+      return res.status(err.status || 503).json({
+        error: err.message || "Unable to send verification email",
+        code: err.code || "EMAIL_SEND_FAILED",
+      });
+    }
     res.json({ message: "If an unverified account exists, a new link was sent." });
   }),
 );
@@ -213,7 +234,14 @@ router.post(
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: "Valid email required" });
     }
-    await issuePasswordReset(email);
+    try {
+      await issuePasswordReset(email);
+    } catch (err) {
+      return res.status(err.status || 503).json({
+        error: err.message || "Unable to send password reset email",
+        code: err.code || "EMAIL_SEND_FAILED",
+      });
+    }
     res.json({ message: "If an account exists for that email, a reset link was sent." });
   }),
 );

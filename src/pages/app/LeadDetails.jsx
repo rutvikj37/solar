@@ -286,7 +286,7 @@ export default function LeadDetails() {
           `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`,
         );
         try {
-          setOutreachOptOut(localStorage.getItem(`lead_outreach_optout_${data.id}`) === '1');
+          setOutreachOptOut(Number(data.outreach_opt_out) === 1);
         } catch {
           setOutreachOptOut(false);
         }
@@ -773,13 +773,18 @@ export default function LeadDetails() {
     }
   };
 
-  const toggleOptOut = () => {
+  const toggleOptOut = async () => {
     const next = !outreachOptOut;
     setOutreachOptOut(next);
     try {
-      localStorage.setItem(`lead_outreach_optout_${id}`, next ? '1' : '0');
-    } catch {
-      /* ignore */
+      const updated = await apiService.setLeadOutreachOptOut(id, next);
+      if (updated && typeof updated.outreach_opt_out !== 'undefined') {
+        setOutreachOptOut(Number(updated.outreach_opt_out) === 1);
+      }
+      setLead((prev) => (prev ? { ...prev, outreach_opt_out: next ? 1 : 0 } : prev));
+    } catch (err) {
+      setOutreachOptOut(!next);
+      alert(err.message || 'Failed to update outreach opt-out');
     }
   };
 

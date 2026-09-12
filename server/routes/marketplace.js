@@ -66,7 +66,7 @@ const inquiryLimiter = rateLimit({
 
 const contactVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 40,
+  max: 8,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many verification attempts. Please try again later.' },
@@ -74,7 +74,7 @@ const contactVerifyLimiter = rateLimit({
 
 const phoneOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 12,
+  max: 4,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many SMS verification requests. Please try again later.' },
@@ -107,9 +107,11 @@ const reportPdfLimiter = rateLimit({
 const auth = [authenticateToken];
 
 function marketplaceRequireVerified() {
-  // Opt-in only. Do NOT force this in production — new installers are created as
-  // "pending" and would otherwise see an empty marketplace until an admin verifies them.
-  return process.env.MARKETPLACE_REQUIRE_VERIFIED === 'true';
+  const raw = String(process.env.MARKETPLACE_REQUIRE_VERIFIED || '').trim().toLowerCase();
+  if (raw === 'false' || raw === '0') return false;
+  if (raw === 'true' || raw === '1') return true;
+  // Production default: only verified installers see/bid on opportunities.
+  return process.env.NODE_ENV === 'production';
 }
 
 function requireInstaller(req, res, next) {
@@ -537,19 +539,31 @@ router.post('/opportunities/:id/bids', ...auth, requireInstaller, async (req, re
     if (amount < Number(leadPreview.min_bid)) {
       return res.status(400).json({ error: `Minimum bid is ${leadPreview.min_bid}` });
     }
-    const balance = await getWalletBalance(userId);
-    if (balance < MIN_WALLET_BALANCE_TO_BID) {
+    const balancePreview = await getWalletBalance(userId);
+    if (balancePreview < MIN_WALLET_BALANCE_TO_BID) {
       return res.status(400).json({
         error: `Minimum $${MIN_WALLET_BALANCE_TO_BID} bid wallet balance required to place bids`,
         code: 'min_wallet_balance',
         minBalanceToBid: MIN_WALLET_BALANCE_TO_BID,
       });
     }
-    if (balance < amount) {
-      return res.status(400).json({ error: 'Insufficient marketplace wallet balance' });
-    }
 
     await conn.beginTransaction();
+    await ensureWallet(userId, conn);
+    const [walletRows] = await conn.query(
+      `SELECT balance FROM marketplace_wallets WHERE user_id = ? FOR UPDATE`,
+      [userId],
+    );
+    const balance = Number(walletRows[0]?.balance) || 0;
+    if (balance < MIN_WALLET_BALANCE_TO_BID) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `Minimum $${MIN_WALLET_BALANCE_TO_BID} bid wallet balance required to place bids`,
+        code: 'min_wallet_balance',
+        minBalanceToBid: MIN_WALLET_BALANCE_TO_BID,
+      });
+    }
+
     const [rows] = await conn.query(
       `SELECT * FROM marketplace_leads WHERE id = ? FOR UPDATE`,
       [req.params.id],
@@ -567,6 +581,27 @@ router.post('/opportunities/:id/bids', ...auth, requireInstaller, async (req, re
     if (amount < Number(lead.min_bid)) {
       await conn.rollback();
       return res.status(400).json({ error: `Minimum bid is ${lead.min_bid}` });
+    }
+
+    // Interim hold: outstanding active bids + this bid must fit in wallet balance.
+    const [outstandingRows] = await conn.query(
+      `SELECT COALESCE(SUM(amount), 0) AS outstanding
+       FROM marketplace_bids
+       WHERE installer_user_id = ?
+         AND status = 'active'
+         AND lead_id != ?`,
+      [userId, lead.id],
+    );
+    const outstanding = Number(outstandingRows[0]?.outstanding) || 0;
+    if (outstanding + amount > balance) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'Insufficient marketplace wallet balance for outstanding bids',
+        code: 'bid_coverage',
+        balance,
+        outstandingBids: outstanding,
+        required: outstanding + amount,
+      });
     }
 
     const [existing] = await conn.query(

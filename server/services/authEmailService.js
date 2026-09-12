@@ -15,6 +15,13 @@ function tokenExpiry(hours = 24) {
   return d;
 }
 
+function maskEmail(email) {
+  const s = String(email || '');
+  const at = s.indexOf('@');
+  if (at < 1) return '[redacted]';
+  return `${s[0]}***${s.slice(at)}`;
+}
+
 export async function issueEmailVerification(userId, email, name) {
   const token = crypto.randomBytes(32).toString('hex');
   const expires = tokenExpiry(48);
@@ -24,15 +31,31 @@ export async function issueEmailVerification(userId, email, name) {
   );
   const link = `${frontendBase()}/verify-email?token=${encodeURIComponent(token)}`;
   const body = `Hi ${name || 'there'},\n\nVerify your ${BRAND_DISPLAY} account:\n${link}\n\nThis link expires in 48 hours.`;
-  const result = await sendPlatformEmail(email, `Verify your ${BRAND_DISPLAY} account`, body);
-  if (result.simulated) {
-    logger.info('Email verification link (simulated — configure RESEND_API_KEY or SENDGRID_API_KEY)', {
+  try {
+    const result = await sendPlatformEmail(email, `Verify your ${BRAND_DISPLAY} account`, body);
+    if (result.simulated) {
+      logger.info('Email verification link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)', {
+        userId,
+        email: maskEmail(email),
+      });
+    }
+    return { ok: true, token, simulated: Boolean(result.simulated) };
+  } catch (err) {
+    logger.error('Email verification send failed', {
       userId,
-      email,
-      link,
+      email: maskEmail(email),
+      code: err.code || null,
+      message: err.message,
     });
+    const wrapped = new Error(
+      err.code === 'EMAIL_NOT_CONFIGURED'
+        ? err.message
+        : 'Unable to send verification email. Please try again later or contact support.',
+    );
+    wrapped.code = err.code || 'EMAIL_SEND_FAILED';
+    wrapped.status = err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 502;
+    throw wrapped;
   }
-  return { token, link, simulated: result.simulated };
 }
 
 export async function verifyEmailToken(token) {
@@ -62,15 +85,31 @@ export async function issuePasswordReset(email) {
   );
   const link = `${frontendBase()}/reset-password?token=${encodeURIComponent(token)}`;
   const body = `Hi ${user.name || 'there'},\n\nReset your ${BRAND_DISPLAY} password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
-  const result = await sendPlatformEmail(email, `Reset your ${BRAND_DISPLAY} password`, body);
-  if (result.simulated) {
-    logger.info('Password reset link (simulated — configure RESEND_API_KEY or SENDGRID_API_KEY)', {
+  try {
+    const result = await sendPlatformEmail(email, `Reset your ${BRAND_DISPLAY} password`, body);
+    if (result.simulated) {
+      logger.info('Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)', {
+        userId: user.id,
+        email: maskEmail(email),
+      });
+    }
+    return { ok: true, sent: true, simulated: Boolean(result.simulated) };
+  } catch (err) {
+    logger.error('Password reset send failed', {
       userId: user.id,
-      email,
-      link,
+      email: maskEmail(email),
+      code: err.code || null,
+      message: err.message,
     });
+    const wrapped = new Error(
+      err.code === 'EMAIL_NOT_CONFIGURED'
+        ? err.message
+        : 'Unable to send password reset email. Please try again later.',
+    );
+    wrapped.code = err.code || 'EMAIL_SEND_FAILED';
+    wrapped.status = err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 502;
+    throw wrapped;
   }
-  return { ok: true, sent: true, simulated: result.simulated };
 }
 
 export async function consumePasswordResetToken(token) {

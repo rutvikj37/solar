@@ -12,9 +12,12 @@
 1. Copy [`server/.env.example`](server/.env.example) to `server/.env` and fill in secrets.
 2. Copy [`.env.example`](.env.example) to `.env` for the Vite frontend build.
 3. Set `NODE_ENV=production` in `server/.env`.
-4. Do **not** set `ALLOW_DEV_CHECKOUT=1` or `ALLOW_ADMIN_BOOTSTRAP=1` in production.
+4. Do **not** set `ALLOW_DEV_CHECKOUT=1`, `ALLOW_ADMIN_BOOTSTRAP=1`, `ALLOW_BOOTSTRAP_SUPER_ADMIN=1`, or `ALLOW_EMAIL_SIMULATION=1` in production.
 5. Set `FRONTEND_URL` and `PUBLIC_URL` to your HTTPS domains.
 6. Configure real `RAZORPAY_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET`.
+7. Configure platform email (SES preferred, or `RESEND_API_KEY` / `SENDGRID_API_KEY`) — signup/verify/reset fail closed without a provider.
+8. Restrict `GOOGLE_MAPS_API_KEY` (and any `VITE_GOOGLE_MAPS_API_KEY`) by HTTP referrer to your `FRONTEND_URL` hosts.
+9. Set `MARKETPLACE_REQUIRE_VERIFIED=true` (default in production) so pending installers do not see opportunities until verified.
 
 ## Build and run
 
@@ -114,17 +117,42 @@ API health: `GET http://localhost:5002/health`
 
 ## Email verification and password reset
 
-Configure `RESEND_API_KEY` or `SENDGRID_API_KEY` and `OUTREACH_FROM_EMAIL`.
-Without email provider, verification/reset links are logged server-side in development only.
+Configure Amazon SES (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_FROM_EMAIL`) **or** `RESEND_API_KEY` / `SENDGRID_API_KEY` plus `OUTREACH_FROM_EMAIL`.
+
+In production, missing email configuration causes signup / resend-verification / forgot-password to return an error (fail closed). Do not set `ALLOW_EMAIL_SIMULATION` in production.
+
+In non-production only, `ALLOW_EMAIL_SIMULATION=1` permits simulated sends (no real delivery; links are not logged with full PII).
 
 Frontend routes: `/verify-email`, `/forgot-password`, `/reset-password`
+
+## Custom SMTP deliverability (installer outbound mail)
+
+When installers connect company SMTP in Integrations, deliverability depends on DNS for **their** sending domain (not automated here):
+
+- **SPF** — authorize the SMTP host / provider IPs for the From domain
+- **DKIM** — enable signing at the mail provider and publish the DKIM TXT records
+- **DMARC** — publish a DMARC policy (`p=none` → `quarantine`/`reject` as you harden)
+
+Without SPF/DKIM, messages often land in spam or are rejected. Ask the customer’s DNS admin to follow their host’s (Google Workspace, Microsoft 365, cPanel, etc.) docs.
+
+## Google Maps API key
+
+- Set `GOOGLE_MAPS_API_KEY` on the server (and optionally `VITE_GOOGLE_MAPS_API_KEY` for the Vite build).
+- In Google Cloud Console, restrict the **browser** key by HTTP referrer to your site origins only.
+- Prefer a separate IP-restricted key for server-side Geocoding/Solar if you can split keys.
+- Production `GET /api/config` only returns the key when `Origin`/`Referer` matches `FRONTEND_URL`. Never log the key.
+
+## Marketplace verification
+
+`MARKETPLACE_REQUIRE_VERIFIED` defaults to **on** when `NODE_ENV=production`. Set `MARKETPLACE_REQUIRE_VERIFIED=false` only if you intentionally want pending installers to browse opportunities before admin verification.
 
 ## Security checklist
 
 - Rotate JWT secret and DB password before first deploy
-- Restrict Google Maps / Firebase API keys by domain/IP
+- Restrict Google Maps / Firebase API keys by HTTP referrer / domain
 - Enable Razorpay webhook signature verification (required in production)
 - Verify Twilio auth token is set (webhooks fail closed in production without it)
+- Configure SES or Resend/SendGrid (auth email fail-closed without a provider)
 - Smoke test: register, login, buy plan, wallet top-up, map unlock, bid
 
 ## Razorpay webhooks

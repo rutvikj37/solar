@@ -417,12 +417,17 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  // Ensure techx admin role if account exists
-  await db.query(
-    `UPDATE users SET role = 'super_admin'
-     WHERE email = 'admin@techxsolutions.com'
-       AND (role IS NULL OR role = '' OR role = 'solar_company')`,
-  );
+  // Ensure techx admin role if account exists — gated (never auto-promote in production unless explicitly allowed)
+  const allowBootstrapSuperAdmin =
+    process.env.ALLOW_BOOTSTRAP_SUPER_ADMIN === '1' ||
+    process.env.ALLOW_BOOTSTRAP_SUPER_ADMIN === 'true';
+  if (allowBootstrapSuperAdmin) {
+    await db.query(
+      `UPDATE users SET role = 'super_admin'
+       WHERE email = 'admin@techxsolutions.com'
+         AND (role IS NULL OR role = '' OR role = 'solar_company')`,
+    );
+  }
 
   // Ensure indices for performance
   async function ensureIndex(table, indexName, columns) {
@@ -861,6 +866,11 @@ export async function migrateSchema() {
     "uniq_razorpay_payment_id",
     "razorpay_payment_id",
   );
+  await ensureUniqueIndex(
+    "invoices",
+    "uniq_stripe_session_id",
+    "stripe_session_id",
+  );
 
   // ── SpaceToRoof Marketplace ──────────────────────────────────────────
   await db.query(`
@@ -1256,4 +1266,5 @@ export async function migrateSchema() {
   await ensureColumn('leads', 'sale_closed_at', 'DATETIME NULL');
   await ensureColumn('leads', 'sale_rep_name', 'VARCHAR(255) NULL');
   await ensureColumn('leads', 'call_outcome', 'VARCHAR(40) NULL');
+  await ensureColumn('leads', 'outreach_opt_out', 'TINYINT(1) NOT NULL DEFAULT 0');
 }

@@ -89,28 +89,118 @@ export async function setSubscriptionCredits(userId, packageId, credits) {
 }
 
 /** Legacy one-time credit add (non-subscription packs). */
-export async function grantCredits(userId, packageId, credits) {
+export async function grantCredits(userId, packageId, credits, conn = db) {
   if (String(packageId || '').startsWith('mkt_')) {
     throw new Error('Marketplace wallet packs must not grant map lead credits');
   }
-  const [packages] = await db.query(
-    'SELECT id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
+  // FOR UPDATE only helps inside an explicit transaction (connection !== pool).
+  const lockSuffix = conn !== db ? ' FOR UPDATE' : '';
+  const [packages] = await conn.query(
+    `SELECT id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1${lockSuffix}`,
     [userId]
   );
 
   if (packages.length > 0) {
-    await db.query(
+    await conn.query(
       `UPDATE user_packages
        SET remaining_leads = remaining_leads + ?, purchased_leads = purchased_leads + ?, package_id = ?
        WHERE id = ?`,
       [credits, credits, packageId, packages[0].id]
     );
   } else {
-    await db.query(
+    await conn.query(
       `INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status)
        VALUES (?, ?, ?, ?, 'active')`,
       [userId, packageId, credits, credits]
     );
+  }
+}
+
+/**
+ * Idempotent one-time Stripe credit fulfillment (confirm + webhook).
+ * Locks the invoice row so concurrent callers cannot double-grant.
+ */
+export async function fulfillStripeOneTimeCredits({
+  sessionId,
+  userId,
+  packageId,
+  credits,
+  amountCents = 0,
+  expectedUserId = null,
+}) {
+  if (!sessionId) return { skipped: true };
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [invoices] = await conn.query(
+      `SELECT * FROM invoices WHERE stripe_session_id = ? FOR UPDATE`,
+      [sessionId],
+    );
+    let invoice = invoices[0] || null;
+
+    if (expectedUserId && invoice && Number(invoice.user_id) !== Number(expectedUserId)) {
+      await conn.rollback();
+      const err = new Error('Invoice does not belong to this user');
+      err.status = 403;
+      throw err;
+    }
+
+    if (invoice?.status === 'paid') {
+      await conn.commit();
+      return { alreadyPaid: true, invoice };
+    }
+
+    const grantUserId = Number(invoice?.user_id || userId);
+    const grantPackageId = invoice?.package_id || packageId;
+    const grantCreditsAmt = Number(invoice?.credits ?? credits) || 0;
+
+    if (!grantUserId || !grantPackageId || grantCreditsAmt <= 0) {
+      await conn.rollback();
+      return { skipped: true };
+    }
+
+    await grantCredits(grantUserId, grantPackageId, grantCreditsAmt, conn);
+
+    if (invoice) {
+      const [upd] = await conn.query(
+        `UPDATE invoices SET status = 'paid' WHERE id = ? AND status <> 'paid'`,
+        [invoice.id],
+      );
+      if (upd.affectedRows === 0) {
+        await conn.rollback();
+        return { alreadyPaid: true, invoice };
+      }
+    } else {
+      await conn.query(
+        `INSERT INTO invoices
+         (user_id, stripe_session_id, package_id, amount_cents, credits, status, method, billing_reason)
+         VALUES (?, ?, ?, ?, ?, 'paid', 'stripe', 'initial')`,
+        [grantUserId, sessionId, grantPackageId, amountCents, grantCreditsAmt],
+      );
+    }
+
+    await conn.commit();
+    return {
+      alreadyPaid: false,
+      credits: grantCreditsAmt,
+      packageId: grantPackageId,
+      userId: grantUserId,
+    };
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      /* ignore */
+    }
+    // Concurrent insert of the same stripe_session_id — treat as already fulfilled.
+    if (err && (err.code === 'ER_DUP_ENTRY' || String(err.message || '').includes('Duplicate'))) {
+      return { alreadyPaid: true };
+    }
+    throw err;
+  } finally {
+    conn.release();
   }
 }
 
@@ -697,18 +787,32 @@ router.post('/confirm', authenticateToken, async (req, res) => {
         cancelAtPeriodEnd: subscription.cancel_at_period_end
       });
       await db.query(
-        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, billing_reason = 'initial' WHERE id = ?`,
+        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, billing_reason = 'initial' WHERE id = ? AND status <> 'paid'`,
         [subscription.id, invoice.id]
       );
-    } else {
-      await grantCredits(req.user.id, invoice.package_id, invoice.credits);
-      await db.query('UPDATE invoices SET status = "paid" WHERE id = ?', [invoice.id]);
+      return res.json({ message: 'Credits granted', credits: invoice.credits, packageId: invoice.package_id });
     }
 
-    res.json({ message: 'Credits granted', credits: invoice.credits, packageId: invoice.package_id });
+    const fulfilled = await fulfillStripeOneTimeCredits({
+      sessionId,
+      userId: req.user.id,
+      packageId: invoice.package_id,
+      credits: invoice.credits,
+      expectedUserId: req.user.id,
+    });
+    if (fulfilled.alreadyPaid) {
+      return res.json({ message: 'Already fulfilled', invoice });
+    }
+    res.json({
+      message: 'Credits granted',
+      credits: fulfilled.credits ?? invoice.credits,
+      packageId: fulfilled.packageId ?? invoice.package_id,
+    });
   } catch (error) {
     console.error('Confirm payment error:', error);
-    res.status(500).json({ error: 'Server error confirming payment' });
+    res.status(error.status || 500).json({
+      error: error.status === 403 ? error.message : 'Server error confirming payment',
+    });
   }
 });
 
@@ -766,23 +870,17 @@ async function handleCheckoutCompleted(stripe, session) {
   }
 
   const [invoices] = await db.query('SELECT * FROM invoices WHERE stripe_session_id = ?', [session.id]);
-  if (invoices.length > 0 && invoices[0].status !== 'paid') {
-    const inv = invoices[0];
-    await grantCredits(inv.user_id, inv.package_id, inv.credits);
-    await db.query('UPDATE invoices SET status = "paid" WHERE id = ?', [inv.id]);
-    console.log(`[Stripe Webhook] Fulfilled invoice ${inv.id} for user ${inv.user_id}`);
-  } else if (invoices.length === 0) {
-    await grantCredits(userId, packageId, credits);
-    await recordInvoice({
+  if (invoices.length > 0 || (userId && packageId)) {
+    const result = await fulfillStripeOneTimeCredits({
+      sessionId: session.id,
       userId,
       packageId,
-      amountCents: session.amount_total || 0,
       credits,
-      status: 'paid',
-      method: 'stripe',
-      stripeSessionId: session.id,
-      billingReason: 'initial'
+      amountCents: session.amount_total || 0,
     });
+    if (!result.skipped && !result.alreadyPaid) {
+      console.log(`[Stripe Webhook] Fulfilled one-time credits for user ${result.userId}`);
+    }
   }
 }
 

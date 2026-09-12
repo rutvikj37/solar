@@ -243,13 +243,32 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-// Public config — Maps browser key from server env (GOOGLE_MAPS_API_KEY)
+// Browser Maps key — restrict GOOGLE_MAPS_API_KEY in Google Cloud Console to HTTP referrers
+// (your FRONTEND_URL hosts only). Prefer a separate browser key from server geocoding keys.
+// In production, only return the key when Origin/Referer matches FRONTEND_URL (homeowner forms
+// are same-site; authenticated app also sends Origin). Never log this value.
+function canExposeMapsBrowserKey(req) {
+  if (process.env.NODE_ENV !== 'production') return true;
+  const allowed = String(process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((s) => s.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  if (!allowed.length) return false;
+  const origin = String(req.get('origin') || '').replace(/\/$/, '');
+  const referer = String(req.get('referer') || '');
+  return allowed.some(
+    (base) => origin === base || referer === base || referer.startsWith(`${base}/`),
+  );
+}
+
 app.get('/api/config', (req, res) => {
   const key = String(
     process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '',
   ).trim();
-  const googleMapsApiKey =
+  const configured =
     key && !key.toLowerCase().includes('your_') ? key : '';
+  const googleMapsApiKey =
+    configured && canExposeMapsBrowserKey(req) ? configured : '';
   res.json({ googleMapsApiKey });
 });
 

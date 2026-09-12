@@ -49,6 +49,9 @@ async function leadHasInboundReply(leadId) {
 }
 
 async function shouldStopEnrollment(campaign, lead) {
+  if (Number(lead.outreach_opt_out) === 1 || lead.outreach_opt_out === true) {
+    return 'outreach_opt_out';
+  }
   const stopStatuses = parseJsonArray(campaign.stop_on_statuses, DEFAULT_STOP_STATUSES);
   if (stopStatuses.includes(lead.status)) return 'stop_status';
   if (TERMINAL_LEAD_STATUSES.has(lead.status)) return 'terminal_status';
@@ -58,6 +61,7 @@ async function shouldStopEnrollment(campaign, lead) {
 
 export function leadEligibleForEnrollment(lead, campaign) {
   if (!lead) return false;
+  if (Number(lead.outreach_opt_out) === 1 || lead.outreach_opt_out === true) return false;
   if (TERMINAL_LEAD_STATUSES.has(lead.status)) return false;
 
   const mode = campaign.enrollment_mode || 'score_gated';
@@ -170,7 +174,7 @@ export async function processDueEnrollments({ userId = null } = {}) {
   const [enrollments] = await db.query(
     `SELECT e.*,
             l.id AS lead_id, l.owner_name, l.phone, l.email, l.address, l.estimated_savings,
-            l.lead_score, l.status AS lead_status,
+            l.lead_score, l.status AS lead_status, l.outreach_opt_out,
             c.name AS campaign_name, c.user_id AS campaign_user_id,
             c.timezone, c.quiet_hours_start, c.quiet_hours_end,
             c.stop_on_reply, c.stop_on_statuses, c.enrollment_mode
@@ -196,6 +200,7 @@ export async function processDueEnrollments({ userId = null } = {}) {
       estimated_savings: en.estimated_savings,
       lead_score: en.lead_score,
       status: en.lead_status,
+      outreach_opt_out: en.outreach_opt_out,
     };
 
     const campaign = {
