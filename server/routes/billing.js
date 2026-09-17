@@ -1,41 +1,20 @@
 import express from 'express';
-import Stripe from 'stripe';
 import db from '../db.js';
 import { authenticateToken, isAdminRole, optionalAuthenticateToken } from '../middleware/auth.js';
 import { invoicePdfFilename, renderInvoicePdf } from '../utils/invoicePdf.js';
 import { logApiCall } from '../services/apiUsage.js';
 import {
-  cancelRazorpaySubscription,
-  createRazorpayPlan,
-  createRazorpaySubscription,
-  fetchRazorpaySubscription,
+  getStripe,
   getActivePaymentProvider,
-  getRazorpay,
-  getRazorpayKeyId,
-  mapRazorpayStatus,
-  razorpayPeriodDates,
-  verifyRazorpayWebhookSignature,
-  verifyRazorpaySubscriptionSignature,
-} from '../services/razorpayBilling.js';
-import {
-  fulfillMarketplaceWalletFromStripeSession,
-  fulfillMarketplaceWalletFromRazorpayPayment,
-} from '../services/marketplace/walletTopup.js';
+  getBillingCurrency,
+  constructStripeWebhookEvent,
+  assertSessionBelongsToUser,
+} from '../services/stripeBilling.js';
+import { fulfillMarketplaceWalletFromStripeSession } from '../services/marketplace/walletTopup.js';
 import { getLedger, getWalletBalance, ensureWallet } from '../services/marketplace/wallet.js';
 import { clientErrorMessage } from '../utils/clientError.js';
-import {
-  confirmLeadPlanRazorpayPayment,
-  createLeadPlanRazorpayCheckout,
-  fulfillLeadPlanFromRazorpayPayment,
-} from '../services/leadPlanCheckout.js';
 
 const router = express.Router();
-
-function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || key.trim() === '' || key.toLowerCase().includes('your_')) return null;
-  return new Stripe(key);
-}
 
 function allowDevCheckout() {
   if (process.env.NODE_ENV === 'production') return false;
@@ -49,19 +28,6 @@ function isSubscriptionPackage(pkg) {
 function frontendBase() {
   const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
   return raw.split(',')[0].trim();
-}
-
-async function ensureRazorpayPlanForPackage(pkg) {
-  if (pkg.razorpay_plan_id) return pkg.razorpay_plan_id;
-  const planId = await createRazorpayPlan({
-    name: pkg.name,
-    amountUsd: Number(pkg.price),
-    description: `${pkg.lead_limit || 0} lead credits per month`,
-    interval: pkg.billing_interval === 'year' ? 'yearly' : 'monthly',
-  });
-  await db.query('UPDATE packages SET razorpay_plan_id = ? WHERE id = ?', [planId, pkg.id]);
-  pkg.razorpay_plan_id = planId;
-  return planId;
 }
 
 /** Reset credits to monthly plan allowance (subscription refresh). */
@@ -233,7 +199,7 @@ export async function upsertUserSubscription({
   paymentProvider = 'stripe',
   stripeCustomerId,
   stripeSubscriptionId,
-  razorpaySubscriptionId,
+  razorpaySubscriptionId = null,
   status,
   periodStart,
   periodEnd,
@@ -244,15 +210,15 @@ export async function upsertUserSubscription({
     await db.query(
       `UPDATE user_subscriptions SET
          package_id = ?, payment_provider = ?, stripe_customer_id = ?, stripe_subscription_id = ?,
-         razorpay_subscription_id = ?, status = ?, current_period_start = ?, current_period_end = ?,
-         cancel_at_period_end = ?
+         razorpay_subscription_id = COALESCE(?, razorpay_subscription_id), status = ?,
+         current_period_start = ?, current_period_end = ?, cancel_at_period_end = ?
        WHERE user_id = ?`,
       [
         packageId,
         paymentProvider,
         stripeCustomerId || null,
         stripeSubscriptionId || null,
-        razorpaySubscriptionId || null,
+        razorpaySubscriptionId,
         status,
         periodStart || null,
         periodEnd || null,
@@ -280,6 +246,15 @@ export async function upsertUserSubscription({
       ]
     );
   }
+}
+
+/** Prefer DB package lead_limit over Checkout metadata (metadata is set server-side but package is source of truth). */
+async function resolvePackageCredits(packageId, metadataCredits, fallbackCredits = 0) {
+  const pkg = packageId ? await loadActivePackage(packageId) : null;
+  if (pkg && Number(pkg.lead_limit) > 0) return Number(pkg.lead_limit);
+  const fromMeta = Number(metadataCredits);
+  if (Number.isFinite(fromMeta) && fromMeta > 0) return fromMeta;
+  return Number(fallbackCredits) || 0;
 }
 
 async function invoiceAlreadyProcessed(externalId) {
@@ -454,7 +429,7 @@ async function activateDevSubscription(userId, pkg) {
 router.get('/provider', (_req, res) => {
   res.json({
     provider: getActivePaymentProvider() || 'dev',
-    currency: process.env.RAZORPAY_CURRENCY || 'USD'
+    currency: getBillingCurrency().toUpperCase(),
   });
 });
 
@@ -505,7 +480,6 @@ router.get('/subscription', authenticateToken, async (req, res) => {
             cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
             paymentProvider: sub.payment_provider || 'stripe',
             stripeSubscriptionId: sub.stripe_subscription_id,
-            razorpaySubscriptionId: sub.razorpay_subscription_id
           }
         : null,
       credits: packages[0]?.remaining_leads ?? 0,
@@ -518,21 +492,16 @@ router.get('/subscription', authenticateToken, async (req, res) => {
 });
 
 router.post('/portal', authenticateToken, async (req, res) => {
-  const provider = getActivePaymentProvider();
-  if (provider === 'razorpay') {
-    return res.json({
-      mode: 'razorpay',
-      message: 'Use "Cancel subscription" on this page to manage your Razorpay plan.',
-      manageOnBilling: true
-    });
-  }
   const stripe = getStripe();
   if (!stripe) {
-    return res.status(503).json({ error: 'No payment provider configured' });
+    return res.status(503).json({ error: 'Stripe is not configured' });
   }
   try {
     const customerId = await ensureStripeCustomer(stripe, req.user.id);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5200';
+    if (!customerId) {
+      return res.status(400).json({ error: 'Unable to resolve billing customer' });
+    }
+    const frontendUrl = frontendBase();
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${frontendUrl}/billing`
@@ -550,15 +519,6 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
     if (!subs.length) return res.status(404).json({ error: 'No active subscription' });
     const sub = subs[0];
 
-    if (sub.payment_provider === 'razorpay' && sub.razorpay_subscription_id) {
-      await cancelRazorpaySubscription(sub.razorpay_subscription_id, true);
-      await db.query(
-        'UPDATE user_subscriptions SET cancel_at_period_end = 1, status = "active" WHERE user_id = ?',
-        [req.user.id]
-      );
-      return res.json({ message: 'Subscription will cancel at end of billing period.' });
-    }
-
     if (sub.stripe_subscription_id && getStripe()) {
       const stripe = getStripe();
       await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
@@ -566,7 +526,7 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
       return res.json({ message: 'Subscription will cancel at end of billing period.' });
     }
 
-    res.status(400).json({ error: 'Subscription cannot be canceled via API' });
+    res.status(400).json({ error: 'Subscription cannot be canceled via API. Use Manage billing to open the Stripe portal.' });
   } catch (error) {
     console.error('Cancel subscription error:', error);
     res.status(500).json({ error: 'Failed to cancel subscription' });
@@ -590,38 +550,16 @@ router.post('/checkout', authenticateToken, async (req, res) => {
   const credits = Number(pkg.lead_limit) || 0;
   const amountCents = Math.round(Number(pkg.price) * 100);
   const frontendUrl = frontendBase();
-  const provider = getActivePaymentProvider();
   const stripe = getStripe();
   const started = Date.now();
   const subscriptionMode = isSubscriptionPackage(pkg);
+  const currency = getBillingCurrency();
 
   try {
-    if (provider === 'razorpay' && subscriptionMode) {
-      const [users] = await db.query('SELECT name, email FROM users WHERE id = ? LIMIT 1', [
-        req.user.id,
-      ]);
-      const user = users[0] || {};
-      const checkout = await createLeadPlanRazorpayCheckout({
-        userId: req.user.id,
-        pkg,
-        credits,
-        prefill: {
-          name: user.name || undefined,
-          email: user.email || undefined,
-        },
-      });
-
-      await logApiCall('razorpay', true, Date.now() - started);
-      return res.json({
-        ...checkout,
-        keyId: getRazorpayKeyId(),
-      });
-    }
-
     if (!stripe) {
       if (!allowDevCheckout()) {
         return res.status(503).json({
-          error: 'Payment not configured. Set RAZORPAY_KEY_ID/SECRET or ALLOW_DEV_CHECKOUT=1 for local testing.'
+          error: 'Payment not configured. Set STRIPE_SECRET_KEY or ALLOW_DEV_CHECKOUT=1 for local testing.'
         });
       }
       if (subscriptionMode) {
@@ -650,6 +588,11 @@ router.post('/checkout', authenticateToken, async (req, res) => {
     }
 
     const customerId = await ensureStripeCustomer(stripe, req.user.id);
+    const userMeta = {
+      userId: String(req.user.id),
+      packageId: pkg.id,
+      credits: String(credits),
+    };
 
     if (subscriptionMode) {
       if (!pkg.stripe_price_id) {
@@ -661,19 +604,12 @@ router.post('/checkout', authenticateToken, async (req, res) => {
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer: customerId,
+        client_reference_id: String(req.user.id),
         payment_method_types: ['card'],
         line_items: [{ price: pkg.stripe_price_id, quantity: 1 }],
-        metadata: {
-          userId: String(req.user.id),
-          packageId: pkg.id,
-          credits: String(credits)
-        },
+        metadata: userMeta,
         subscription_data: {
-          metadata: {
-            userId: String(req.user.id),
-            packageId: pkg.id,
-            credits: String(credits)
-          }
+          metadata: userMeta,
         },
         success_url: `${frontendUrl}/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${frontendUrl}/billing?canceled=1#plans`
@@ -698,7 +634,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
       ? { price: pkg.stripe_price_id, quantity: 1 }
       : {
           price_data: {
-            currency: 'usd',
+            currency,
             product_data: {
               name: pkg.name,
               description: `${credits} lead credits`
@@ -711,13 +647,10 @@ router.post('/checkout', authenticateToken, async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer: customerId,
+      client_reference_id: String(req.user.id),
       payment_method_types: ['card'],
       line_items: [lineItem],
-      metadata: {
-        userId: String(req.user.id),
-        packageId: pkg.id,
-        credits: String(credits)
-      },
+      metadata: userMeta,
       success_url: `${frontendUrl}/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}/billing?canceled=1#plans`
     });
@@ -736,7 +669,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
     await logApiCall('stripe', true, Date.now() - started);
     res.json({ mode: 'stripe', sessionId: session.id, url: session.url });
   } catch (error) {
-    await logApiCall(provider === 'razorpay' ? 'razorpay' : 'stripe', false, Date.now() - started);
+    await logApiCall('stripe', false, Date.now() - started);
     console.error('Checkout error:', error);
     res.status(error.status || 500).json({
       error: clientErrorMessage(error, 'Server error creating checkout'),
@@ -746,13 +679,17 @@ router.post('/checkout', authenticateToken, async (req, res) => {
 
 router.post('/confirm', authenticateToken, async (req, res) => {
   const { sessionId } = req.body;
-  if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+  if (!sessionId || typeof sessionId !== 'string' || !sessionId.startsWith('cs_')) {
+    return res.status(400).json({ error: 'Valid Stripe sessionId required' });
+  }
 
   const stripe = getStripe();
   if (!stripe) return res.status(400).json({ error: 'Stripe not configured' });
 
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    assertSessionBelongsToUser(session, req.user.id);
+
     if (session.payment_status !== 'paid' && session.status !== 'complete') {
       return res.status(400).json({ error: 'Payment not completed' });
     }
@@ -768,10 +705,11 @@ router.post('/confirm', authenticateToken, async (req, res) => {
       return res.json({ message: 'Already fulfilled', invoice });
     }
 
+    const packageId = session.metadata?.packageId || invoice.package_id;
+    const credits = await resolvePackageCredits(packageId, session.metadata?.credits, invoice.credits);
+
     if (session.mode === 'subscription' && session.subscription) {
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
-      const packageId = session.metadata?.packageId || invoice.package_id;
-      const credits = Number(session.metadata?.credits) || invoice.credits;
       const periodStart = new Date(subscription.current_period_start * 1000);
       const periodEnd = new Date(subscription.current_period_end * 1000);
 
@@ -779,6 +717,7 @@ router.post('/confirm', authenticateToken, async (req, res) => {
       await upsertUserSubscription({
         userId: req.user.id,
         packageId,
+        paymentProvider: 'stripe',
         stripeCustomerId: session.customer,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
@@ -787,17 +726,17 @@ router.post('/confirm', authenticateToken, async (req, res) => {
         cancelAtPeriodEnd: subscription.cancel_at_period_end
       });
       await db.query(
-        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, billing_reason = 'initial' WHERE id = ? AND status <> 'paid'`,
-        [subscription.id, invoice.id]
+        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, credits = ?, billing_reason = 'initial' WHERE id = ? AND status <> 'paid'`,
+        [subscription.id, credits, invoice.id]
       );
-      return res.json({ message: 'Credits granted', credits: invoice.credits, packageId: invoice.package_id });
+      return res.json({ message: 'Credits granted', credits, packageId });
     }
 
     const fulfilled = await fulfillStripeOneTimeCredits({
       sessionId,
       userId: req.user.id,
-      packageId: invoice.package_id,
-      credits: invoice.credits,
+      packageId,
+      credits,
       expectedUserId: req.user.id,
     });
     if (fulfilled.alreadyPaid) {
@@ -805,13 +744,13 @@ router.post('/confirm', authenticateToken, async (req, res) => {
     }
     res.json({
       message: 'Credits granted',
-      credits: fulfilled.credits ?? invoice.credits,
-      packageId: fulfilled.packageId ?? invoice.package_id,
+      credits: fulfilled.credits ?? credits,
+      packageId: fulfilled.packageId ?? packageId,
     });
   } catch (error) {
     console.error('Confirm payment error:', error);
     res.status(error.status || 500).json({
-      error: error.status === 403 ? error.message : 'Server error confirming payment',
+      error: error.status === 403 || error.status === 400 ? error.message : 'Server error confirming payment',
     });
   }
 });
@@ -826,8 +765,7 @@ async function handleCheckoutCompleted(stripe, session) {
   const packageId = session.metadata?.packageId;
   if (!userId || !packageId) return;
 
-  const pkg = await loadActivePackage(packageId);
-  const credits = Number(session.metadata?.credits) || pkg?.lead_limit || 0;
+  const credits = await resolvePackageCredits(packageId, session.metadata?.credits);
 
   if (session.mode === 'subscription' && session.subscription) {
     const subscription = await stripe.subscriptions.retrieve(session.subscription);
@@ -838,6 +776,7 @@ async function handleCheckoutCompleted(stripe, session) {
     await upsertUserSubscription({
       userId,
       packageId,
+      paymentProvider: 'stripe',
       stripeCustomerId: session.customer,
       stripeSubscriptionId: subscription.id,
       status: subscription.status,
@@ -849,8 +788,8 @@ async function handleCheckoutCompleted(stripe, session) {
     const [invoices] = await db.query('SELECT * FROM invoices WHERE stripe_session_id = ?', [session.id]);
     if (invoices.length > 0 && invoices[0].status !== 'paid') {
       await db.query(
-        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, billing_reason = 'initial' WHERE id = ?`,
-        [subscription.id, invoices[0].id]
+        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, credits = ?, billing_reason = 'initial' WHERE id = ?`,
+        [subscription.id, credits, invoices[0].id]
       );
     } else if (invoices.length === 0) {
       await recordInvoice({
@@ -877,6 +816,7 @@ async function handleCheckoutCompleted(stripe, session) {
       packageId,
       credits,
       amountCents: session.amount_total || 0,
+      expectedUserId: userId,
     });
     if (!result.skipped && !result.alreadyPaid) {
       console.log(`[Stripe Webhook] Fulfilled one-time credits for user ${result.userId}`);
@@ -896,14 +836,14 @@ async function handleInvoicePaid(stripe, invoice) {
   const userId = Number(subscription.metadata?.userId);
   if (!userId || !packageId) return;
 
-  const pkg = await loadActivePackage(packageId);
-  const credits = Number(subscription.metadata?.credits) || pkg?.lead_limit || 0;
+  const credits = await resolvePackageCredits(packageId, subscription.metadata?.credits);
   const billingReason = invoice.billing_reason === 'subscription_create' ? 'initial' : 'renewal';
 
   await refreshSubscriptionCredits(userId, packageId, credits);
   await upsertUserSubscription({
     userId,
     packageId,
+    paymentProvider: 'stripe',
     stripeCustomerId: invoice.customer,
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
@@ -954,6 +894,7 @@ async function handleSubscriptionUpdated(subscription) {
   await upsertUserSubscription({
     userId: targetUserId,
     packageId: resolvedPackageId,
+    paymentProvider: 'stripe',
     stripeCustomerId: subscription.customer,
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
@@ -970,262 +911,21 @@ async function handleSubscriptionDeleted(subscription) {
   );
 }
 
-async function resolveRazorpaySubscriptionContext(subscriptionEntity) {
-  const notes = subscriptionEntity.notes || {};
-  let userId = Number(notes.userId);
-  let packageId = notes.packageId;
-  const razorpaySubId = subscriptionEntity.id;
-
-  if (!userId && razorpaySubId) {
-    const [rows] = await db.query(
-      'SELECT user_id, package_id FROM user_subscriptions WHERE razorpay_subscription_id = ?',
-      [razorpaySubId]
-    );
-    if (rows.length) {
-      userId = rows[0].user_id;
-      packageId = packageId || rows[0].package_id;
-    }
-  }
-
-  if (!packageId && subscriptionEntity.plan_id) {
-    const [pkgRows] = await db.query(
-      'SELECT id, lead_limit FROM packages WHERE razorpay_plan_id = ? LIMIT 1',
-      [subscriptionEntity.plan_id]
-    );
-    if (pkgRows.length) packageId = pkgRows[0].id;
-  }
-
-  const pkg = packageId ? await loadActivePackage(packageId) : null;
-  const credits = Number(notes.credits) || pkg?.lead_limit || 0;
-  return { userId, packageId, credits, pkg };
-}
-
-async function syncRazorpaySubscription(subscription, { refreshCredits = false, billingReason = 'initial', paymentId = null } = {}) {
-  const { userId, packageId, credits, pkg } = await resolveRazorpaySubscriptionContext(subscription);
-  if (!userId || !packageId) return;
-
-  const { periodStart, periodEnd } = razorpayPeriodDates(subscription);
-  const mappedStatus = mapRazorpayStatus(subscription.status);
-
-  const alreadyPaid = paymentId && (await invoiceAlreadyProcessed(paymentId));
-  const shouldRefreshCredits = refreshCredits && !alreadyPaid;
-
-  if (shouldRefreshCredits) {
-    await refreshSubscriptionCredits(userId, packageId, credits);
-  }
-
-  await upsertUserSubscription({
-    userId,
-    packageId,
-    paymentProvider: 'razorpay',
-    razorpaySubscriptionId: subscription.id,
-    status: mappedStatus,
-    periodStart,
-    periodEnd,
-    cancelAtPeriodEnd: subscription.status === 'cancelled'
-  });
-
-  if (shouldRefreshCredits && paymentId) {
-    await recordInvoice({
-      userId,
-      packageId,
-      amountCents: pkg ? Math.round(Number(pkg.price) * 100) : 0,
-      credits,
-      status: 'paid',
-      method: 'razorpay_subscription',
-      razorpayPaymentId: paymentId,
-      stripeSubscriptionId: subscription.id,
-      billingReason
-    });
-  }
-
-  console.log(`[Razorpay Webhook] ${billingReason} synced for user ${userId}, plan ${packageId}`);
-}
-
-async function handleRazorpayWebhookEvent(event) {
-  const eventType = event.event;
-  const payload = event.payload || {};
-
-  if (eventType === 'subscription.activated' || eventType === 'subscription.authenticated') {
-    const sub = payload.subscription?.entity;
-    if (sub) await syncRazorpaySubscription(sub, { refreshCredits: true, billingReason: 'initial' });
-    return;
-  }
-
-  if (eventType === 'subscription.charged') {
-    const sub = payload.subscription?.entity;
-    const payment = payload.payment?.entity;
-    if (sub) {
-      const billingReason = Number(sub.paid_count) > 1 ? 'renewal' : 'initial';
-      await syncRazorpaySubscription(sub, {
-        refreshCredits: true,
-        billingReason,
-        paymentId: payment?.id || `${sub.id}_${sub.paid_count}`
-      });
-    }
-    return;
-  }
-
-  if (eventType === 'subscription.updated') {
-    const sub = payload.subscription?.entity;
-    if (sub) await syncRazorpaySubscription(sub, { refreshCredits: false });
-    return;
-  }
-
-  if (eventType === 'subscription.cancelled' || eventType === 'subscription.completed') {
-    const sub = payload.subscription?.entity;
-    if (sub) {
-      await db.query(
-        `UPDATE user_subscriptions SET status = 'canceled', cancel_at_period_end = 1
-         WHERE razorpay_subscription_id = ?`,
-        [sub.id]
-      );
-    }
-    return;
-  }
-
-  if (eventType === 'subscription.halted') {
-    const sub = payload.subscription?.entity;
-    if (sub) {
-      await db.query('UPDATE user_subscriptions SET status = "past_due" WHERE razorpay_subscription_id = ?', [sub.id]);
-    }
-    return;
-  }
-
-  if (eventType === 'payment.captured' || eventType === 'order.paid') {
-    const payment = payload.payment?.entity;
-    if (payment) {
-      const planHandled = await fulfillLeadPlanFromRazorpayPayment(payment);
-      if (planHandled) {
-        console.log(`[Razorpay Webhook] Lead plan activated for payment ${payment.id}`);
-        return;
-      }
-      const handled = await fulfillMarketplaceWalletFromRazorpayPayment(payment);
-      if (handled) {
-        console.log(`[Razorpay Webhook] Marketplace wallet topped up for payment ${payment.id}`);
-      }
-    }
-  }
-}
-
-router.post('/razorpay-webhook', async (req, res) => {
-  try {
-    const signature = req.headers['x-razorpay-signature'];
-    const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body ?? {}), 'utf8');
-    if (!verifyRazorpayWebhookSignature(rawBody, signature)) {
-      return res.status(400).json({ error: 'Invalid webhook signature' });
-    }
-    const payload =
-      typeof req.body === 'object' && req.body !== null
-        ? req.body
-        : JSON.parse(rawBody.toString('utf8'));
-    await handleRazorpayWebhookEvent(payload);
-    res.json({ received: true });
-  } catch (error) {
-    console.error('[Razorpay Webhook] handler error:', error);
-    res.status(500).json({ error: 'Webhook handler failed' });
-  }
-});
-
-router.post('/confirm-razorpay-plan', authenticateToken, async (req, res) => {
-  try {
-    const result = await confirmLeadPlanRazorpayPayment({
-      userId: req.user.id,
-      razorpayOrderId: req.body?.razorpay_order_id,
-      razorpayPaymentId: req.body?.razorpay_payment_id,
-      razorpaySignature: req.body?.razorpay_signature,
-    });
-    res.json(result);
-  } catch (error) {
-    console.error('Confirm Razorpay plan error:', error);
-    res.status(error.status || 500).json({ error: clientErrorMessage(error, 'Server error confirming plan payment') });
-  }
-});
-
-router.post('/confirm-razorpay', authenticateToken, async (req, res) => {
-  const { subscriptionId, razorpay_payment_id, razorpay_signature } = req.body;
-  if (!subscriptionId) return res.status(400).json({ error: 'subscriptionId required' });
-  if (!razorpay_payment_id || !razorpay_signature) {
-    return res.status(400).json({ error: 'razorpay_payment_id and razorpay_signature required' });
-  }
-  if (!getRazorpay()) return res.status(400).json({ error: 'Razorpay not configured' });
-
-  const valid = verifyRazorpaySubscriptionSignature(
-    subscriptionId,
-    razorpay_payment_id,
-    razorpay_signature,
-  );
-  if (!valid) {
-    return res.status(400).json({ error: 'Invalid Razorpay payment signature' });
-  }
-
-  try {
-    const subscription = await fetchRazorpaySubscription(subscriptionId);
-    const [owned] = await db.query(
-      'SELECT user_id FROM user_subscriptions WHERE razorpay_subscription_id = ? AND user_id = ?',
-      [subscriptionId, req.user.id]
-    );
-    if (!owned.length) {
-      return res.status(403).json({ error: 'Subscription not found for this user' });
-    }
-
-    const isPaid = ['active', 'authenticated'].includes(subscription.status);
-    if (!isPaid && subscription.paid_count === 0) {
-      return res.status(400).json({ error: 'Subscription payment not completed yet' });
-    }
-
-    await syncRazorpaySubscription(subscription, {
-      refreshCredits: true,
-      billingReason: Number(subscription.paid_count) > 1 ? 'renewal' : 'initial',
-      paymentId: `confirm_${subscription.id}_${subscription.paid_count}`
-    });
-
-    const { credits } = await resolveRazorpaySubscriptionContext(subscription);
-    res.json({ message: 'Subscription confirmed', credits, packageId: subscription.notes?.packageId });
-  } catch (error) {
-    console.error('Confirm Razorpay error:', error);
-    res.status(500).json({ error: 'Server error confirming subscription' });
-  }
-});
-
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/webhook', async (req, res) => {
   const stripe = getStripe();
   if (!stripe) return res.status(200).json({ received: true, skipped: true });
 
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const rawBody = req.rawBody || req.body;
 
   let event;
   try {
-    const secretOk =
-      webhookSecret &&
-      !webhookSecret.toLowerCase().includes('your_') &&
-      webhookSecret.trim().length > 0;
-    if (process.env.NODE_ENV === 'production' && !secretOk) {
-      console.error('[Stripe Webhook] STRIPE_WEBHOOK_SECRET missing or placeholder');
-      return res.status(500).json({ error: 'Webhook not configured' });
-    }
-    if (secretOk) {
-      if (!sig) {
-        return res.status(400).json({ error: 'Missing Stripe signature' });
-      }
-      const bodyForStripe = Buffer.isBuffer(rawBody)
-        ? rawBody
-        : typeof rawBody === 'string'
-          ? rawBody
-          : JSON.stringify(rawBody);
-      event = stripe.webhooks.constructEvent(bodyForStripe, sig, webhookSecret);
-    } else {
-      // Local/dev only: accept unsigned body when secret unset
-      event =
-        typeof rawBody === 'string' || Buffer.isBuffer(rawBody)
-          ? JSON.parse(rawBody.toString())
-          : rawBody;
-    }
+    event = constructStripeWebhookEvent(stripe, rawBody, sig);
   } catch (err) {
     console.error('[Stripe Webhook] signature error:', err.message);
-    return res.status(400).json({ error: 'Webhook signature verification failed' });
+    return res.status(err.status || 400).json({
+      error: err.code === 'webhook_not_configured' ? 'Webhook not configured' : 'Webhook signature verification failed',
+    });
   }
 
   try {
@@ -1257,7 +957,6 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
 router.get('/invoices', authenticateToken, async (req, res) => {
   try {
-    // Include Stripe/Razorpay and admin_* invoices for the logged-in user.
     const rows = await listUserInvoices(req.user.id, 50);
     res.json(rows);
   } catch (error) {

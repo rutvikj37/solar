@@ -32,14 +32,18 @@ export function validateProductionSecurityConfig() {
   }
 
   const webhookSecrets = [
-    ['RAZORPAY_WEBHOOK_SECRET', process.env.RAZORPAY_WEBHOOK_SECRET],
     ['STRIPE_WEBHOOK_SECRET', process.env.STRIPE_WEBHOOK_SECRET],
   ];
   for (const [name, value] of webhookSecrets) {
     const v = String(value || '').trim().toLowerCase();
     if (!v || v.includes('your_')) {
-      logger.warn(`Production warning: ${name} is missing or placeholder — payment webhooks will reject unsigned payloads`);
+      logger.warn(`Production warning: ${name} is missing or placeholder — Stripe webhooks will reject unsigned payloads`);
     }
+  }
+
+  const stripeKey = String(process.env.STRIPE_SECRET_KEY || '').trim().toLowerCase();
+  if (!stripeKey || stripeKey.includes('your_')) {
+    logger.warn('Production warning: STRIPE_SECRET_KEY is missing or placeholder — payments will be unavailable');
   }
 
   if (!process.env.TWILIO_AUTH_TOKEN || String(process.env.TWILIO_AUTH_TOKEN).toLowerCase().includes('your_')) {

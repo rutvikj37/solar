@@ -1,14 +1,11 @@
-import Stripe from 'stripe';
 import db from '../../db.js';
 import { adjustWallet, getWalletBalance } from './wallet.js';
 import {
-  getRazorpay,
-  getRazorpayKeyId,
+  getStripe,
   getBillingCurrency,
   getBillingCurrencySymbol,
-  verifyRazorpayPaymentSignature,
-  createRazorpayOrder,
-} from '../razorpayBilling.js';
+  assertSessionBelongsToUser,
+} from '../stripeBilling.js';
 
 export const MARKETPLACE_WALLET_PACKS = [
   { id: 'mkt_50', credits: 50, price: 50, label: '$50 wallet' },
@@ -19,23 +16,12 @@ export const MARKETPLACE_WALLET_PACKS = [
 
 const KIND = 'marketplace_wallet';
 
-function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || key.trim() === '' || key.toLowerCase().includes('your_')) return null;
-  return new Stripe(key);
-}
-
-export function isMarketplaceRazorpayConfigured() {
-  return Boolean(getRazorpay());
-}
-
-/** Marketplace wallet payment metadata (Razorpay-only, no secrets). */
+/** Marketplace wallet payment metadata (no secrets). */
 export function getMarketplaceWalletPaymentInfo() {
   return {
-    currency: getBillingCurrency(),
+    currency: getBillingCurrency().toUpperCase(),
     currencySymbol: getBillingCurrencySymbol(),
-    razorpayAvailable: Boolean(getRazorpay()),
-    paymentProvider: 'razorpay',
+    paymentProvider: getStripe() ? 'stripe' : 'dev',
   };
 }
 
@@ -92,10 +78,8 @@ export async function fulfillMarketplaceWalletTopup({
   credits,
   packId,
   amountCents = 0,
-  orderId = null,
-  paymentId = null,
   stripeSessionId = null,
-  method = 'razorpay_marketplace',
+  method = 'stripe_marketplace',
 }) {
   const creditsNum = Number(credits);
   if (!userId || !Number.isFinite(creditsNum) || creditsNum <= 0) {
@@ -107,22 +91,12 @@ export async function fulfillMarketplaceWalletTopup({
     await conn.beginTransaction();
 
     let invoice = null;
-    if (paymentId) {
+    if (stripeSessionId) {
       const [rows] = await conn.query(
-        `SELECT * FROM invoices WHERE razorpay_payment_id = ? FOR UPDATE`,
-        [paymentId],
+        `SELECT * FROM invoices WHERE stripe_session_id = ? FOR UPDATE`,
+        [stripeSessionId],
       );
       invoice = rows[0] || null;
-    }
-    if (!invoice) {
-      const sessionKey = stripeSessionId || orderId;
-      if (sessionKey) {
-        const [rows] = await conn.query(
-          `SELECT * FROM invoices WHERE stripe_session_id = ? FOR UPDATE`,
-          [sessionKey],
-        );
-        invoice = rows[0] || null;
-      }
     }
 
     if (invoice?.status === 'paid') {
@@ -130,34 +104,44 @@ export async function fulfillMarketplaceWalletTopup({
       return { alreadyPaid: true, balance: await getWalletBalance(userId), credits: creditsNum };
     }
 
+    if (invoice && Number(invoice.user_id) !== Number(userId)) {
+      await conn.rollback();
+      const err = new Error('Invoice does not belong to this user');
+      err.status = 403;
+      throw err;
+    }
+
+    // Prefer credits stored on the pending invoice (server-created) over session metadata.
+    const grantCredits = Number(invoice?.credits) > 0 ? Number(invoice.credits) : creditsNum;
+    const grantPackId = invoice?.package_id || packId;
+    const grantAmountCents =
+      Number(invoice?.amount_cents) > 0 ? Number(invoice.amount_cents) : amountCents;
+
     const result = await adjustWallet({
       userId,
       entryType: 'top_up',
-      amount: creditsNum,
-      note: `Wallet top-up (${packId || 'custom'})`,
+      amount: grantCredits,
+      note: `Wallet top-up (${grantPackId || 'custom'})`,
       conn,
     });
 
     if (invoice) {
       await conn.query(
-        `UPDATE invoices SET status = 'paid', credits = ?,
-           razorpay_payment_id = COALESCE(?, razorpay_payment_id)
-         WHERE id = ?`,
-        [creditsNum, paymentId, invoice.id],
+        `UPDATE invoices SET status = 'paid', credits = ? WHERE id = ? AND status <> 'paid'`,
+        [grantCredits, invoice.id],
       );
     } else {
       await conn.query(
         `INSERT INTO invoices
-         (user_id, stripe_session_id, razorpay_payment_id, package_id, amount_cents, credits,
+         (user_id, stripe_session_id, package_id, amount_cents, credits,
           status, method, billing_reason, description)
-         VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, 'marketplace_wallet', ?)`,
+         VALUES (?, ?, ?, ?, ?, 'paid', ?, 'marketplace_wallet', ?)`,
         [
           userId,
-          stripeSessionId || orderId,
-          paymentId,
-          String(packId || 'mkt_custom').slice(0, 50),
-          amountCents,
-          creditsNum,
+          stripeSessionId,
+          String(grantPackId || 'mkt_custom').slice(0, 50),
+          grantAmountCents,
+          grantCredits,
           method,
           'Marketplace wallet top-up',
         ],
@@ -165,12 +149,15 @@ export async function fulfillMarketplaceWalletTopup({
     }
 
     await conn.commit();
-    return { alreadyPaid: false, balance: result.balance, credits: creditsNum };
+    return { alreadyPaid: false, balance: result.balance, credits: grantCredits };
   } catch (err) {
     try {
       await conn.rollback();
     } catch {
       /* ignore */
+    }
+    if (err && (err.code === 'ER_DUP_ENTRY' || String(err.message || '').includes('Duplicate'))) {
+      return { alreadyPaid: true, balance: await getWalletBalance(userId), credits: creditsNum };
     }
     throw err;
   } finally {
@@ -181,8 +168,10 @@ export async function fulfillMarketplaceWalletTopup({
 export async function fulfillMarketplaceWalletFromStripeSession(session) {
   if (session?.metadata?.kind !== KIND) return false;
   const userId = Number(session.metadata.userId);
+  if (!userId) return false;
+
+  // Credits come from the pending invoice when present; metadata is fallback only.
   const credits = Number(session.metadata.credits);
-  if (!userId || !credits) return false;
   await fulfillMarketplaceWalletTopup({
     userId,
     credits,
@@ -190,36 +179,6 @@ export async function fulfillMarketplaceWalletFromStripeSession(session) {
     amountCents: session.amount_total || Math.round(credits * 100),
     stripeSessionId: session.id,
     method: 'stripe_marketplace',
-  });
-  return true;
-}
-
-export async function fulfillMarketplaceWalletFromRazorpayPayment(payment) {
-  if (!payment) return false;
-  let notes = payment.notes || {};
-  if (notes.kind !== KIND && payment.order_id) {
-    const razorpay = getRazorpay();
-    if (razorpay) {
-      try {
-        const order = await razorpay.orders.fetch(payment.order_id);
-        notes = { ...(order.notes || {}), ...notes };
-      } catch {
-        /* use payment notes only */
-      }
-    }
-  }
-  if (notes.kind !== KIND && notes.kind !== 'marketplace_wallet') return false;
-  const userId = Number(notes.userId);
-  const credits = Number(notes.credits);
-  if (!userId || !credits) return false;
-  await fulfillMarketplaceWalletTopup({
-    userId,
-    credits,
-    packId: notes.packId,
-    amountCents: payment.amount,
-    orderId: payment.order_id,
-    paymentId: payment.id,
-    method: 'razorpay_marketplace',
   });
   return true;
 }
@@ -233,54 +192,21 @@ export async function createMarketplaceWalletCheckout({ userId, userEmail, userN
   }
 
   const amountCents = Math.round(Number(pack.price) * 100);
-  const razorpay = getRazorpay();
   const stripe = getStripe();
   const successUrl = `${frontendBase()}/marketplace?wallet=1`;
   const cancelUrl = `${frontendBase()}/marketplace?wallet=canceled`;
-
-  // Never credit marketplace_wallets here. Credits are applied only after
-  // verified Razorpay signature confirm or webhook.
-  if (razorpay) {
-    const order = await createRazorpayOrder({
-      amount: amountCents,
-      currency: getBillingCurrency(),
-      receipt: `mktw_${userId}_${Date.now()}`.slice(0, 40),
-      notes: {
-        kind: KIND,
-        userId: String(userId),
-        packId: pack.id,
-        credits: String(pack.credits),
-      },
-    });
-    await insertPendingInvoice({
-      userId,
-      packId: pack.id,
-      credits: pack.credits,
-      amountCents,
-      method: 'razorpay_marketplace',
-      stripeSessionId: order.id,
-    });
-    return {
-      mode: 'razorpay',
-      orderId: order.id,
-      amount: amountCents,
-      currency: getBillingCurrency(),
-      currencySymbol: getBillingCurrencySymbol(),
-      keyId: getRazorpayKeyId(),
-      pack,
-      prefill: { email: userEmail || '', name: userName || '' },
-    };
-  }
+  const currency = getBillingCurrency();
 
   if (stripe) {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       customer_email: userEmail || undefined,
+      client_reference_id: String(userId),
       line_items: [
         {
           price_data: {
-            currency: 'usd',
+            currency,
             product_data: {
               name: `SpaceToRoof marketplace credits (${pack.credits})`,
               description: 'Adds bid balance to your marketplace wallet (not map unlock credits).',
@@ -311,19 +237,21 @@ export async function createMarketplaceWalletCheckout({ userId, userEmail, userN
   }
 
   if (allowDevCheckout()) {
+    const sessionId = `dev_mkt_${userId}_${Date.now()}`;
     await insertPendingInvoice({
       userId,
       packId: pack.id,
       credits: pack.credits,
       amountCents,
       method: 'dev_marketplace',
-      stripeSessionId: `dev_mkt_${userId}_${Date.now()}`,
+      stripeSessionId: sessionId,
     });
     const result = await fulfillMarketplaceWalletTopup({
       userId,
       credits: pack.credits,
       packId: pack.id,
       amountCents,
+      stripeSessionId: sessionId,
       method: 'dev_marketplace',
     });
     return {
@@ -335,49 +263,11 @@ export async function createMarketplaceWalletCheckout({ userId, userEmail, userN
   }
 
   const err = new Error(
-    'Razorpay not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in server/.env. Marketplace credits are added only after a successful payment.',
+    'Stripe not configured. Set STRIPE_SECRET_KEY in server/.env. Marketplace credits are added only after a successful payment.',
   );
-  err.status = 400;
+  err.status = 503;
+  err.code = 'payment_provider';
   throw err;
-}
-
-export async function confirmRazorpayWalletPayment({
-  userId,
-  razorpayOrderId,
-  razorpayPaymentId,
-  razorpaySignature,
-}) {
-  if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-    const err = new Error('Missing Razorpay payment fields');
-    err.status = 400;
-    throw err;
-  }
-  if (!verifyRazorpayPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
-    const err = new Error('Invalid payment signature');
-    err.status = 400;
-    throw err;
-  }
-
-  const [invoices] = await db.query(
-    `SELECT * FROM invoices WHERE stripe_session_id = ? AND user_id = ?`,
-    [razorpayOrderId, userId],
-  );
-  const invoice = invoices[0];
-  if (!invoice) {
-    const err = new Error('Wallet order not found');
-    err.status = 404;
-    throw err;
-  }
-
-  return fulfillMarketplaceWalletTopup({
-    userId,
-    credits: invoice.credits,
-    packId: invoice.package_id,
-    amountCents: invoice.amount_cents,
-    orderId: razorpayOrderId,
-    paymentId: razorpayPaymentId,
-    method: 'razorpay_marketplace',
-  });
 }
 
 export async function confirmStripeWalletPayment({ userId, sessionId }) {
@@ -387,10 +277,18 @@ export async function confirmStripeWalletPayment({ userId, sessionId }) {
     err.status = 400;
     throw err;
   }
+  if (!sessionId || typeof sessionId !== 'string' || !sessionId.startsWith('cs_')) {
+    const err = new Error('Invalid sessionId');
+    err.status = 400;
+    throw err;
+  }
+
   const session = await stripe.checkout.sessions.retrieve(sessionId);
-  if (Number(session.metadata?.userId) !== Number(userId)) {
-    const err = new Error('Session does not belong to this user');
-    err.status = 403;
+  assertSessionBelongsToUser(session, userId);
+
+  if (session.metadata?.kind !== KIND) {
+    const err = new Error('Not a marketplace wallet checkout session');
+    err.status = 400;
     throw err;
   }
   if (session.payment_status !== 'paid' && session.status !== 'complete') {
@@ -398,6 +296,23 @@ export async function confirmStripeWalletPayment({ userId, sessionId }) {
     err.status = 400;
     throw err;
   }
-  await fulfillMarketplaceWalletFromStripeSession(session);
-  return { ok: true, credits: Number(session.metadata?.credits) || 0 };
+
+  const result = await fulfillMarketplaceWalletFromStripeSession(session);
+  if (!result) {
+    const err = new Error('Could not fulfill wallet top-up');
+    err.status = 400;
+    throw err;
+  }
+
+  const [invoices] = await db.query(
+    `SELECT credits FROM invoices WHERE stripe_session_id = ? AND user_id = ? LIMIT 1`,
+    [sessionId, userId],
+  );
+  const balance = await getWalletBalance(userId);
+  return {
+    ok: true,
+    credits: Number(invoices[0]?.credits) || Number(session.metadata?.credits) || 0,
+    balance,
+    walletBalance: balance,
+  };
 }

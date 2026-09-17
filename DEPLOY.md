@@ -16,7 +16,7 @@ For a short go-live ops checklist (env keys, Maps referrer UI, Resend/SES setup,
 3. Set `NODE_ENV=production` in `server/.env`.
 4. Do **not** set `ALLOW_DEV_CHECKOUT=1`, `ALLOW_ADMIN_BOOTSTRAP=1`, `ALLOW_BOOTSTRAP_SUPER_ADMIN=1`, `ALLOW_EMAIL_SIMULATION=1`, or `ALLOW_PURGE_MARKETPLACE_DEMOS=1` in production. Leave those keys unset. First admin is promoted via SQL/ops, not the in-app “Become First Admin” button (hidden in production builds).
 5. Set `FRONTEND_URL` and `PUBLIC_URL` to your HTTPS domains.
-6. Configure real `RAZORPAY_WEBHOOK_SECRET` and `STRIPE_WEBHOOK_SECRET`.
+6. Configure a real `STRIPE_WEBHOOK_SECRET` (and `STRIPE_SECRET_KEY`).
 7. Configure platform email (SES preferred, or `RESEND_API_KEY` / `SENDGRID_API_KEY`) — signup/verify/reset fail closed without a provider.
 8. Restrict `GOOGLE_MAPS_API_KEY` (and any `VITE_GOOGLE_MAPS_API_KEY`) by HTTP referrer to your `FRONTEND_URL` hosts.
 9. Set `MARKETPLACE_REQUIRE_VERIFIED=true` (default in production) so pending installers do not see opportunities until verified.
@@ -152,23 +152,17 @@ Without SPF/DKIM, messages often land in spam or are rejected. Ask the customer�
 
 - Rotate JWT secret and DB password before first deploy
 - Restrict Google Maps / Firebase API keys by HTTP referrer / domain
-- Enable Razorpay webhook signature verification (required in production)
+- Enable Stripe webhook signature verification (required in production)
 - Verify Twilio auth token is set (webhooks fail closed in production without it)
 - Configure SES or Resend/SendGrid (auth email fail-closed without a provider)
 - Smoke test: register, login, buy plan, wallet top-up, map unlock, bid
-
-## Razorpay webhooks
-
-Point Razorpay to:
-
-`https://<PUBLIC_URL>/api/billing/razorpay-webhook`
-
-Use the same secret as `RAZORPAY_WEBHOOK_SECRET`.
 
 ## Stripe webhooks
 
 Point Stripe to:
 
 `https://<PUBLIC_URL>/api/billing/webhook`
+
+Events to enable: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`.
 
 Use the signing secret as `STRIPE_WEBHOOK_SECRET`.

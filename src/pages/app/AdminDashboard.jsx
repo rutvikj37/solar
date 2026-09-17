@@ -126,7 +126,6 @@ export default function AdminDashboard() {
     features: 'Lead unlocks/month\nCSV export',
     is_active: true,
     stripe_price_id: '',
-    razorpay_plan_id: '',
     billing_interval: 'month',
     is_subscription: true
   });
@@ -564,7 +563,6 @@ export default function AdminDashboard() {
       features: 'Lead unlocks/month\nCSV export',
       is_active: true,
       stripe_price_id: '',
-      razorpay_plan_id: '',
       billing_interval: 'month',
       is_subscription: true,
     });
@@ -1266,11 +1264,8 @@ export default function AdminDashboard() {
                 onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })}
                 className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
             </div>
-            <input placeholder="Stripe Price ID (price_...) — optional if using Razorpay" value={planForm.stripe_price_id}
+            <input placeholder="Stripe Price ID (price_...) — required for monthly plans" value={planForm.stripe_price_id}
               onChange={(e) => setPlanForm({ ...planForm, stripe_price_id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
-            <input placeholder="Razorpay Plan ID (plan_...) — auto-created if keys set" value={planForm.razorpay_plan_id}
-              onChange={(e) => setPlanForm({ ...planForm, razorpay_plan_id: e.target.value })}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
             <div className="flex flex-wrap gap-4 items-center">
               <label className="flex items-center gap-2 text-on-surface-variant">
@@ -1341,9 +1336,6 @@ export default function AdminDashboard() {
                       Save
                     </button>
                   </div>
-                  {p.razorpay_plan_id && (
-                    <p className="text-on-surface-variant mt-1 font-mono text-[10px]">RZP: {p.razorpay_plan_id}</p>
-                  )}
                   {p.stripe_price_id && (
                     <p className="text-on-surface-variant mt-1 font-mono text-[10px]">Stripe: {p.stripe_price_id}</p>
                   )}

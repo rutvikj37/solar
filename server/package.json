@@ -29,7 +29,6 @@
     "node-fetch": "^2.6.1",
     "nodemailer": "^9.0.5",
     "pdfkit": "^0.19.1",
-    "razorpay": "^2.9.8",
     "stripe": "^22.4.0",
     "tslib": "^2.5.0",
     "verifalia": "file:./vendor/verifalia-js-sdk-master",

@@ -6,7 +6,6 @@ import { authenticateToken, adminAuth, JWT_SECRET } from '../middleware/auth.js'
 import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger.js';
 import { getUsageSummary } from '../services/apiUsage.js';
-import { createRazorpayPlan, isRazorpayConfigured } from '../services/razorpayBilling.js';
 import {
   listUserInvoices,
   recordInvoice,
@@ -936,7 +935,6 @@ router.post('/plans', ...adminChain, async (req, res) => {
     features,
     is_active,
     stripe_price_id,
-    razorpay_plan_id,
     billing_interval,
     is_subscription
   } = req.body;
@@ -949,36 +947,19 @@ router.post('/plans', ...adminChain, async (req, res) => {
   const interval = billing_interval === 'one_time' ? 'one_time' : 'month';
 
   if (subFlag === 1 && is_active !== false && is_active !== 0 && is_active !== '0') {
-    if (isRazorpayConfigured()) {
-      if (!razorpay_plan_id) {
-        // allow create — may auto-generate below
-      }
-    } else if (!stripe_price_id) {
+    if (!stripe_price_id) {
       return res.status(400).json({
-        error: 'Monthly subscription plans require stripe_price_id (or configure Razorpay keys)'
+        error: 'Monthly subscription plans require a Stripe Price ID (stripe_price_id)'
       });
     }
   }
 
   try {
-    let resolvedRazorpayPlanId = razorpay_plan_id || null;
-    if (subFlag === 1 && isRazorpayConfigured() && !resolvedRazorpayPlanId && Number(price) > 0) {
-      try {
-        resolvedRazorpayPlanId = await createRazorpayPlan({
-          name,
-          amountUsd: Number(price),
-          description: description || `${lead_limit} leads/month`
-        });
-      } catch (rzErr) {
-        console.warn('[Admin] Razorpay plan auto-create failed:', rzErr.message);
-      }
-    }
-
     const featuresJson =
       typeof features === 'string' ? features : JSON.stringify(features || []);
     await db.query(
-      `INSERT INTO packages (id, name, lead_limit, email_limit, price, description, features, is_active, stripe_price_id, razorpay_plan_id, billing_interval, is_subscription)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO packages (id, name, lead_limit, email_limit, price, description, features, is_active, stripe_price_id, billing_interval, is_subscription)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         planId,
         name,
@@ -989,7 +970,6 @@ router.post('/plans', ...adminChain, async (req, res) => {
         featuresJson,
         is_active === false || is_active === 0 || is_active === '0' ? 0 : 1,
         stripe_price_id || null,
-        resolvedRazorpayPlanId,
         interval,
         subFlag
       ]
@@ -1012,7 +992,6 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
     features,
     is_active,
     stripe_price_id,
-    razorpay_plan_id,
     billing_interval,
     is_subscription
   } = req.body;
@@ -1043,7 +1022,6 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
          features = COALESCE(?, features),
          is_active = COALESCE(?, is_active),
          stripe_price_id = COALESCE(?, stripe_price_id),
-         razorpay_plan_id = COALESCE(?, razorpay_plan_id),
          billing_interval = COALESCE(?, billing_interval),
          is_subscription = COALESCE(?, is_subscription)
        WHERE id = ?`,
@@ -1056,7 +1034,6 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
         featuresJson,
         is_active === undefined ? null : is_active === false || is_active === 0 || is_active === '0' ? 0 : 1,
         stripe_price_id === undefined ? null : stripe_price_id,
-        razorpay_plan_id === undefined ? null : razorpay_plan_id,
         interval,
         subFlag,
         req.params.id
@@ -1064,61 +1041,10 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
     );
     const [rows] = await db.query('SELECT * FROM packages WHERE id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Plan not found' });
-    let pkg = rows[0];
-
-    if (
-      Number(pkg.is_subscription) === 1 &&
-      !pkg.razorpay_plan_id &&
-      isRazorpayConfigured() &&
-      Number(pkg.price) > 0 &&
-      pkg.is_active
-    ) {
-      try {
-        const planId = await createRazorpayPlan({
-          name: pkg.name,
-          amountUsd: Number(pkg.price),
-          description: pkg.description || `${pkg.lead_limit} leads/month`,
-        });
-        await db.query('UPDATE packages SET razorpay_plan_id = ? WHERE id = ?', [planId, pkg.id]);
-        pkg.razorpay_plan_id = planId;
-      } catch (rzErr) {
-        console.warn('[Admin] Razorpay plan auto-create on update failed:', rzErr.message);
-      }
-    }
-
-    res.json(pkg);
+    res.json(rows[0]);
   } catch (error) {
     console.error('Update plan error:', error);
     res.status(500).json({ error: 'Failed to update plan' });
-  }
-});
-
-router.post('/plans/sync-razorpay', ...adminChain, async (_req, res) => {
-  try {
-    if (!isRazorpayConfigured()) {
-      return res.status(400).json({ error: 'Razorpay is not configured' });
-    }
-    const [packages] = await db.query(
-      `SELECT * FROM packages WHERE is_active = 1 AND is_subscription = 1 AND (razorpay_plan_id IS NULL OR razorpay_plan_id = '')`,
-    );
-    const synced = [];
-    for (const pkg of packages) {
-      if (!Number(pkg.price)) continue;
-      try {
-        const planId = await createRazorpayPlan({
-          name: pkg.name,
-          amountUsd: Number(pkg.price),
-          description: pkg.description || `${pkg.lead_limit} leads/month`,
-        });
-        await db.query('UPDATE packages SET razorpay_plan_id = ? WHERE id = ?', [planId, pkg.id]);
-        synced.push({ id: pkg.id, razorpay_plan_id: planId });
-      } catch (err) {
-        synced.push({ id: pkg.id, error: err.message });
-      }
-    }
-    res.json({ ok: true, synced, count: synced.length });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to sync Razorpay plans' });
   }
 });
 

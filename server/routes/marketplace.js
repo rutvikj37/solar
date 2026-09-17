@@ -11,7 +11,6 @@ import { fileDispute } from '../services/marketplace/disputes.js';
 import {
   MARKETPLACE_WALLET_PACKS,
   createMarketplaceWalletCheckout,
-  confirmRazorpayWalletPayment,
   confirmStripeWalletPayment,
   getMarketplaceWalletPaymentInfo,
 } from '../services/marketplace/walletTopup.js';
@@ -910,40 +909,20 @@ router.post('/wallet/checkout', ...auth, requireInstaller, async (req, res) => {
     });
     return res.json(result);
   } catch (err) {
-    const message = err?.message || err?.error?.description || 'Checkout failed';
+    const message = err?.message || 'Checkout failed';
     const providerFailure =
-      err?.authFailed ||
-      err?.code === 'payment_provider_auth' ||
-      err?.code === 'payment_provider' ||
-      err?.provider === 'razorpay' ||
-      /razorpay/i.test(message);
+      err?.code === 'payment_provider' || err?.code === 'payment_provider_auth';
     let httpStatus = Number(err?.status || err?.statusCode);
     if (providerFailure) {
-      httpStatus = err?.authFailed || err?.code === 'payment_provider_auth' ? 502 : httpStatus;
-      if (!httpStatus || httpStatus === 401) httpStatus = 502;
+      httpStatus = 503;
     } else if (!httpStatus || httpStatus < 400 || httpStatus > 599) {
-      httpStatus = err?.error ? 400 : 500;
+      httpStatus = 500;
     }
-    console.error('[Marketplace] wallet checkout failed:', err?.error || message);
+    console.error('[Marketplace] wallet checkout failed:', message);
     return res.status(httpStatus).json({
       error: message,
       code: err?.code || (providerFailure ? 'payment_provider' : undefined),
     });
-  }
-});
-
-router.post('/wallet/confirm-razorpay', ...auth, requireInstaller, async (req, res) => {
-  try {
-    const result = await confirmRazorpayWalletPayment({
-      userId: req.user.id,
-      razorpayOrderId: req.body?.razorpay_order_id,
-      razorpayPaymentId: req.body?.razorpay_payment_id,
-      razorpaySignature: req.body?.razorpay_signature,
-    });
-    return res.json({ ok: true, ...result });
-  } catch (err) {
-    console.error('[Marketplace] razorpay confirm failed:', err);
-    return res.status(err.status || 500).json({ error: err.message || 'Failed to confirm payment' });
   }
 });
 

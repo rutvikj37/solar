@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 import { invoiceNumber, openInvoicePdf } from '../../utils/invoicePdf.js';
-import { openRazorpayOrderCheckout } from '../../lib/razorpayCheckout.js';
 import { formatLedgerEntryType, formatMoney, formatWhen } from '../../lib/marketplace.js';
 
 const API = API_BASE;
@@ -91,12 +90,15 @@ function invoiceQuantityLabel(tx) {
 function invoicePaymentMethod(tx) {
   if (!tx?.method) return '—';
   const map = {
-    razorpay_marketplace: 'Razorpay',
-    razorpay_plan: 'Razorpay',
-    razorpay_subscription: 'Razorpay',
     stripe: 'Stripe',
+    stripe_subscription: 'Stripe',
     stripe_marketplace: 'Stripe',
+    razorpay_marketplace: 'Razorpay (legacy)',
+    razorpay_plan: 'Razorpay (legacy)',
+    razorpay_subscription: 'Razorpay (legacy)',
     dev_credit: 'Dev checkout',
+    dev_subscription: 'Dev checkout',
+    dev_marketplace: 'Dev checkout',
   };
   return map[tx.method] || String(tx.method).replace(/_/g, ' ');
 }
@@ -120,7 +122,6 @@ export default function Billing() {
   const [checkoutError, setCheckoutError] = useState('');
   const [portalLoading, setPortalLoading] = useState(false);
   const [marketplaceWallet, setMarketplaceWallet] = useState({ balance: 0, ledger: [] });
-  const [cancelLoading, setCancelLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -172,43 +173,6 @@ export default function Billing() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Checkout failed');
-      if (data.mode === 'razorpay' && data.orderId && data.keyId) {
-        try {
-          const result = await openRazorpayOrderCheckout({
-            keyId: data.keyId,
-            orderId: data.orderId,
-            amount: data.amount,
-            currency: data.currency || 'USD',
-            name: 'SpaceToRoof.com',
-            description: data.description || `${data.packName || 'Monthly plan'} (USD)`,
-            prefill: data.prefill || {},
-            onSuccess: async (response) => {
-              const confirmRes = await fetch(`${API}/api/billing/confirm-razorpay-plan`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                }),
-              });
-              const confirmData = await confirmRes.json().catch(() => ({}));
-              if (!confirmRes.ok) throw new Error(confirmData.error || 'Could not confirm plan payment');
-              setMessage(confirmData.message || 'Monthly plan activated — lead credits updated.');
-              await load();
-            },
-            onFailure: ({ message }) => setCheckoutError(message),
-          });
-          if (result?.dismissed) {
-            setCheckoutError('Checkout canceled — no changes were made.');
-          }
-        } catch (err) {
-          setCheckoutError(err.message || 'Payment failed');
-        } finally {
-          setPurchasing(false);
-        }
-        return;
-      }
       if (data.mode === 'stripe' && data.url) {
         window.location.href = data.url;
         return;
@@ -279,8 +243,6 @@ export default function Billing() {
     const run = async () => {
       const token = localStorage.getItem('solar_token');
       const sessionId = searchParams.get('session_id');
-      const razorpaySub =
-        searchParams.get('razorpay_sub') || sessionStorage.getItem('pending_razorpay_sub');
       const success = searchParams.get('success');
       const canceled = searchParams.get('canceled');
       if (token && sessionId) {
@@ -290,14 +252,6 @@ export default function Billing() {
           body: JSON.stringify({ sessionId })
         });
         setMessage('Subscription confirmed — credits updated.');
-      } else if (token && razorpaySub) {
-        await fetch(`${API}/api/billing/confirm-razorpay`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ subscriptionId: razorpaySub })
-        });
-        sessionStorage.removeItem('pending_razorpay_sub');
-        setMessage('Razorpay subscription confirmed — credits updated.');
       } else if (success) {
         setMessage('Subscription active — credits updated.');
       } else if (canceled) {
@@ -333,26 +287,6 @@ export default function Billing() {
       alert(err.message);
     } finally {
       setPortalLoading(false);
-    }
-  };
-
-  const cancelSubscription = async () => {
-    const token = localStorage.getItem('solar_token');
-    if (!window.confirm('Cancel subscription at end of this billing period?')) return;
-    setCancelLoading(true);
-    try {
-      const res = await fetch(`${API}/api/billing/cancel-subscription`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Cancel failed');
-      setMessage(data.message || 'Subscription canceled.');
-      await load();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setCancelLoading(false);
     }
   };
 
@@ -501,7 +435,7 @@ export default function Billing() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {subscription && subscription.paymentProvider !== 'razorpay' && (
+          {subscription && (
             <button
               type="button"
               onClick={openPortal}
@@ -537,21 +471,7 @@ export default function Billing() {
           </div>
           <p className="text-xs text-on-surface-variant leading-relaxed flex-1">{planDescription}</p>
           <div className="mt-5 flex flex-col gap-2">
-            {subscription?.paymentProvider === 'razorpay' && (
-              <button
-                type="button"
-                onClick={cancelSubscription}
-                disabled={cancelLoading || subscription.cancelAtPeriodEnd}
-                className="text-left text-red-400 font-label-mono text-[10px] hover:underline font-bold disabled:opacity-50"
-              >
-                {cancelLoading
-                  ? 'Canceling…'
-                  : subscription.cancelAtPeriodEnd
-                    ? 'Cancellation scheduled'
-                    : 'Cancel subscription'}
-              </button>
-            )}
-            {subscription && subscription.paymentProvider !== 'razorpay' && (
+            {subscription && (
               <button
                 type="button"
                 onClick={openPortal}

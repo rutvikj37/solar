@@ -25,59 +25,9 @@ function authHeaders() {
   };
 }
 
-function loadRazorpayScript() {
-  return new Promise((resolve) => {
-    if (window.Razorpay) {
-      resolve(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
-
 function resetWalletCheckoutState(setWalletPaying, lockRef) {
   lockRef.current = false;
   setWalletPaying(false);
-}
-
-function describeRazorpayFailure(resp) {
-  const desc = String(resp?.error?.description || resp?.error?.reason || '').trim();
-  const code = String(resp?.error?.code || '').trim();
-  const status = Number(resp?.error?.statusCode || resp?.statusCode || 0);
-  const combined = `${desc} ${code} ${status}`.toLowerCase();
-  const isDev = import.meta.env.DEV || import.meta.env.MODE !== 'production';
-
-  if (
-    status === 429 ||
-    /429|rate limit|too many.*otp|otp.*too many|failed otp verification attempts|otp.*locked|try again after some time/i.test(
-      combined,
-    )
-  ) {
-    return {
-      message: isDev
-        ? 'Razorpay blocked OTP after too many wrong attempts. Wait 30–60 minutes, then retry in incognito. In test mode enter OTP exactly 123456.'
-        : 'Payment OTP was locked after too many attempts. Wait 30–60 minutes, then try again.',
-      isOtpLockout: true,
-    };
-  }
-  if (/otp/i.test(combined)) {
-    return {
-      message:
-        desc ||
-        (isDev
-          ? 'OTP verification failed. In Razorpay test mode, enter exactly 123456.'
-          : 'OTP verification failed. Please try again.'),
-      isOtpLockout: false,
-    };
-  }
-  return {
-    message: desc || 'Payment failed. Please try again.',
-    isOtpLockout: false,
-  };
 }
 
 export default function MarketplaceDashboard() {
@@ -100,8 +50,7 @@ export default function MarketplaceDashboard() {
     packs: MARKETPLACE_WALLET_PACKS,
     currency: 'USD',
     currencySymbol: '$',
-    razorpayAvailable: false,
-    paymentProvider: 'razorpay',
+    paymentProvider: 'stripe',
   });
   const [areas, setAreas] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -135,8 +84,6 @@ export default function MarketplaceDashboard() {
       packs: data.packs ?? prev.packs,
       currency: data.currency ?? prev.currency,
       currencySymbol: data.currencySymbol ?? prev.currencySymbol,
-      razorpayAvailable:
-        data.razorpayAvailable !== undefined ? Boolean(data.razorpayAvailable) : prev.razorpayAvailable,
       paymentProvider: data.paymentProvider ?? prev.paymentProvider,
     };
   };
@@ -372,7 +319,7 @@ export default function MarketplaceDashboard() {
     }
     walletCheckoutLock.current = true;
     setWalletPaying(true);
-    let checkoutModalOpen = false;
+    let redirecting = false;
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/wallet/checkout`, {
         method: 'POST',
@@ -389,20 +336,15 @@ export default function MarketplaceDashboard() {
         if (res.status === 401) {
           throw new Error(data.error || 'Please log in again (session token missing or expired).');
         }
-        if (
-          data.code === 'payment_provider_auth' ||
-          res.status === 502 ||
-          res.status === 503 ||
-          /razorpay authentication failed/i.test(data.error || '')
-        ) {
-          throw new Error(data.error || 'Razorpay authentication failed — check test keys');
+        if (data.code === 'payment_provider' || res.status === 503) {
+          throw new Error(data.error || 'Stripe is not configured. Set STRIPE_SECRET_KEY in server/.env.');
         }
         throw new Error(data.error || 'Checkout failed');
       }
 
       if (data.mode === 'stripe' && data.url) {
+        redirecting = true;
         window.location.href = data.url;
-        checkoutModalOpen = true;
         return;
       }
 
@@ -412,64 +354,15 @@ export default function MarketplaceDashboard() {
         return;
       }
 
-      if (data.mode === 'razorpay' && data.orderId && data.keyId) {
-        const ok = await loadRazorpayScript();
-        if (!ok || !window.Razorpay) throw new Error('Could not load Razorpay checkout');
-        const currency = data.currency || 'USD';
-        const rzp = new window.Razorpay({
-          key: data.keyId,
-          amount: data.amount,
-          currency,
-          name: 'SpaceToRoof Marketplace',
-          description: `${data.pack?.credits || ''} bid wallet (USD)`,
-          order_id: data.orderId,
-          prefill: data.prefill || {},
-          theme: { color: '#22c55e' },
-          modal: {
-            ondismiss: () => resetWalletCheckoutState(setWalletPaying, walletCheckoutLock),
-          },
-          handler: async (response) => {
-            try {
-              const confirmRes = await fetch(`${API_BASE}/api/marketplace/wallet/confirm-razorpay`, {
-                method: 'POST',
-                headers: authHeaders(),
-                body: JSON.stringify({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                }),
-              });
-              const confirmData = await confirmRes.json();
-              if (!confirmRes.ok) throw new Error(confirmData.error || 'Could not credit wallet');
-              toast.success(`Bid wallet topped up — ${formatMoney(confirmData.balance ?? confirmData.walletBalance)}`);
-              load('wallet');
-            } catch (err) {
-              toast.error(err.message);
-            } finally {
-              resetWalletCheckoutState(setWalletPaying, walletCheckoutLock);
-            }
-          },
-        });
-        rzp.on('payment.failed', (resp) => {
-          const { message, isOtpLockout } = describeRazorpayFailure(resp);
-          toast.error(message, { duration: isOtpLockout ? 14000 : 7000 });
-          resetWalletCheckoutState(setWalletPaying, walletCheckoutLock);
-        });
-        rzp.open();
-        checkoutModalOpen = true;
-        return;
-      }
-
       throw new Error(
         data.error ||
-          'Razorpay checkout could not start. Check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in server/.env — credits are not added without payment.',
+          'Stripe checkout could not start. Set STRIPE_SECRET_KEY in server/.env — credits are not added without payment.',
       );
     } catch (err) {
       toast.error(err.message);
     } finally {
-      if (!checkoutModalOpen) {
-        walletCheckoutLock.current = false;
-        setWalletPaying(false);
+      if (!redirecting) {
+        resetWalletCheckoutState(setWalletPaying, walletCheckoutLock);
       }
     }
   };
@@ -940,7 +833,7 @@ export default function MarketplaceDashboard() {
             </form>
             {isDevBuild && (
               <p className="text-[10px] text-on-surface-variant">
-                Dev mode may credit instantly without Razorpay when payment keys are missing.
+                Dev mode may credit instantly without Stripe when payment keys are missing.
               </p>
             )}
           </div>

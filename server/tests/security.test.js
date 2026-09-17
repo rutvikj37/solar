@@ -1,33 +1,47 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
-import { verifyRazorpayWebhookSignature } from '../services/razorpayBilling.js';
+import {
+  assertSessionBelongsToUser,
+  getActivePaymentProvider,
+  isStripeConfigured,
+} from '../services/stripeBilling.js';
 import { assertSafeOutboundUrl } from '../utils/safeOutboundUrl.js';
 
-describe('verifyRazorpayWebhookSignature', () => {
+describe('assertSessionBelongsToUser', () => {
+  it('accepts matching metadata.userId', () => {
+    assert.doesNotThrow(() =>
+      assertSessionBelongsToUser({ metadata: { userId: '42' } }, 42),
+    );
+  });
+
+  it('rejects mismatched metadata.userId', () => {
+    assert.throws(
+      () => assertSessionBelongsToUser({ metadata: { userId: '1' } }, 42),
+      /does not belong/,
+    );
+  });
+
+  it('rejects session with no user binding', () => {
+    assert.throws(
+      () => assertSessionBelongsToUser({ metadata: {} }, 42),
+      /missing user binding/,
+    );
+  });
+});
+
+describe('getActivePaymentProvider', () => {
   const originalEnv = process.env;
 
-  it('rejects missing signature when secret is configured in production', () => {
-    process.env = {
-      ...originalEnv,
-      NODE_ENV: 'production',
-      RAZORPAY_WEBHOOK_SECRET: 'prod_webhook_secret_value_1234567890',
-    };
-    const body = Buffer.from('{"event":"payment.captured"}');
-    assert.equal(verifyRazorpayWebhookSignature(body, ''), false);
+  it('returns null when Stripe is not configured', () => {
+    process.env = { ...originalEnv, STRIPE_SECRET_KEY: '' };
+    assert.equal(isStripeConfigured(), false);
+    assert.equal(getActivePaymentProvider(), null);
     process.env = originalEnv;
   });
 
-  it('accepts valid HMAC signature', () => {
-    const secret = 'test_webhook_secret_abcdefghijklmnop';
-    process.env = {
-      ...originalEnv,
-      NODE_ENV: 'production',
-      RAZORPAY_WEBHOOK_SECRET: secret,
-    };
-    const body = Buffer.from('{"event":"payment.captured","id":"evt_1"}');
-    const signature = crypto.createHmac('sha256', secret).update(body).digest('hex');
-    assert.equal(verifyRazorpayWebhookSignature(body, signature), true);
+  it('returns stripe when secret key is set', () => {
+    process.env = { ...originalEnv, STRIPE_SECRET_KEY: 'sk_test_valid_looking_key_12345' };
+    assert.equal(getActivePaymentProvider(), 'stripe');
     process.env = originalEnv;
   });
 });
