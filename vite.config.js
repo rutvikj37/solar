@@ -64,23 +64,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
-  build: {
-    // Fewer tiny HTTP/1.1 round-trips on origin without HTTP/2
-    cssCodeSplit: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return
-          if (id.includes('firebase')) return 'firebase'
-          if (id.includes('framer-motion') || id.includes('/motion/')) return 'motion'
-          if (id.includes('lucide-react')) return 'lucide'
-          if (id.includes('react-dom') || id.includes('/react/') || id.includes('react-router')) {
-            return 'react-vendor'
-          }
-        },
-      },
-    },
-  },
   server: {
     headers: securityHeaders,
   },

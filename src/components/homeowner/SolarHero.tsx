@@ -79,7 +79,7 @@ export function SolarHero() {
                   <button 
                     type="button"
                     onClick={scrollToLeadForm}
-                    className="cta-hover-effect group relative flex items-center justify-center gap-2 rounded-full bg-cyan-500 px-6 py-3 lg:px-10 lg:py-5 text-[10px] lg:text-xs font-bold uppercase tracking-widest text-[#070B19] whitespace-nowrap"
+                    className="cta-hover-effect group relative flex items-center justify-center gap-2 rounded-full bg-cyan-500 px-6 py-3 lg:px-10 lg:py-5 text-[10px] lg:text-xs font-bold uppercase tracking-widest text-navy-dark whitespace-nowrap"
                   >
                     Calculate My Solar Savings
                     <ArrowRight className="cta-arrow size-4 transition-transform duration-300" />

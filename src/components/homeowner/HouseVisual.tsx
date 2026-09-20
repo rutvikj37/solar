@@ -1,7 +1,5 @@
+import heroImage from "@/assets/solar-home-hero.jpg";
 import { useEffect, useState } from "react";
-
-/** Stable public URL so index.html can preload the LCP image. */
-const HERO_SRC = "/solar-home-hero.jpg";
 
 interface HouseVisualProps {
   stage: number;
@@ -18,20 +16,17 @@ export function HouseVisual({ stage }: HouseVisualProps) {
     <div className="relative h-full w-full">
       {/* Container with blending mask to integrate into the navy background */}
       <div className="relative h-full w-full house-blend-mask overflow-hidden lg:rounded-l-[60px] lg:rounded-bl-[120px]">
-        {/* Photorealistic Background — visible immediately for LCP (no opacity delay) */}
+        {/* Photorealistic Background */}
         <div
-          className="h-full w-full transition-transform duration-2000 ease-out"
-          style={{
-            transform: localStage >= 1 ? "scale(1)" : "scale(1.05)",
+          className="h-full w-full transition-all duration-2000 ease-out"
+          style={{ 
+            opacity: localStage >= 1 ? 1 : 0,
+            transform: localStage >= 1 ? "scale(1)" : "scale(1.05)"
           }}
         >
           <img
-            src={HERO_SRC}
+            src={heroImage}
             alt="Photorealistic U.S. home with solar panels"
-            width={1200}
-            height={900}
-            decoding="async"
-            fetchPriority="high"
             className="h-full w-full object-cover object-[center_35%]"
           />
           
