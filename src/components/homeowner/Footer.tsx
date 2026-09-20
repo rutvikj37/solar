@@ -81,7 +81,7 @@ export function Footer() {
             <button
               type="button"
               onClick={scrollToLeadForm}
-              className="group inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-[12px] font-bold uppercase tracking-widest text-navy-dark transition-all hover:bg-cyan-400 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+              className="group inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-[12px] font-bold uppercase tracking-widest text-[#070B19] transition-all hover:bg-cyan-400 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
             >
               Check Your Solar Potential
               <ArrowRight className="size-4" />

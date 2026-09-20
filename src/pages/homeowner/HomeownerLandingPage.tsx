@@ -1,11 +1,24 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { SolarHero } from '@/components/homeowner/SolarHero';
-import { HowItWorks } from '@/components/homeowner/HowItWorks';
-import { FAQ } from '@/components/homeowner/FAQ';
-import { LeadForm } from '@/components/homeowner/LeadForm/LeadForm';
-import { Footer } from '@/components/homeowner/Footer';
 import { HomeownerShell } from '@/components/homeowner/HomeownerShell';
 import { scrollToLeadForm } from '@/lib/scrollToLeadForm.js';
+
+const HowItWorks = lazy(() =>
+  import('@/components/homeowner/HowItWorks').then((m) => ({ default: m.HowItWorks }))
+);
+const FAQ = lazy(() =>
+  import('@/components/homeowner/FAQ').then((m) => ({ default: m.FAQ }))
+);
+const LeadForm = lazy(() =>
+  import('@/components/homeowner/LeadForm/LeadForm').then((m) => ({ default: m.LeadForm }))
+);
+const Footer = lazy(() =>
+  import('@/components/homeowner/Footer').then((m) => ({ default: m.Footer }))
+);
+
+function BelowFoldFallback() {
+  return <div className="min-h-[40vh] bg-navy-dark" aria-hidden="true" />;
+}
 
 export default function HomeownerLandingPage() {
   useEffect(() => {
@@ -20,14 +33,17 @@ export default function HomeownerLandingPage() {
     }, 120);
     return () => window.clearTimeout(timer);
   }, []);
+
   return (
     <HomeownerShell>
       <main className="bg-navy-dark">
         <SolarHero />
-        <HowItWorks />
-        <FAQ />
-        <LeadForm />
-        <Footer />
+        <Suspense fallback={<BelowFoldFallback />}>
+          <HowItWorks />
+          <FAQ />
+          <LeadForm />
+          <Footer />
+        </Suspense>
       </main>
     </HomeownerShell>
   );

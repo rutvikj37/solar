@@ -388,7 +388,11 @@ function SatelliteVisual() {
         >
           <img 
             src="/city-aerial-wide.jpg" 
-            alt="Wide city view" 
+            alt="Wide city view"
+            width={1200}
+            height={799}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover brightness-[0.5] contrast-[1.1]" 
           />
         </motion.div>
@@ -405,7 +409,11 @@ function SatelliteVisual() {
         >
           <img 
             src="/neighborhood-aerial.jpg" 
-            alt="Neighborhood view" 
+            alt="Neighborhood view"
+            width={900}
+            height={900}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover brightness-[0.55] contrast-[1.1]" 
           />
         </motion.div>
@@ -422,7 +430,11 @@ function SatelliteVisual() {
         >
           <img 
             src="/roof-aerial.jpg" 
-            alt="Home roof view" 
+            alt="Home roof view"
+            width={800}
+            height={600}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover brightness-[0.6] contrast-[1.05]" 
           />
         </motion.div>
@@ -730,8 +742,12 @@ function InstallerVisual() {
   return (
     <div ref={containerRef} className="w-full">
       <div className="flex items-center gap-2 md:gap-3">
-        <button className="hidden sm:flex size-8 shrink-0 rounded-full border border-white/10 text-white/40 items-center justify-center hover:text-cyan-300 transition-colors">
-          <ChevronLeft className="size-4" />
+        <button
+          type="button"
+          aria-label="Previous installer"
+          className="hidden sm:flex size-8 shrink-0 rounded-full border border-white/10 text-white/40 items-center justify-center hover:text-cyan-300 transition-colors"
+        >
+          <ChevronLeft className="size-4" aria-hidden="true" />
         </button>
 
         <div className="flex flex-col sm:grid sm:grid-cols-3 gap-3 flex-1">
@@ -791,8 +807,12 @@ function InstallerVisual() {
           </div>
         </div>
 
-        <button className="hidden sm:flex size-8 shrink-0 rounded-full border border-white/10 text-white/40 items-center justify-center hover:text-cyan-300 transition-colors">
-          <ChevronRight className="size-4" />
+        <button
+          type="button"
+          aria-label="Next installer"
+          className="hidden sm:flex size-8 shrink-0 rounded-full border border-white/10 text-white/40 items-center justify-center hover:text-cyan-300 transition-colors"
+        >
+          <ChevronRight className="size-4" aria-hidden="true" />
         </button>
       </div>
 

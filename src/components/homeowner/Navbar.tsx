@@ -1,24 +1,11 @@
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { BRAND_MONOGRAM } from "../../config/brand.js";
 import { scrollToLeadForm } from "../../lib/scrollToLeadForm.js";
 
 export function Navbar() {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    setIsVisible(true);
-  }, []);
-
   return (
-    <nav
-      className="fixed top-0 left-0 right-0 z-50 glass-navy transition-all duration-700 ease-out"
-      style={{
-        transform: isVisible ? "translateY(0)" : "translateY(-20px)",
-        opacity: isVisible ? 1 : 0
-      }}
-    >
+    <nav className="fixed top-0 left-0 right-0 z-50 glass-navy">
       <div className="mx-auto max-w-[1500px] px-6 lg:px-12">
         <div className="flex h-16 items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group cursor-pointer">
@@ -41,7 +28,7 @@ export function Navbar() {
               <a
                 key={item.label}
                 href={item.id === "about" || item.id === "contact" ? `/${item.id}` : `/#${item.id}`}
-                className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/50 transition-colors hover:text-cyan-400"
+                className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/70 transition-colors hover:text-cyan-400"
               >
                 {item.label}
               </a>
@@ -52,20 +39,20 @@ export function Navbar() {
             <button
               type="button"
               onClick={scrollToLeadForm}
-              className="group flex items-center gap-3 rounded-full bg-cyan-500 px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-navy-dark transition-all hover:bg-cyan-400 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+              className="group flex items-center gap-3 rounded-full bg-cyan-500 px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#070B19] transition-all hover:bg-cyan-400 hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
             >
               Get My Free Report
-              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" aria-hidden="true" />
             </button>
             <Link
               to="/for-installers"
-              className="hidden lg:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
+              className="hidden lg:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/70 hover:text-cyan-400"
             >
               For Solar Installers
             </Link>
             <Link
               to="/login"
-              className="hidden xl:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
+              className="hidden xl:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/70 hover:text-cyan-400"
             >
               Log In
             </Link>

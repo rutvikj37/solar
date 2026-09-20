@@ -12,8 +12,9 @@ import ProtectedRoute from "./components/layout/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import FullPageLoader from "./components/layout/FullPageLoader";
 import PageTransitionLoader from "./components/layout/PageTransitionLoader";
+/** Eager: homepage is the LCP path — avoid Suspense satellite loader + extra chunk round-trip. */
+import LandingPage from "./pages/homeowner/HomeownerLandingPage";
 
-const LandingPage = lazy(() => import("./pages/homeowner/HomeownerLandingPage"));
 const InstallerLandingPage = lazy(() => import("./pages/marketing/InstallerLandingPage"));
 const HomeownerAboutPage = lazy(() => import("./pages/homeowner/HomeownerAboutPage"));
 const HomeownerContactPage = lazy(() => import("./pages/homeowner/HomeownerContactPage"));

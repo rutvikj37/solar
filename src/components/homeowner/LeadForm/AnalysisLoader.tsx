@@ -59,7 +59,11 @@ export function AnalysisLoader({ onComplete }: { onComplete: () => void }) {
         >
           <img 
             src="/city-aerial-wide.jpg" 
-            alt="" 
+            alt=""
+            width={1200}
+            height={799}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover brightness-[0.4] contrast-[1.1]" 
           />
         </motion.div>
@@ -75,7 +79,11 @@ export function AnalysisLoader({ onComplete }: { onComplete: () => void }) {
         >
           <img 
             src="/neighborhood-aerial.jpg" 
-            alt="" 
+            alt=""
+            width={900}
+            height={900}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover brightness-[0.5] contrast-[1.1]" 
           />
         </motion.div>
@@ -91,7 +99,11 @@ export function AnalysisLoader({ onComplete }: { onComplete: () => void }) {
         >
           <img 
             src="/roof-aerial.jpg" 
-            alt="" 
+            alt=""
+            width={800}
+            height={600}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover brightness-[0.55] contrast-[1.05]" 
           />
         </motion.div>
