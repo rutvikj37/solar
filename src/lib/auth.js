@@ -17,6 +17,10 @@ const PUBLIC_EXACT = new Set([
   '/terms',
   '/login',
   '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+  '/auth/action',
   '/get-solar-quote',
 ]);
 
@@ -27,6 +31,7 @@ export function isAdminRole(role) {
 export function isPublicPath(pathname = window.location.pathname) {
   if (PUBLIC_EXACT.has(pathname)) return true;
   if (pathname.startsWith('/proposal/')) return true;
+  if (pathname.startsWith('/auth/')) return true;
   return false;
 }
 

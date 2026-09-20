@@ -82,6 +82,7 @@ export function Nav() {
         <div className="hidden items-center gap-4 md:flex">
           <Link
             to="/login"
+            state={{ from: "/for-installers" }}
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             Log in
@@ -149,6 +150,7 @@ export function Nav() {
               ))}
               <Link
                 to="/login"
+                state={{ from: "/for-installers" }}
                 onClick={() => setOpen(false)}
                 className="mt-1 rounded-xl border border-glass-border bg-glass px-3 py-3 text-center text-sm font-semibold"
               >

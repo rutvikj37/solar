@@ -20,7 +20,7 @@ export default function LandingPage() {
     return () => window.clearTimeout(timer);
   }, []);
   return (
-    <div className="marketing-root dark">
+    <div className="marketing-root theme-dark-canvas dark">
       <Toaster theme="dark" position="top-center" />
       <main className="relative">
         <Nav />

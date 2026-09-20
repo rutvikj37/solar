@@ -59,13 +59,14 @@ export function Navbar() {
             </button>
             <Link
               to="/for-installers"
-              className="hidden lg:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
+              className="hidden sm:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/70 hover:text-cyan-400"
             >
               For Solar Installers
             </Link>
             <Link
               to="/login"
-              className="hidden xl:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/40 hover:text-cyan-400"
+              state={{ from: "/for-installers" }}
+              className="hidden sm:inline-flex text-[10px] font-bold uppercase tracking-[0.18em] text-white/70 hover:text-cyan-400"
             >
               Log In
             </Link>

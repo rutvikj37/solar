@@ -80,7 +80,7 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
   }, [requireAdmin, location.pathname, location.key, navType, authTick]);
 
   if (!tokenOk || status === 'denied') {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: '/for-installers' }} />;
   }
 
   if (status === 'loading') {

@@ -1,10 +1,26 @@
 import React, { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { API_BASE } from "../../config.js";
 import { BRAND_NAME } from "../../config/brand.js";
 import { setToken } from "../../lib/auth.js";
 import SatelliteUplinkLoader from "../../components/layout/SatelliteUplinkLoader.jsx";
 import SocialLoginButtons from "../../components/SocialLoginButtons.jsx";
+
+const INSTALLER_HOME = "/for-installers";
+
+function resolveAuthBackTo(location) {
+  const fromState = location.state?.from;
+  if (typeof fromState === "string" && fromState.startsWith("/") && !fromState.startsWith("//")) {
+    if (fromState === "/login" || fromState === "/register") return INSTALLER_HOME;
+    return fromState;
+  }
+  const next = new URLSearchParams(location.search).get("next");
+  if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login")) {
+    return INSTALLER_HOME;
+  }
+  return INSTALLER_HOME;
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState(() => localStorage.getItem("solar_remember_email") || "");
@@ -14,7 +30,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showAuthLoader, setShowAuthLoader] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+  const backTo = resolveAuthBackTo(location);
 
   const completeLogin = (token, { needsOnboarding = false } = {}) => {
     setShowAuthLoader(true);
@@ -73,6 +91,11 @@ export default function LoginPage() {
     });
   };
 
+  const handleBack = (e) => {
+    e.preventDefault();
+    navigate(backTo, { replace: true });
+  };
+
   return (
     <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <SatelliteUplinkLoader visible={showAuthLoader} />
@@ -81,10 +104,20 @@ export default function LoginPage() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary-glow/10 blur-3xl rounded-full pointer-events-none"></div>
 
       <div className="w-full max-w-[420px] z-10">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="mb-6 inline-flex items-center gap-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:text-on-surface"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to Solar Installers
+        </button>
+
         {/* Brand Header */}
         <div className="text-center mb-8">
           <Link
-            to="/"
+            to={backTo}
+            replace
             className="inline-flex items-baseline gap-0 mb-2 select-none font-display"
           >
             <span className="text-on-surface font-semibold text-2xl tracking-tight">
@@ -194,6 +227,7 @@ export default function LoginPage() {
           Don't have an account?{" "}
           <Link
             to="/register"
+            state={{ from: "/for-installers" }}
             className="text-primary hover:underline font-semibold"
           >
             Sign up for free

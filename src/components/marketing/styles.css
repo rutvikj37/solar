@@ -60,6 +60,69 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Marketing is always a dark cinematic canvas. When the app shell is in light
+ * mode (html.light), re-lock tokens so headlines / muted copy stay readable.
+ */
+html.light .marketing-root {
+  color-scheme: dark;
+  --color-on-background: oklch(0.98 0.005 250);
+  --color-background: oklch(0.13 0.045 275);
+  --color-surface: oklch(0.13 0.045 275);
+  --color-surface-dim: oklch(0.13 0.045 275);
+  --color-surface-bright: oklch(0.24 0.04 268);
+  --color-surface-variant: oklch(0.22 0.035 268);
+  --color-surface-elevated: oklch(0.18 0.04 270);
+  --color-surface-container-lowest: oklch(0.1 0.04 275);
+  --color-surface-container-low: oklch(0.15 0.04 273);
+  --color-surface-container: oklch(0.16 0.04 272);
+  --color-surface-container-high: oklch(0.2 0.04 270);
+  --color-surface-container-highest: oklch(0.22 0.035 268);
+  --color-on-surface: oklch(0.98 0.005 250);
+  --color-on-surface-variant: oklch(0.80 0.02 260);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: oklch(0.88 0.02 260);
+  --color-foreground: oklch(0.98 0.005 250);
+  --color-card: oklch(0.18 0.04 270);
+  --color-card-foreground: oklch(0.98 0.005 250);
+  --color-muted: oklch(0.22 0.035 268);
+  --color-muted-foreground: oklch(0.80 0.02 260);
+  --color-deep: oklch(0.1 0.04 275);
+  --color-glass: oklch(0.98 0.01 250 / 6%);
+  --color-glass-stroke: oklch(0.98 0.01 250 / 14%);
+  --color-glass-border: oklch(0.98 0.01 250 / 14%);
+  --color-outline: oklch(0.72 0.025 260);
+  --color-outline-variant: oklch(0.98 0.01 250 / 14%);
+  --color-border: oklch(0.98 0.01 250 / 12%);
+  --color-input: oklch(0.98 0.01 250 / 14%);
+  --color-primary: oklch(0.66 0.19 253);
+  --color-primary-glow: oklch(0.78 0.15 235);
+  --color-on-primary: oklch(0.99 0.002 250);
+  --color-primary-container: oklch(0.55 0.18 253);
+  --color-primary-foreground: oklch(0.99 0.002 250);
+  --color-secondary: oklch(0.78 0.16 200);
+  --color-secondary-container: oklch(0.28 0.05 268);
+  --color-on-secondary: oklch(0.98 0.005 250);
+  --color-on-secondary-container: oklch(0.96 0.005 250);
+  --color-ring: oklch(0.66 0.19 253);
+  --background: var(--color-background);
+  --deep: var(--color-deep);
+  --foreground: var(--color-foreground);
+  --card: var(--color-card);
+  --card-foreground: var(--color-card-foreground);
+  --muted: var(--color-muted);
+  --muted-foreground: var(--color-muted-foreground);
+  --border: var(--color-border);
+  --input: var(--color-input);
+  --glass: var(--color-glass);
+  --glass-border: var(--color-glass-border);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-primary-foreground);
+  --primary-glow: var(--color-primary-glow);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
 .marketing-root * {
   border-color: var(--color-border);
 }

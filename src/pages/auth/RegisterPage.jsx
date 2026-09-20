@@ -96,7 +96,8 @@ export default function RegisterPage() {
       <div className="w-full max-w-[500px] z-10 my-8">
         <div className="text-center mb-6">
           <Link
-            to="/"
+            to="/for-installers"
+            replace
             className="inline-flex items-baseline gap-0 mb-2 select-none font-display"
           >
             <span className="text-on-surface font-semibold text-2xl tracking-tight">
@@ -282,6 +283,7 @@ export default function RegisterPage() {
             Already have an account?{" "}
             <Link
               to="/login"
+              state={{ from: "/for-installers" }}
               className="text-primary hover:underline font-semibold"
             >
               Sign in here

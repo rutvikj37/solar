@@ -710,6 +710,8 @@ html.light .text-emerald-300 {
  * Undo light remaps so white text / glass strokes stay readable.
  */
 html.light .theme-dark-canvas,
+html.light .homeowner-site,
+html.light .marketing-root,
 html.light .solar-proposal-document,
 html.light .public-proposal-shell {
   color-scheme: dark;
@@ -721,6 +723,10 @@ html.light .public-proposal-shell {
 }
 html.light .theme-dark-canvas .text-white,
 html.light .theme-dark-canvas.text-white,
+html.light .homeowner-site .text-white,
+html.light .homeowner-site.text-white,
+html.light .marketing-root .text-white,
+html.light .marketing-root.text-white,
 html.light .solar-proposal-document .text-white,
 html.light .public-proposal-shell .text-white {
   color: #ffffff !important;
@@ -752,6 +758,8 @@ html.light .public-proposal-shell .text-on-surface-variant {
   color: #94a3b8 !important;
 }
 html.light .theme-dark-canvas [class*="text-white/"],
+html.light .homeowner-site [class*="text-white/"],
+html.light .marketing-root [class*="text-white/"],
 html.light .solar-proposal-document [class*="text-white/"],
 html.light .public-proposal-shell [class*="text-white/"] {
   color: rgb(255 255 255 / 0.85) !important;
@@ -760,6 +768,7 @@ html.light .theme-dark-canvas .hover\:text-white:hover,
 html.light .theme-dark-canvas .hover\:text-on-surface:hover,
 html.light .theme-dark-canvas .group:hover .group-hover\:text-white,
 html.light .theme-dark-canvas .group:hover .group-hover\:text-on-surface,
+html.light .homeowner-site .hover\:text-white:hover,
 html.light .solar-proposal-document .hover\:text-white:hover,
 html.light .solar-proposal-document .hover\:text-on-surface:hover,
 html.light .solar-proposal-document .group:hover .group-hover\:text-white,
@@ -767,6 +776,9 @@ html.light .solar-proposal-document .group:hover .group-hover\:text-on-surface,
 html.light .public-proposal-shell .hover\:text-white:hover,
 html.light .public-proposal-shell .hover\:text-on-surface:hover {
   color: #ffffff !important;
+}
+html.light .homeowner-site .hover\:text-cyan-400:hover {
+  color: oklch(0.75 0.18 190) !important;
 }
 html.light .theme-dark-canvas .bg-white\/5,
 html.light .theme-dark-canvas .bg-white\/10,
@@ -830,6 +842,9 @@ html.light .public-proposal-shell .bg-\[\#0A0E23\] { background-color: #0a0e23 !
 html.light .theme-dark-canvas select,
 html.light .theme-dark-canvas input:not([type='checkbox']):not([type='radio']):not([type='range']),
 html.light .theme-dark-canvas textarea,
+html.light .homeowner-site select,
+html.light .homeowner-site input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html.light .homeowner-site textarea,
 html.light .solar-proposal-document select,
 html.light .solar-proposal-document input:not([type='checkbox']):not([type='radio']),
 html.light .solar-proposal-document textarea,
