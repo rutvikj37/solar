@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 export const MARKETPLACE_STATUSES = [
   'new',
   'ai_qualified',
@@ -91,7 +93,7 @@ export function billRangeFromAmount(bill) {
 
 export function generateLeadCode() {
   const ts = Date.now().toString(36).toUpperCase();
-  const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
+  const rnd = crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4);
   return `SX-${ts}-${rnd}`;
 }
 

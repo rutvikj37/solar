@@ -358,7 +358,7 @@ export async function createInquiry(payload) {
   if (dupes[0]) {
     const err = new Error('A similar inquiry was already submitted recently.');
     err.code = 'DUPLICATE_INQUIRY';
-    err.existingLeadCode = dupes[0].lead_code;
+    // Intentionally omit lead_code — public report URLs must not leak to unauthenticated clients.
     err.existingStatus = dupes[0].status;
     throw err;
   }

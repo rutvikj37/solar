@@ -206,10 +206,10 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
     return res.status(201).json(formatInquiryResponse(lead));
   } catch (err) {
     if (err.code === 'DUPLICATE_INQUIRY') {
+      // Do not return existingLeadCode — it unlocks the public /report/:leadCode route.
       return res.status(409).json({
-        error: err.message,
+        error: err.message || 'A similar inquiry was already submitted recently.',
         code: err.code,
-        existingLeadCode: err.existingLeadCode,
         existingStatus: err.existingStatus,
       });
     }
@@ -501,6 +501,18 @@ router.get('/opportunities/:id', ...auth, requireInstaller, async (req, res) => 
     }
 
     if (BIDDING_OPEN_STATUSES.has(lead.status)) {
+      const entitlements = await getUserEntitlements(userId, req.user.role);
+      const hasEarlyAccess =
+        entitlements.unlimited || Boolean(entitlements.features?.earlyMarketplace);
+      if (isEarlyMarketplaceWindow(lead) && !hasEarlyAccess) {
+        return res.status(403).json({
+          error: `This opportunity is in Mission Control early access for the first ${EARLY_MARKETPLACE_HOURS} hours. Upgrade to Mission Control or wait until general bidding opens.`,
+          code: 'EARLY_MARKETPLACE_REQUIRED',
+          feature: 'earlyMarketplace',
+          earlyMarketplaceHours: EARLY_MARKETPLACE_HOURS,
+          upgradePath: '/billing#plans',
+        });
+      }
       if (!(await isInstallerEligible(userId, lead, { requireVerified: marketplaceRequireVerified() }))) {
         return res.status(403).json({ error: 'Not eligible for this opportunity' });
       }
@@ -514,6 +526,7 @@ router.get('/opportunities/:id', ...auth, requireInstaller, async (req, res) => 
           ownBid: own || null,
           allActiveAmounts: bids.map((b) => Number(b.amount)),
           settings,
+          earlyAccessViewer: hasEarlyAccess,
         }),
       });
     }
