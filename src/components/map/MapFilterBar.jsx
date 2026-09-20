@@ -153,13 +153,13 @@ export default function MapFilterBar({
   };
 
   return (
-    <div className="glass-card p-2.5 rounded-2xl border border-glass-stroke shadow-2xl flex flex-wrap items-center justify-between gap-2.5 backdrop-blur-xl text-xs">
+    <div className="glass-card p-2 sm:p-2.5 rounded-2xl border border-glass-stroke shadow-2xl flex flex-col md:flex-row md:flex-wrap md:items-center md:justify-between gap-2 backdrop-blur-xl text-xs w-full min-w-0">
       {/* ZIP / Location Search Input with Autocomplete Suggestions Dropdown */}
-      <div className="relative flex items-center gap-2 bg-surface-container-low border border-glass-stroke rounded-xl px-3 py-1.5 min-w-[220px] flex-1">
-        <span className="material-symbols-outlined text-on-surface-variant text-base">travel_explore</span>
+      <div className="relative flex items-center gap-1.5 sm:gap-2 bg-surface-container-low border border-glass-stroke rounded-xl px-2.5 sm:px-3 py-1.5 w-full md:min-w-[180px] md:flex-1 min-w-0">
+        <span className="material-symbols-outlined text-on-surface-variant text-base shrink-0">travel_explore</span>
         <input
           type="text"
-          placeholder="Search any home address, city, or ZIP..."
+          placeholder="Address, city, or ZIP..."
           value={zip}
           onChange={(e) => setZip(e.target.value)}
           onFocus={() => zip && suggestions.length > 0 && setShowSuggestions(true)}
@@ -182,10 +182,10 @@ export default function MapFilterBar({
               setShowSuggestions(false);
             }
           }}
-          className="bg-transparent border-none text-on-surface text-xs focus:outline-none w-full placeholder:text-slate-500"
+          className="bg-transparent border-none text-on-surface text-xs focus:outline-none w-full min-w-0 placeholder:text-slate-500"
         />
         {loadingSuggestions && (
-          <span className="material-symbols-outlined text-xs text-primary animate-spin">sync</span>
+          <span className="material-symbols-outlined text-xs text-primary animate-spin shrink-0">sync</span>
         )}
         <button
           type="button"
@@ -193,7 +193,7 @@ export default function MapFilterBar({
             setShowSuggestions(false);
             onSearch(zip);
           }}
-          className="bg-primary text-on-primary font-bold text-[10px] uppercase tracking-wider px-3 py-1 rounded-lg hover:brightness-110 shrink-0"
+          className="bg-primary text-on-primary font-bold text-[10px] uppercase tracking-wider px-2.5 sm:px-3 py-1 rounded-lg hover:brightness-110 shrink-0"
         >
           Search
         </button>
@@ -223,12 +223,13 @@ export default function MapFilterBar({
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto min-w-0">
       {/* Preset Selector — saves ZIP for one-click reuse */}
       <div className="flex items-center gap-1.5" title="Save or load ZIP search presets">
         <select
           value={selectedPresetId}
           onChange={(e) => handleSelectPreset(e.target.value)}
-          className="bg-surface-container-low border border-glass-stroke rounded-xl py-1.5 px-3 text-on-surface text-xs focus:outline-none focus:border-primary"
+          className="bg-surface-container-low border border-glass-stroke rounded-xl py-1.5 px-2 sm:px-3 text-on-surface text-xs focus:outline-none focus:border-primary max-w-[130px] sm:max-w-none"
           aria-label="Saved filter presets"
         >
           <option value="">Saved filters</option>
@@ -250,7 +251,7 @@ export default function MapFilterBar({
       </div>
 
       {/* Polygon Lasso Controls */}
-      <div className="flex items-center gap-1.5 border-l border-glass-stroke/50 pl-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 md:border-l md:border-glass-stroke/50 md:pl-2.5">
         <div className="flex bg-surface-container-low p-0.5 rounded-xl border border-glass-stroke">
           <button
             type="button"
@@ -270,21 +271,21 @@ export default function MapFilterBar({
               lassoMode === 'click' ? 'bg-primary text-on-primary shadow-sm' : 'text-slate-400 hover:text-on-surface'
             }`}
           >
-            Point Click
+            Points
           </button>
         </div>
 
         <button
           type="button"
           onClick={onToggleDrawing}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all border ${
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all border ${
             isDrawingPolygon
               ? 'bg-primary text-on-primary border-primary animate-pulse'
               : 'bg-white/5 text-on-surface border-glass-stroke hover:bg-white/10'
           }`}
         >
           <span className="material-symbols-outlined text-sm">polyline</span>
-          {isDrawingPolygon ? 'Finish Lasso' : 'Draw Lasso'}
+          {isDrawingPolygon ? 'Finish' : 'Lasso'}
         </button>
 
         {canBulkScan && (
@@ -298,10 +299,10 @@ export default function MapFilterBar({
             <button
               type="button"
               onClick={onOpenScanModal}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-on-surface font-extrabold text-[10px] uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-95 transition-all border border-emerald-400/40"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-on-surface font-extrabold text-[10px] uppercase tracking-wider shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-95 transition-all border border-emerald-400/40"
             >
               <span className="material-symbols-outlined text-sm">radar</span>
-              Scan this area
+              Scan
             </button>
           </>
         )}
@@ -320,10 +321,11 @@ export default function MapFilterBar({
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/15 text-red-400 border border-red-500/30 text-[10px] font-bold uppercase tracking-wider hover:bg-red-500/25"
             >
               <span className="material-symbols-outlined text-sm">delete</span>
-              Clear Lasso
+              Clear
             </button>
           </>
         )}
+      </div>
       </div>
 
       {/* Save Preset Dialog Modal */}

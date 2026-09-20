@@ -62,10 +62,16 @@ export default function MyLeads() {
   const [sortDir, setSortDir] = useState('desc');
   const [viewMode, setViewMode] = useState(() => {
     try {
-      return localStorage.getItem('lead_crm_view') === 'kanban' ? 'kanban' : 'list';
+      const stored = localStorage.getItem('lead_crm_view');
+      if (stored === 'kanban' || stored === 'list') return stored;
     } catch {
-      return 'list';
+      /* ignore */
     }
+    // Prefer kanban on narrow screens for a usable mobile CRM
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      return 'kanban';
+    }
+    return 'list';
   });
   const [statusBusyId, setStatusBusyId] = useState(null);
   const [pipelineStages, setPipelineStages] = useState(DEFAULT_PIPELINE_STAGE_LIST);
@@ -399,7 +405,7 @@ export default function MyLeads() {
 
           {/* Bulk actions */}
           {selectedIds.length > 0 && (
-            <div className="sticky top-[72px] z-20 mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-primary/10 border border-primary/25 backdrop-blur-xl">
+            <div className="sticky top-[var(--app-chrome-h,64px)] z-20 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-primary/10 border border-primary/25 backdrop-blur-xl">
               <span className="text-xs font-bold text-primary">
                 {selectedIds.length} lead{selectedIds.length === 1 ? '' : 's'} selected
               </span>
@@ -443,7 +449,7 @@ export default function MyLeads() {
             ) : (
               <>
                 <div className="flex-1 overflow-auto custom-scrollbar max-h-[calc(100vh-320px)] min-h-[420px]">
-                  <table className="w-full border-collapse text-left min-w-[1480px]">
+                  <table className="w-full border-collapse text-left min-w-[980px] lg:min-w-[1480px]">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-surface-container-low/95 backdrop-blur-md text-[10px] font-bold uppercase tracking-widest text-on-surface-variant border-b border-glass-stroke">
                         <th className="px-3 py-3 text-center w-10">

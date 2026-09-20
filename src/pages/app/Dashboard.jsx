@@ -216,8 +216,8 @@ export default function Dashboard() {
       <DashboardTour />
 
       {/* Summary Cards Bento Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-stack-md mb-stack-lg text-xs">
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-stack-md mb-stack-lg text-xs">
+        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
               Purchased Leads
@@ -231,7 +231,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
+        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
               Lead credits
@@ -250,7 +250,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
+        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
               Used Today
@@ -269,7 +269,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
+        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
               Emails left
@@ -296,7 +296,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32">
+        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
               Active Package
@@ -310,7 +310,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-32 border-l-4 border-l-primary">
+        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32 border-l-4 border-l-primary">
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
               Recent Activity
@@ -489,25 +489,25 @@ export default function Dashboard() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-white/5">
-                <th className="px-6 py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Lead Name
                 </th>
-                <th className="px-6 py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Property Address
                 </th>
-                <th className="px-6 py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Lead Score
                 </th>
-                <th className="px-6 py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Phone Contact
                 </th>
-                <th className="px-6 py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Generated
                 </th>
-                <th className="px-6 py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Status
                 </th>
-                <th className="px-6 py-4 text-right font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-right font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke">
                   Action
                 </th>
               </tr>
@@ -518,7 +518,7 @@ export default function Dashboard() {
                   key={lead.id}
                   className="hover:bg-white/5 transition-colors"
                 >
-                  <td className="px-6 py-4">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded bg-primary/20 text-primary flex items-center justify-center font-bold">
                         {lead.owner_name
@@ -530,24 +530,24 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-on-surface-variant">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-on-surface-variant">
                     {lead.address}
                   </td>
-                  <td className="px-6 py-4 font-mono font-bold text-on-surface">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono font-bold text-on-surface">
                     {lead.lead_score}/100
                   </td>
-                  <td className="px-6 py-4 text-on-surface-variant">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-on-surface-variant">
                     {lead.phone || "N/A"}
                   </td>
-                  <td className="px-6 py-4 text-on-surface-variant font-mono text-[10px] whitespace-nowrap">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-on-surface-variant font-mono text-[10px] whitespace-nowrap">
                     {formatLeadGeneratedAt(lead.created_at) || "—"}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4">
                     <span className="px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-bold uppercase text-[9px]">
                       {lead.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                     <Link
                       to={`/lead/${lead.id}`}
                       className="text-primary hover:underline font-bold"

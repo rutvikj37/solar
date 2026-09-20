@@ -552,7 +552,7 @@ export default function Billing() {
 
       {/* Invoice history */}
       <section className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">
-        <div className="px-6 py-4 border-b border-glass-stroke flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="px-3 sm:px-6 py-4 border-b border-glass-stroke flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="font-headline-md text-base font-bold text-on-surface">Payment History</h3>
             <p className="text-[11px] text-on-surface-variant mt-0.5">
@@ -567,11 +567,11 @@ export default function Billing() {
         </div>
 
         {invoicePdfError && !viewingInvoice && (
-          <p className="px-6 py-2 text-[11px] text-amber-300 border-b border-glass-stroke">{invoicePdfError}</p>
+          <p className="px-3 sm:px-6 py-2 text-[11px] text-amber-300 border-b border-glass-stroke">{invoicePdfError}</p>
         )}
 
         {invoices.length === 0 ? (
-          <div className="px-6 py-14 flex flex-col items-center text-center">
+          <div className="px-3 sm:px-6 py-14 flex flex-col items-center text-center">
             <div className="w-12 h-12 rounded-2xl bg-white/5 border border-glass-stroke flex items-center justify-center mb-4">
               <span className="material-symbols-outlined text-2xl text-on-surface-variant">receipt_long</span>
             </div>
@@ -589,13 +589,13 @@ export default function Billing() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs text-left min-w-[720px]">
+            <table className="w-full border-collapse text-xs text-left min-w-[560px] sm:min-w-[720px]">
               <thead>
                 <tr className="bg-white/[0.03]">
                   {['Invoice', 'Date', 'Product', 'Type', 'Amount', 'Purchased', 'Status', ''].map((h) => (
                     <th
                       key={h || 'actions'}
-                      className="px-6 py-3.5 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
+                      className="px-3 sm:px-6 py-3.5 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
                     >
                       {h}
                     </th>
@@ -609,7 +609,7 @@ export default function Billing() {
                     className="hover:bg-white/[0.03] transition-colors cursor-pointer"
                     onClick={() => openInvoice(tx)}
                   >
-                    <td className="px-6 py-4 text-on-surface">
+                    <td className="px-3 sm:px-6 py-4 text-on-surface">
                       <p className="font-semibold font-mono text-[11px]">{invoiceNumber(tx.id)}</p>
                       {tx.description && (
                         <p className="text-[10px] text-on-surface-variant mt-0.5 leading-snug max-w-xs">
@@ -620,23 +620,23 @@ export default function Billing() {
                         <p className="text-[10px] text-on-surface-variant/80 mt-0.5">by {tx.admin_name}</p>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-on-surface-variant whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 text-on-surface-variant whitespace-nowrap">
                       {tx.created_at ? formatDate(tx.created_at) : '—'}
                     </td>
-                    <td className="px-6 py-4 text-on-surface">{invoiceProductLabel(tx)}</td>
-                    <td className="px-6 py-4 text-on-surface-variant capitalize">
+                    <td className="px-3 sm:px-6 py-4 text-on-surface">{invoiceProductLabel(tx)}</td>
+                    <td className="px-3 sm:px-6 py-4 text-on-surface-variant capitalize">
                       {formatBillingReason(tx.billing_reason)}
                     </td>
-                    <td className="px-6 py-4 font-semibold text-on-surface tabular-nums">
+                    <td className="px-3 sm:px-6 py-4 font-semibold text-on-surface tabular-nums">
                       {formatAmount(tx.amount_cents)}
                     </td>
-                    <td className="px-6 py-4 text-on-surface-variant tabular-nums">
+                    <td className="px-3 sm:px-6 py-4 text-on-surface-variant tabular-nums">
                       {invoiceQuantityLabel(tx)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-4">
                       <InvoiceStatusPill status={tx.status} />
                     </td>
-                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 text-right whitespace-nowrap">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -669,7 +669,7 @@ export default function Billing() {
 
       {/* Bid wallet activity (marketplace wins & top-ups) */}
       <section className="glass-card rounded-2xl border border-glass-stroke overflow-hidden mt-8">
-        <div className="px-6 py-4 border-b border-glass-stroke flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="px-3 sm:px-6 py-4 border-b border-glass-stroke flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="font-headline-md text-base font-bold text-on-surface">Bid Wallet Activity</h3>
             <p className="text-[11px] text-on-surface-variant mt-0.5">
@@ -682,18 +682,18 @@ export default function Billing() {
           </div>
         </div>
         {marketplaceWallet.ledger.length === 0 ? (
-          <div className="px-6 py-10 text-center text-sm text-on-surface-variant">
+          <div className="px-3 sm:px-6 py-10 text-center text-sm text-on-surface-variant">
             No bid wallet activity yet. Top-ups and lead win charges appear here.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs text-left min-w-[640px]">
+            <table className="w-full border-collapse text-xs text-left min-w-[480px] sm:min-w-[640px]">
               <thead>
                 <tr className="bg-white/[0.03]">
                   {['Date', 'Type', 'Amount', 'Balance', 'Note'].map((h) => (
                     <th
                       key={h}
-                      className="px-6 py-3 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
+                      className="px-3 sm:px-6 py-3 font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest border-b border-glass-stroke"
                     >
                       {h}
                     </th>
@@ -703,10 +703,10 @@ export default function Billing() {
               <tbody className="divide-y divide-glass-stroke">
                 {marketplaceWallet.ledger.map((row) => (
                   <tr key={row.id} className="hover:bg-white/[0.03]">
-                    <td className="px-6 py-3 text-on-surface-variant whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-3 text-on-surface-variant whitespace-nowrap">
                       {formatWhen(row.created_at)}
                     </td>
-                    <td className="px-6 py-3 text-on-surface">{formatLedgerEntryType(row.entry_type)}</td>
+                    <td className="px-3 sm:px-6 py-3 text-on-surface">{formatLedgerEntryType(row.entry_type)}</td>
                     <td
                       className={`px-6 py-3 font-semibold ${
                         Number(row.amount) < 0 ? 'text-red-300' : 'text-emerald-300'
@@ -714,8 +714,8 @@ export default function Billing() {
                     >
                       {formatMoney(row.amount)}
                     </td>
-                    <td className="px-6 py-3">{formatMoney(row.balance_after)}</td>
-                    <td className="px-6 py-3 text-on-surface-variant">{row.note || '—'}</td>
+                    <td className="px-3 sm:px-6 py-3">{formatMoney(row.balance_after)}</td>
+                    <td className="px-3 sm:px-6 py-3 text-on-surface-variant">{row.note || '—'}</td>
                   </tr>
                 ))}
               </tbody>

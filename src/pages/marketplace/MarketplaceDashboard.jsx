@@ -387,7 +387,7 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto">
+    <div className="p-0 sm:p-2 md:p-4 space-y-5 max-w-6xl mx-auto">
       <Toaster theme={theme === 'light' ? 'light' : 'dark'} position="top-right" />
       <div>
         <h1 className="text-2xl font-display font-bold text-on-surface">Marketplace</h1>

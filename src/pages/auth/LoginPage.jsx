@@ -133,7 +133,7 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form Card */}
-        <div className="glass-card p-8 rounded-2xl border border-glass-stroke shadow-2xl bg-surface-elevated/40 backdrop-blur-xl">
+        <div className="glass-card p-5 sm:p-8 rounded-2xl border border-glass-stroke shadow-2xl bg-surface-elevated/40 backdrop-blur-xl">
           <h3 className="text-lg font-bold text-white mb-6">Welcome Back</h3>
 
           <form onSubmit={handleLogin} className="space-y-4 text-xs">

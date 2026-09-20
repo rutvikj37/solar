@@ -1004,14 +1004,15 @@ export default function InteractiveMap() {
         <button
           type="button"
           onClick={() => setShowLeadManager((v) => !v)}
-          className="absolute top-4 right-4 z-40 rounded-xl border border-glass-stroke bg-deep/90 backdrop-blur-md px-3 py-2 text-[11px] font-bold text-white hover:bg-white/10 flex items-center gap-1.5"
+          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-40 rounded-xl border border-glass-stroke bg-deep/90 backdrop-blur-md px-2.5 sm:px-3 py-2 text-[10px] sm:text-[11px] font-bold text-white hover:bg-white/10 flex items-center gap-1.5"
         >
           <span className="material-symbols-outlined text-sm">assignment</span>
-          {showLeadManager ? 'Hide leads' : 'Lead manager'}
+          <span className="hidden sm:inline">{showLeadManager ? 'Hide leads' : 'Lead manager'}</span>
+          <span className="sm:hidden">{showLeadManager ? 'Hide' : 'Leads'}</span>
         </button>
 
         {showLeadManager && (
-          <div className="absolute top-16 right-4 z-40 w-[min(100%,380px)] max-h-[calc(100%-5rem)] overflow-hidden">
+          <div className="absolute top-14 sm:top-16 left-3 right-3 sm:left-auto sm:right-4 z-40 w-auto sm:w-[min(100%,380px)] max-h-[calc(100%-5rem)] overflow-hidden">
             <LeadManagerPanel
               visible={showLeadManager}
               onClose={() => {
@@ -1025,8 +1026,8 @@ export default function InteractiveMap() {
         )}
 
         {/* Top Floating Control Bar */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2.5 max-w-4xl w-full px-4 pointer-events-none">
-          <div className="pointer-events-auto flex items-center justify-between w-full gap-3">
+        <div className="absolute top-3 sm:top-4 left-0 right-0 z-30 flex flex-col items-stretch sm:items-center gap-2 max-w-4xl mx-auto w-full px-3 sm:px-4 pointer-events-none pr-20 sm:pr-4">
+          <div className="pointer-events-auto flex flex-col md:flex-row md:items-start justify-between w-full gap-2 min-w-0">
             <MapFilterBar
               zip={zip}
               setZip={setZip}

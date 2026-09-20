@@ -25,8 +25,6 @@ export default function AppLayout() {
   const isMapPage = location.pathname === '/map';
   const isWideTablePage = location.pathname === '/my-leads';
 
-  const bodyPadding = showBanner ? 'pt-[104px]' : 'pt-16';
-
   useEffect(() => {
     refreshUserData();
   }, [location.pathname, refreshUserData]);
@@ -36,15 +34,20 @@ export default function AppLayout() {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  // Keep CSS var in sync + nudge Google Maps when rail width changes
   useEffect(() => {
     const width = collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
     document.documentElement.style.setProperty('--app-sidebar-w', `${width}px`);
+    document.documentElement.style.setProperty('--app-banner-h', showBanner ? '36px' : '0px');
+    document.documentElement.style.setProperty('--app-topbar-h', '64px');
+    document.documentElement.style.setProperty(
+      '--app-chrome-h',
+      showBanner ? '100px' : '64px',
+    );
     const id = window.setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
     }, 320);
     return () => window.clearTimeout(id);
-  }, [collapsed]);
+  }, [collapsed, showBanner]);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -71,30 +74,31 @@ export default function AppLayout() {
   const creditsEmpty = credits === 0;
   const planName = subscription?.packageName;
   const bannerCredits = authLoading ? null : credits;
+  const bodyPadding = showBanner ? 'pt-[100px]' : 'pt-16';
 
   return (
     <div className="min-h-screen bg-deep text-on-background flex flex-col font-sans overflow-x-hidden">
       {showBanner && (
-        <div className="fixed top-0 left-0 right-0 h-9 bg-deep border-b border-glass-stroke py-2 px-6 flex items-center justify-between text-[11px] text-on-surface-variant z-50">
-          <div className="flex items-center gap-1.5 select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-            <span>
+        <div className="fixed top-0 left-0 right-0 h-9 bg-deep border-b border-glass-stroke py-1.5 px-3 sm:px-6 flex items-center justify-between gap-2 text-[10px] sm:text-[11px] text-on-surface-variant z-50">
+          <div className="flex items-center gap-1.5 select-none min-w-0 flex-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0"></span>
+            <span className="truncate">
               {bannerCredits === null
                 ? '1 lead unlock = 1 credit'
                 : creditsEmpty
                   ? planName
-                    ? `${planName} — no unlock credits left. Renew or upgrade to continue.`
-                    : 'No credits remaining. Subscribe to a monthly plan to generate more leads.'
-                  : `${Number(bannerCredits).toLocaleString()} credit${bannerCredits === 1 ? '' : 's'} remaining — 1 lead = 1 credit${planName ? ` · ${planName}` : ''}`}
+                    ? `${planName} — no unlock credits left.`
+                    : 'No credits remaining. Subscribe to continue.'
+                  : `${Number(bannerCredits).toLocaleString()} credit${bannerCredits === 1 ? '' : 's'} left · 1 lead = 1 credit${planName ? ` · ${planName}` : ''}`}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {(creditsLow || creditsEmpty) && (
               <Link
                 to="/billing#plans"
-                className="px-3 py-1 font-bold text-[10px] rounded-full bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all shadow-sm"
+                className="px-2.5 sm:px-3 py-1 font-bold text-[10px] rounded-full bg-primary text-on-primary hover:brightness-110 active:scale-95 transition-all shadow-sm whitespace-nowrap"
               >
-                {creditsEmpty ? 'Subscribe' : 'Upgrade plan'}
+                {creditsEmpty ? 'Subscribe' : 'Upgrade'}
               </Link>
             )}
             <button
@@ -117,11 +121,6 @@ export default function AppLayout() {
           showBanner={showBanner}
         />
 
-        {/*
-          Desktop: sidebar is in-flow (lg:static) so main flex-1 fills leftover width.
-          Mobile: sidebar stays a fixed overlay drawer; main is full width.
-          Avoids lg:pl gutters that left a huge empty deep column beside the map.
-        */}
         <div className={`flex-1 flex w-full min-h-0 min-w-0 relative ${bodyPadding}`}>
           <Sidebar
             mobileOpen={mobileOpen}
@@ -135,8 +134,8 @@ export default function AppLayout() {
               isMapPage
                 ? 'relative overflow-hidden p-0'
                 : isWideTablePage
-                  ? 'pb-8 px-4 sm:px-5 max-w-[1680px] mx-auto w-full'
-                  : 'pb-12 px-6 max-w-7xl mx-auto w-full'
+                  ? 'pb-8 px-3 sm:px-5 max-w-[1680px] mx-auto w-full'
+                  : 'pb-10 sm:pb-12 px-3 sm:px-5 lg:px-6 max-w-7xl mx-auto w-full'
             }`}
           >
             <div className={`app-page min-h-0 min-w-0 ${isMapPage ? 'h-full' : ''}`}>
