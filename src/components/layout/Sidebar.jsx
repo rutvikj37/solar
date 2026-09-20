@@ -12,10 +12,21 @@ export default function Sidebar({
   collapsed = false,
   showBanner,
 }) {
-  const { user, refreshUserData, can, entitlements } = useAuth();
+  const { user, refreshUserData, can, entitlements, unlimitedCredits } = useAuth();
   const userRole = user?.role || '';
   const leadsCount = null;
   const isAdmin = isAdminRole(userRole);
+
+  // Only show for finite plan limits (Scout/Pioneer/Mission Control). Hide for admin/unlimited (MAX_SAFE_INTEGER).
+  const dripAutomationLimit = Number(entitlements?.limits?.emailAutomationLimit);
+  const dripAutomationHint =
+    !unlimitedCredits &&
+    !entitlements?.unlimited &&
+    Number.isFinite(dripAutomationLimit) &&
+    dripAutomationLimit > 0 &&
+    dripAutomationLimit < 10000
+      ? `Up to ${dripAutomationLimit} automations`
+      : undefined;
 
   useEffect(() => {
     refreshUserData();
@@ -68,14 +79,12 @@ export default function Sidebar({
           name: 'Drip Workflows',
           path: '/drip',
           icon: 'campaign',
-          hint: entitlements?.limits?.emailAutomationLimit
-            ? `Up to ${entitlements.limits.emailAutomationLimit} automations`
-            : undefined,
+          hint: dripAutomationHint,
         },
         {
           name: 'Appointments',
           path: '/appointments',
-          icon: 'calendar_month',
+          icon: 'calendar_today',
           locked: !can('appointments'),
           lockHint: 'Mission Control',
         },
