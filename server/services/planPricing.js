@@ -145,3 +145,21 @@ export const FOUNDING_LAUNCH_PLANS = [
     ],
   },
 ];
+
+export const FOUNDING_LAUNCH_PLAN_IDS = FOUNDING_LAUNCH_PLANS.map((p) => p.id);
+
+/** Pre–Founding Launch catalog — never show these on user billing/marketing. */
+export const LEGACY_PACKAGE_IDS = [
+  'Starter',
+  'Growth',
+  'Enterprise',
+  'Custom',
+];
+
+export function isLegacyPackageId(id) {
+  return LEGACY_PACKAGE_IDS.includes(String(id || ''));
+}
+
+export function isFoundingLaunchPlanId(id) {
+  return FOUNDING_LAUNCH_PLAN_IDS.includes(String(id || ''));
+}

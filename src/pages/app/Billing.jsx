@@ -148,7 +148,9 @@ export default function Billing() {
     try {
       const res = await fetch(`${API}/api/billing/packages`);
       const rows = await res.json();
-      const list = Array.isArray(rows) ? rows : [];
+      const list = (Array.isArray(rows) ? rows : []).filter(
+        (p) => !['Starter', 'Growth', 'Enterprise', 'Custom'].includes(p.id),
+      );
       setPackages(list);
       const planParam = searchParams.get('plan');
       const monthsParam = Number(searchParams.get('months'));

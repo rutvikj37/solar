@@ -53,7 +53,7 @@ export default function Dashboard() {
         setUser(meData.user);
         setCredits(meData.credits);
         setCreditsUsedToday(Number(meData.creditsUsedToday) || 0);
-        setActivePackage(meData.activePackage || "Growth");
+        setActivePackage(meData.activePackage || "Scout");
         setEmailQuota(meData.emailQuota || null);
 
         // Fetch User Leads

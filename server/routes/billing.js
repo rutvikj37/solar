@@ -17,6 +17,8 @@ import {
   normalizeBillingMonths,
   resolveDurationPricing,
   stripePriceIdForMonths,
+  LEGACY_PACKAGE_IDS,
+  isLegacyPackageId,
 } from '../services/planPricing.js';
 
 const router = express.Router();
@@ -496,6 +498,7 @@ export async function checkLeadCreditAccess(userId) {
 }
 
 async function loadActivePackage(packageId) {
+  if (isLegacyPackageId(packageId)) return null;
   const [rows] = await db.query(
     `SELECT * FROM packages WHERE id = ? AND (is_active = 1 OR id = ?) LIMIT 1`,
     [packageId, packageId]
@@ -550,10 +553,17 @@ router.get('/packages', optionalAuthenticateToken, async (req, res) => {
     if (adminAll && (!req.user || !isAdminRole(req.user.role))) {
       return res.status(403).json({ error: 'Admin access required' });
     }
+    const legacyPlaceholders = LEGACY_PACKAGE_IDS.map(() => '?').join(', ');
     const sql = adminAll
       ? 'SELECT * FROM packages ORDER BY sort_order ASC, price ASC'
-      : `SELECT * FROM packages WHERE is_active = 1 AND id != 'Free' AND price > 0 ORDER BY sort_order ASC, price ASC`;
-    const [rows] = await db.query(sql);
+      : `SELECT * FROM packages
+         WHERE is_active = 1 AND id != 'Free' AND price > 0
+           AND id NOT IN (${legacyPlaceholders})
+         ORDER BY sort_order ASC, price ASC`;
+    const [rows] = await db.query(
+      sql,
+      adminAll ? [] : LEGACY_PACKAGE_IDS,
+    );
     res.json(rows);
   } catch (error) {
     console.error('Packages list error:', error);
@@ -647,7 +657,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
   const { packageId } = req.body;
   const billingMonths = normalizeBillingMonths(req.body.billingMonths ?? req.body.months ?? 1);
   const pkg = await loadActivePackage(packageId);
-  if (!pkg || pkg.id === 'Free' || Number(pkg.price) <= 0 || Number(pkg.is_active) === 0) {
+  if (!pkg || pkg.id === 'Free' || Number(pkg.price) <= 0 || Number(pkg.is_active) === 0 || isLegacyPackageId(pkg.id)) {
     return res.status(400).json({ error: 'Invalid or inactive package' });
   }
 
@@ -1106,7 +1116,7 @@ async function handleSubscriptionUpdated(subscription) {
 
   const packageId = subscription.metadata?.packageId;
   const [existing] = await db.query('SELECT package_id FROM user_subscriptions WHERE user_id = ?', [targetUserId]);
-  const resolvedPackageId = packageId || existing[0]?.package_id || 'Growth';
+  const resolvedPackageId = packageId || existing[0]?.package_id || 'Scout';
 
   await upsertUserSubscription({
     userId: targetUserId,

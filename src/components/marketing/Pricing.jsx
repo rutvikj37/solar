@@ -208,7 +208,13 @@ export function Pricing() {
     fetch(`${API_BASE}/api/billing/packages`)
       .then((r) => r.json())
       .then((rows) => {
-        const list = Array.isArray(rows) ? rows.filter((p) => Number(p.is_active) !== 0) : [];
+        const list = Array.isArray(rows)
+          ? rows.filter(
+              (p) =>
+                Number(p.is_active) !== 0 &&
+                !['Starter', 'Growth', 'Enterprise', 'Custom'].includes(p.id),
+            )
+          : [];
         if (list.length) setRawPackages(list);
       })
       .catch(console.error)

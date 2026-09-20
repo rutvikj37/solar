@@ -1,5 +1,5 @@
 import db from "./db.js";
-import { FOUNDING_LAUNCH_PLANS, modulesToJson } from "./services/planPricing.js";
+import { FOUNDING_LAUNCH_PLANS, LEGACY_PACKAGE_IDS, modulesToJson } from "./services/planPricing.js";
 
 async function columnExists(table, column) {
   const [rows] = await db.query(
@@ -1281,12 +1281,16 @@ export async function migrateSchema() {
     }
   }
 
-  // Prefer Founding Launch catalog: deactivate legacy seed plans that still match original prices
+  // Prefer Founding Launch catalog: always hide legacy Starter/Growth/Enterprise/Custom
   await db.query(
     `UPDATE packages SET is_active = 0
-     WHERE id IN ('Starter', 'Growth', 'Enterprise')
-       AND price IN (499, 1199, 2249)
+     WHERE id IN (${LEGACY_PACKAGE_IDS.map(() => '?').join(', ')})
        AND EXISTS (SELECT 1 FROM (SELECT id FROM packages WHERE id = 'Scout' LIMIT 1) t)`,
+    LEGACY_PACKAGE_IDS,
+  );
+  await db.query(
+    `UPDATE packages SET is_active = 1
+     WHERE id IN ('Scout', 'Pioneer', 'MissionControl')`,
   );
 
   // Seed plan email quotas (idempotent updates for known plans)
