@@ -231,16 +231,21 @@ router.post(
 router.post(
   "/forgot-password",
   asyncHandler(async (req, res) => {
-    const email = String(req.body?.email || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: "Valid email required" });
     }
     try {
       await issuePasswordReset(email);
     } catch (err) {
+      const code = err.code || "EMAIL_SEND_FAILED";
+      const userFacing =
+        code === "EMAIL_NOT_CONFIGURED"
+          ? "Password reset email is temporarily unavailable. Please try again later or contact support."
+          : err.message || "Unable to send password reset email";
       return res.status(err.status || 503).json({
-        error: err.message || "Unable to send password reset email",
-        code: err.code || "EMAIL_SEND_FAILED",
+        error: userFacing,
+        code,
       });
     }
     res.json({ message: "If an account exists for that email, a reset link was sent." });

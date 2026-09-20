@@ -3,16 +3,16 @@ import db from '../db.js';
 import { sendPlatformEmail } from './outreachDelivery.js';
 import { logger } from '../utils/logger.js';
 import { BRAND_DISPLAY } from '../config/brand.js';
+import { resolveFrontendBaseUrl } from '../utils/frontendUrl.js';
 
 function frontendBase() {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
-  return raw.split(',')[0].trim().replace(/\/$/, '');
+  return resolveFrontendBaseUrl();
 }
 
-function tokenExpiry(hours = 24) {
-  const d = new Date();
-  d.setHours(d.getHours() + hours);
-  return d;
+/** Expiry as UTC MySQL DATETIME string (compared with UTC_TIMESTAMP()). */
+function tokenExpiryUtc(hours = 24) {
+  const ms = Date.now() + hours * 60 * 60 * 1000;
+  return new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 }
 
 function maskEmail(email) {
@@ -22,9 +22,13 @@ function maskEmail(email) {
   return `${s[0]}***${s.slice(at)}`;
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 export async function issueEmailVerification(userId, email, name) {
   const token = crypto.randomBytes(32).toString('hex');
-  const expires = tokenExpiry(48);
+  const expires = tokenExpiryUtc(48);
   await db.query(
     `UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?`,
     [token, expires, userId],
@@ -37,10 +41,19 @@ export async function issueEmailVerification(userId, email, name) {
       logger.info('Email verification link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)', {
         userId,
         email: maskEmail(email),
+        link,
       });
     }
     return { ok: true, token, simulated: Boolean(result.simulated) };
   } catch (err) {
+    try {
+      await db.query(
+        `UPDATE users SET email_verification_token = NULL, email_verification_expires = NULL WHERE id = ?`,
+        [userId],
+      );
+    } catch {
+      /* ignore cleanup */
+    }
     logger.error('Email verification send failed', {
       userId,
       email: maskEmail(email),
@@ -62,7 +75,7 @@ export async function verifyEmailToken(token) {
   if (!token) return { ok: false, error: 'Token required' };
   const [rows] = await db.query(
     `SELECT id, email FROM users
-     WHERE email_verification_token = ? AND email_verification_expires > NOW() LIMIT 1`,
+     WHERE email_verification_token = ? AND email_verification_expires > UTC_TIMESTAMP() LIMIT 1`,
     [token],
   );
   if (!rows.length) return { ok: false, error: 'Invalid or expired verification link' };
@@ -74,11 +87,19 @@ export async function verifyEmailToken(token) {
 }
 
 export async function issuePasswordReset(email) {
-  const [users] = await db.query('SELECT id, name FROM users WHERE email = ? LIMIT 1', [email]);
+  const normalized = normalizeEmail(email);
+  if (!normalized) return { ok: true, sent: false };
+
+  const [users] = await db.query(
+    'SELECT id, name, email FROM users WHERE LOWER(email) = ? LIMIT 1',
+    [normalized],
+  );
   if (!users.length) return { ok: true, sent: false };
+
   const user = users[0];
+  const toAddress = user.email || normalized;
   const token = crypto.randomBytes(32).toString('hex');
-  const expires = tokenExpiry(2);
+  const expires = tokenExpiryUtc(2);
   await db.query(
     `UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?`,
     [token, expires, user.id],
@@ -86,18 +107,27 @@ export async function issuePasswordReset(email) {
   const link = `${frontendBase()}/reset-password?token=${encodeURIComponent(token)}`;
   const body = `Hi ${user.name || 'there'},\n\nReset your ${BRAND_DISPLAY} password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
   try {
-    const result = await sendPlatformEmail(email, `Reset your ${BRAND_DISPLAY} password`, body);
+    const result = await sendPlatformEmail(toAddress, `Reset your ${BRAND_DISPLAY} password`, body);
     if (result.simulated) {
       logger.info('Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)', {
         userId: user.id,
-        email: maskEmail(email),
+        email: maskEmail(toAddress),
+        link,
       });
     }
     return { ok: true, sent: true, simulated: Boolean(result.simulated) };
   } catch (err) {
+    try {
+      await db.query(
+        `UPDATE users SET password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?`,
+        [user.id],
+      );
+    } catch {
+      /* ignore cleanup */
+    }
     logger.error('Password reset send failed', {
       userId: user.id,
-      email: maskEmail(email),
+      email: maskEmail(toAddress),
       code: err.code || null,
       message: err.message,
     });
@@ -114,7 +144,7 @@ export async function issuePasswordReset(email) {
 
 export async function consumePasswordResetToken(token) {
   const [rows] = await db.query(
-    `SELECT id FROM users WHERE password_reset_token = ? AND password_reset_expires > NOW() LIMIT 1`,
+    `SELECT id FROM users WHERE password_reset_token = ? AND password_reset_expires > UTC_TIMESTAMP() LIMIT 1`,
     [token],
   );
   if (!rows.length) return { ok: false, error: 'Invalid or expired reset link' };

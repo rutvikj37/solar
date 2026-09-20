@@ -11,7 +11,9 @@ import { consumeEmailQuota, refundEmailQuota, logEmailSend } from './email/email
 import { sendUserEmail } from './email/sendUserEmail.js';
 
 function isKeyValid(key) {
-  return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
+  return Boolean(
+    key && String(key).trim() !== '' && !String(key).toLowerCase().includes('your_'),
+  );
 }
 
 /** Simulated platform email is only allowed outside production when explicitly opted in. */

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { resolveFrontendBaseUrl } from './frontendUrl.js';
 
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (matches duplicate inquiry window)
 
@@ -56,14 +57,11 @@ export function reportAccessQueryString(access, { download } = {}) {
   return `?${params.toString()}`;
 }
 
-export function frontendBaseUrl() {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
-  return raw.split(',')[0].trim().replace(/\/$/, '');
-}
+export { resolveFrontendBaseUrl as frontendBaseUrl };
 
 /** Deep link homeowners can open to view their solar report. */
 export function buildHomeownerReportPageUrl(leadCode, access) {
-  const base = frontendBaseUrl();
+  const base = resolveFrontendBaseUrl();
   const code = String(leadCode || '').trim();
   if (!code || !access?.exp || !access?.sig) return `${base}/solar-report`;
   const params = new URLSearchParams({

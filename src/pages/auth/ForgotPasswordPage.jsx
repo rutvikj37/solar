@@ -2,6 +2,19 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 
+function friendlyAuthError(err, data, res) {
+  if (data?.code === 'EMAIL_NOT_CONFIGURED') {
+    return data.error || 'Password reset email is temporarily unavailable. Please try again later or contact support.';
+  }
+  if (res?.status === 429 || data?.error === 'Too many requests') {
+    return 'Too many reset attempts. Please wait a few minutes and try again.';
+  }
+  if (err?.message === 'Failed to fetch' || err?.name === 'TypeError') {
+    return 'Could not reach the server. Check your connection and try again.';
+  }
+  return data?.error || err?.message || 'Request failed';
+}
+
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
@@ -17,13 +30,13 @@ export default function ForgotPasswordPage() {
       const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Request failed');
+      if (!res.ok) throw Object.assign(new Error(friendlyAuthError(null, data, res)), { data, res });
       setMessage(data.message || 'If an account exists, a reset link was sent.');
     } catch (err) {
-      setError(err.message);
+      setError(friendlyAuthError(err, err.data, err.res));
     } finally {
       setLoading(false);
     }
@@ -38,13 +51,14 @@ export default function ForgotPasswordPage() {
           <input
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@company.com"
             className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 text-white"
           />
-          {error && <div className="text-red-400">{error}</div>}
-          {message && <div className="text-green-400">{message}</div>}
+          {error && <div className="text-red-400" role="alert">{error}</div>}
+          {message && <div className="text-green-400" role="status">{message}</div>}
           <button
             type="submit"
             disabled={loading}

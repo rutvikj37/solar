@@ -123,7 +123,9 @@ Configure Amazon SES (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 
 In production, missing email configuration causes signup / resend-verification / forgot-password to return an error (fail closed). Do not set `ALLOW_EMAIL_SIMULATION` in production.
 
-In non-production only, `ALLOW_EMAIL_SIMULATION=1` permits simulated sends (no real delivery; links are not logged with full PII).
+In non-production only, `ALLOW_EMAIL_SIMULATION=1` permits simulated sends (no real delivery; the reset/verify link is written to server logs for local testing).
+
+`FRONTEND_URL` may list multiple CORS origins (comma-separated). Auth email links use the first non-localhost HTTPS origin when present — put production URLs in the list (ideally first), and avoid relying on localhost-first ordering.
 
 Frontend routes: `/verify-email`, `/forgot-password`, `/reset-password`
 

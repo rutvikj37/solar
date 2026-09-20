@@ -2,6 +2,16 @@ import React, { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 
+function friendlyResetError(err, data, res) {
+  if (res?.status === 429 || data?.error === 'Too many requests') {
+    return 'Too many attempts. Please wait a few minutes and try again.';
+  }
+  if (err?.message === 'Failed to fetch' || err?.name === 'TypeError') {
+    return 'Could not reach the server. Check your connection and try again.';
+  }
+  return data?.error || err?.message || 'Reset failed';
+}
+
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
@@ -19,6 +29,10 @@ export default function ResetPasswordPage() {
       setError('Passwords do not match');
       return;
     }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
@@ -27,12 +41,12 @@ export default function ResetPasswordPage() {
         body: JSON.stringify({ token, password }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Reset failed');
+      if (!res.ok) throw Object.assign(new Error(friendlyResetError(null, data, res)), { data, res });
       setMessage(data.message || 'Password updated.');
       setPassword('');
       setConfirm('');
     } catch (err) {
-      setError(err.message);
+      setError(friendlyResetError(err, err.data, err.res));
     } finally {
       setLoading(false);
     }
@@ -55,7 +69,7 @@ export default function ResetPasswordPage() {
         <h1 className="text-xl font-bold text-white mb-6">Set new password</h1>
         {message ? (
           <div className="space-y-4 text-center">
-            <p className="text-sm text-emerald-300">{message}</p>
+            <p className="text-sm text-emerald-300" role="status">{message}</p>
             <Link
               to="/login"
               className="inline-flex w-full items-center justify-center rounded-lg bg-primary text-on-primary font-bold py-3 text-xs"
@@ -69,6 +83,7 @@ export default function ResetPasswordPage() {
               type="password"
               required
               minLength={8}
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="New password"
@@ -78,12 +93,13 @@ export default function ResetPasswordPage() {
               type="password"
               required
               minLength={8}
+              autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Confirm password"
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2.5 px-3 text-white"
             />
-            {error && <div className="text-red-400">{error}</div>}
+            {error && <div className="text-red-400" role="alert">{error}</div>}
             <button
               type="submit"
               disabled={loading}

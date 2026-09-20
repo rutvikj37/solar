@@ -1,4 +1,6 @@
 import { logger } from './logger.js';
+import { isPlatformEmailConfigured } from '../services/outreachDelivery.js';
+import { resolveFrontendBaseUrl, parseFrontendOrigins } from './frontendUrl.js';
 
 const REQUIRED_IN_PRODUCTION = [
   'JWT_SECRET',
@@ -48,5 +50,20 @@ export function validateProductionSecurityConfig() {
 
   if (!process.env.TWILIO_AUTH_TOKEN || String(process.env.TWILIO_AUTH_TOKEN).toLowerCase().includes('your_')) {
     logger.warn('Production warning: TWILIO_AUTH_TOKEN missing — Twilio webhooks will be rejected');
+  }
+
+  if (!isPlatformEmailConfigured()) {
+    logger.warn(
+      'Production warning: platform email is not configured — signup / verify / forgot-password will fail closed until SES or Resend/SendGrid is set',
+    );
+  }
+
+  const origins = parseFrontendOrigins();
+  const hasLocalhost = origins.some((o) => /localhost|127\.0\.0\.1/i.test(o));
+  if (hasLocalhost) {
+    logger.warn(
+      'Production warning: FRONTEND_URL includes localhost — auth email links will use a non-local origin when possible',
+      { resolvedEmailLinkBase: resolveFrontendBaseUrl() },
+    );
   }
 }
