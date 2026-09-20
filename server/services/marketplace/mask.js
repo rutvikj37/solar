@@ -3,12 +3,14 @@
  */
 
 import { applyResolvedBiddingTimes } from './bidWindow.js';
+import { isEarlyMarketplaceWindow } from './constants.js';
 
-export function maskOpportunity(row, { ownBid = null, allActiveAmounts = [], settings = {} } = {}) {
+export function maskOpportunity(row, { ownBid = null, allActiveAmounts = [], settings = {}, earlyAccessViewer = false } = {}) {
   if (!row) return null;
 
   applyResolvedBiddingTimes(row, settings);
   const strength = computeBidStrength(ownBid?.amount, allActiveAmounts);
+  const earlyAccess = isEarlyMarketplaceWindow(row);
 
   return {
     id: row.id,
@@ -37,6 +39,8 @@ export function maskOpportunity(row, { ownBid = null, allActiveAmounts = [], set
     minBid: Number(row.min_bid) || 0,
     expansionStage: Number(row.expansion_stage) || 0,
     createdAt: row.created_at,
+    earlyAccess,
+    earlyAccessExclusive: earlyAccess && earlyAccessViewer,
     ownBid: ownBid
       ? {
           id: ownBid.id,

@@ -6,7 +6,7 @@ export default function PrivacyPolicyPage() {
     <LegalPageShell
       title="Privacy Policy"
       subtitle={`${BRAND_NAME} Legal`}
-      updated="August 25, 2026"
+      updated="September 20, 2026"
     >
       <LegalSection title="1. Who we are">
         <p>
@@ -100,10 +100,31 @@ export default function PrivacyPolicyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="7. Cookies &amp; analytics">
+      <LegalSection id="cookies" title="7. Cookies &amp; analytics">
         <p>
-          We use cookies and similar technologies for authentication, preferences, security, and analytics. You
-          can control cookies through browser settings; disabling cookies may limit certain features.
+          We use cookies and similar technologies to run {BRAND_NAME} securely and understand how the product
+          is used. We group them as follows:
+        </p>
+        <ul className="list-disc pl-5 space-y-2">
+          <li>
+            <strong className="text-white/80">Essential</strong> — required for sign-in sessions, CSRF
+            protection, load balancing, and remembering your cookie choices. These cannot be turned off in
+            the product; blocking them in your browser may break login or core features.
+          </li>
+          <li>
+            <strong className="text-white/80">Analytics (optional)</strong> — help us measure traffic,
+            feature usage, and reliability. We only enable analytics cookies after you choose Accept all or
+            opt in via Cookie settings. Declining analytics does not affect core product access.
+          </li>
+        </ul>
+        <p>
+          You can change your mind anytime: open Cookie settings from the site footer, or clear site data in
+          your browser. Disabling all cookies may limit certain features. For more on how we handle personal
+          data, see the sections above; contact{" "}
+          <a className="text-cyan-400 hover:underline" href={`mailto:${BRAND_EMAIL}`}>
+            {BRAND_EMAIL}
+          </a>{" "}
+          with privacy questions.
         </p>
       </LegalSection>
 

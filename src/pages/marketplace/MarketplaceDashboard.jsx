@@ -589,7 +589,14 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="text-xs text-on-surface-variant font-mono">{o.leadCode}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-xs text-on-surface-variant font-mono">{o.leadCode}</div>
+                      {o.earlyAccessExclusive || o.earlyAccess ? (
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-amber-400/40 bg-amber-500/15 text-amber-300">
+                          Early access
+                        </span>
+                      ) : null}
+                    </div>
                     <h3 className="text-base font-semibold text-on-surface">{o.locationLabel}</h3>
                     <p className="text-xs text-on-surface-variant mt-1">
                       {o.propertyType} · Bill {o.electricityBillRange || '—'} · Timeline{' '}

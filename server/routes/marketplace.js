@@ -22,6 +22,8 @@ import {
   OUTCOME_TRANSITIONS,
   DISPUTE_CLAIM_TYPES,
   MIN_WALLET_BALANCE_TO_BID,
+  EARLY_MARKETPLACE_HOURS,
+  isEarlyMarketplaceWindow,
 } from '../services/marketplace/constants.js';
 import {
   buildReportDataFromLead,
@@ -53,6 +55,7 @@ import {
   sendHomeownerPhoneOtp,
   confirmHomeownerPhoneOtp,
 } from '../services/marketplace/contactVerify.js';
+import { getUserEntitlements } from '../services/planEntitlements.js';
 
 const router = express.Router();
 
@@ -394,11 +397,21 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
       });
     }
 
+    const entitlements = await getUserEntitlements(userId, req.user.role);
+    const hasEarlyAccess =
+      entitlements.unlimited || Boolean(entitlements.features?.earlyMarketplace);
+
     const eligible = [];
     let hiddenByVerification = 0;
     let hiddenByCoverage = 0;
     let hiddenByAccountStatus = 0;
+    let hiddenByEarlyAccess = 0;
+    const now = new Date();
     for (const lead of leads) {
+      if (isEarlyMarketplaceWindow(lead, now) && !hasEarlyAccess) {
+        hiddenByEarlyAccess += 1;
+        continue;
+      }
       if (await isInstallerEligible(userId, lead, { requireVerified })) {
         eligible.push(lead);
         continue;
@@ -438,6 +451,7 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
         ownBid: bidsByLead[lead.id] || null,
         allActiveAmounts: amountsByLead[lead.id] || [],
         settings,
+        earlyAccessViewer: hasEarlyAccess,
       }),
     );
 
@@ -449,6 +463,8 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
       walletBalance,
       minBalanceToBid: MIN_WALLET_BALANCE_TO_BID,
       canBid: walletBalance >= MIN_WALLET_BALANCE_TO_BID,
+      earlyMarketplace: hasEarlyAccess,
+      earlyMarketplaceHours: EARLY_MARKETPLACE_HOURS,
       filter: {
         openLeadCount: leads.length,
         visibleCount: items.length,
@@ -458,6 +474,7 @@ router.get('/opportunities', ...auth, requireInstaller, async (req, res) => {
         hiddenByVerification,
         hiddenByCoverage,
         hiddenByAccountStatus,
+        hiddenByEarlyAccess,
       },
     });
   } catch (err) {
@@ -532,6 +549,20 @@ router.post('/opportunities/:id/bids', ...auth, requireInstaller, async (req, re
     }
     if (!BIDDING_OPEN_STATUSES.has(leadPreview.status)) {
       return res.status(400).json({ error: 'Bidding is not open for this lead' });
+    }
+    if (isEarlyMarketplaceWindow(leadPreview)) {
+      const entitlements = await getUserEntitlements(userId, req.user.role);
+      const hasEarlyAccess =
+        entitlements.unlimited || Boolean(entitlements.features?.earlyMarketplace);
+      if (!hasEarlyAccess) {
+        return res.status(403).json({
+          error: `This opportunity is in Mission Control early access for the first ${EARLY_MARKETPLACE_HOURS} hours. Upgrade to Mission Control or wait until general bidding opens.`,
+          code: 'EARLY_MARKETPLACE_REQUIRED',
+          feature: 'earlyMarketplace',
+          earlyMarketplaceHours: EARLY_MARKETPLACE_HOURS,
+          upgradePath: '/billing#plans',
+        });
+      }
     }
     if (!(await isInstallerEligible(userId, leadPreview, { requireVerified: marketplaceRequireVerified() }))) {
       return res.status(403).json({ error: 'Not eligible for this opportunity' });

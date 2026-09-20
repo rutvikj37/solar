@@ -51,6 +51,24 @@ export const DISPUTE_CLAIM_TYPES = [
 
 export const BIDDING_OPEN_STATUSES = new Set(['bidding', 'no_bid_expanding']);
 
+/**
+ * Mission Control early access: new opportunities are exclusive for this many hours
+ * after creation, then open to all marketplace-eligible plans (Pioneer+).
+ */
+export const EARLY_MARKETPLACE_HOURS = 24;
+
+/** True while the lead is still in the Mission Control early-access window. */
+export function isEarlyMarketplaceWindow(lead, now = new Date()) {
+  if (!lead) return false;
+  const created = lead.created_at || lead.createdAt;
+  if (!created) return false;
+  const createdAt = created instanceof Date ? created : new Date(created);
+  if (!Number.isFinite(createdAt.getTime())) return false;
+  const ageMs = now.getTime() - createdAt.getTime();
+  if (ageMs < 0) return true;
+  return ageMs < EARLY_MARKETPLACE_HOURS * 60 * 60 * 1000;
+}
+
 /** Minimum USD bid wallet balance required before placing marketplace bids. */
 export const MIN_WALLET_BALANCE_TO_BID = 25;
 

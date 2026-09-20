@@ -9,6 +9,7 @@ import { Starfield } from './Starfield';
 import { API_BASE } from '../../config.js';
 import { BRAND_DISPLAY, BRAND_NAME } from '@/config/brand.js';
 import { handleMarketingHashClick } from '@/lib/marketingScroll.js';
+import { CookieSettingsButton } from '@/components/CookieConsent.jsx';
 
 const FOOTER_COLUMNS = [
   {
@@ -34,7 +35,7 @@ const FOOTER_COLUMNS = [
     items: [
       { label: 'Privacy', href: '/privacy' },
       { label: 'Terms', href: '/terms' },
-      { label: 'Data Ethics', href: '/privacy#data-ethics' },
+      { label: 'Cookies', href: '/privacy#cookies' },
       { label: 'Security', href: '/privacy#security' },
     ],
   },
@@ -268,13 +269,14 @@ export function Footer() {
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>© {new Date().getFullYear()} {BRAND_DISPLAY} Solar Intelligence. All rights reserved.</span>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <Link to="/privacy" className="hover:text-foreground">
               Privacy
             </Link>
             <Link to="/terms" className="hover:text-foreground">
               Terms
             </Link>
+            <CookieSettingsButton className="hover:text-foreground transition-colors" />
             <span className="font-mono">Estimates are illustrative · Not legal or financial advice</span>
           </div>
         </div>

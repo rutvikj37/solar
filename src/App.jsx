@@ -12,6 +12,7 @@ import ProtectedRoute from "./components/layout/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import FullPageLoader from "./components/layout/FullPageLoader";
 import PageTransitionLoader from "./components/layout/PageTransitionLoader";
+import CookieConsent from "./components/CookieConsent";
 
 const LandingPage = lazy(() => import("./pages/homeowner/HomeownerLandingPage"));
 const InstallerLandingPage = lazy(() => import("./pages/marketing/InstallerLandingPage"));
@@ -102,6 +103,7 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <PageTransitionLoader />
+          <CookieConsent />
           <Suspense fallback={<FullPageLoader />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />

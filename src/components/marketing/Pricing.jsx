@@ -84,7 +84,7 @@ const FALLBACK_PLANS = [
       'Proposal maker',
       'Appointment setter',
       'Marketplace access',
-      'Early access to new marketplace leads',
+      'Early access to new marketplace leads (first 24 hours)',
     ],
     is_subscription: 1,
   },

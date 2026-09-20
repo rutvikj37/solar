@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { BRAND_MONOGRAM, BRAND_NAME } from "../../config/brand.js";
 import { scrollToLeadForm } from "../../lib/scrollToLeadForm.js";
+import { CookieSettingsButton } from "../CookieConsent.jsx";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -98,6 +99,7 @@ export function Footer() {
             <Link to="/terms" className="hover:text-cyan-400">
               Terms
             </Link>
+            <CookieSettingsButton className="hover:text-cyan-400 transition-colors" />
           </div>
 
           <p className="text-[10px] leading-relaxed text-white/20 max-w-3xl italic">
