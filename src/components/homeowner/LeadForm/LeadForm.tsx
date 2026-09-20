@@ -47,6 +47,7 @@ type InquiryResponse = {
   status: string;
   opportunityScore: number;
   listedInMarketplace: boolean;
+  reportAccess?: { exp: number; sig: string } | null;
   propertyType?: string;
   solarPotentialLabel?: string | null;
   billRange?: string | null;
@@ -182,7 +183,7 @@ export function LeadForm() {
         if (res.status === 409) {
           setSubmitError(
             data.error ||
-              'A similar inquiry was already submitted recently. Please use a different email or address.',
+              'A similar inquiry was already submitted recently. If that was you, check your email for a secure report link.',
           );
           return;
         }
@@ -193,6 +194,7 @@ export function LeadForm() {
       const reportPayload = {
         ...formData,
         leadCode: data.leadCode,
+        reportAccess: data.reportAccess ?? null,
         opportunityScore: data.opportunityScore,
         leadScore: data.leadScore ?? data.opportunityScore,
         leadScoreTier: data.leadScoreTier,

@@ -47,6 +47,13 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
   const estimates = buildSolarReportEstimates(data);
   const leadCode = String(data.leadCode || 'Pending');
   const address = String(data.address || 'Your property');
+  const reportAccess =
+    data.reportAccess &&
+    typeof data.reportAccess === 'object' &&
+    (data.reportAccess as { exp?: number; sig?: string }).exp &&
+    (data.reportAccess as { exp?: number; sig?: string }).sig
+      ? (data.reportAccess as { exp: number; sig: string })
+      : null;
   const roofType = String(data.roofType || 'Roof assessed');
   const reportDate = new Date().toLocaleDateString(undefined, {
     year: 'numeric',
@@ -54,8 +61,11 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
     day: 'numeric',
   });
   const enriched = estimates.googleSolarHit || data.enrichmentSource === 'google_solar';
-  const satelliteImageUrl = data.satelliteImageUrl
-    ? `${API_BASE}${String(data.satelliteImageUrl)}`
+  const rawSatellite = data.satelliteImageUrl ? String(data.satelliteImageUrl) : '';
+  const satelliteImageUrl = rawSatellite
+    ? rawSatellite.startsWith('http')
+      ? rawSatellite
+      : `${API_BASE}${rawSatellite}`
     : '/roof-aerial.jpg';
 
   const handleDownloadPdf = async () => {
@@ -63,7 +73,7 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
     setPdfBusy(true);
     setPdfError('');
     try {
-      await downloadSolarReportPdf(leadCode, { address, download: true });
+      await downloadSolarReportPdf(leadCode, { address, download: true, reportAccess });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not download PDF';
       setPdfError(message);

@@ -1,5 +1,7 @@
 import db from '../../db.js';
 import { sendPlatformEmail } from '../outreachDelivery.js';
+import { signReportAccess, buildHomeownerReportPageUrl } from '../../utils/signedReportAccess.js';
+import { BRAND_DISPLAY } from '../../config/brand.js';
 
 /**
  * Best-effort marketplace notifications (email when platform SMTP is configured).
@@ -32,6 +34,31 @@ export async function notifyHomeownerListed({ lead }) {
     return { sent: Boolean(result?.ok || result?.simulated), simulated: Boolean(result?.simulated) };
   } catch (err) {
     console.error('[Marketplace] notifyHomeownerListed failed:', err.message);
+    return { sent: false, reason: err.message };
+  }
+}
+
+/**
+ * Email a signed solar-report link to the homeowner (e.g. duplicate inquiry).
+ * Never put bare lead codes in API responses — only in this email to the address on file.
+ */
+export async function notifyHomeownerReportLink({ email, name, leadCode }) {
+  if (!email || !leadCode) return { sent: false, reason: 'missing_data' };
+  try {
+    const access = signReportAccess(leadCode);
+    if (!access) return { sent: false, reason: 'signing_unavailable' };
+
+    const link = buildHomeownerReportPageUrl(leadCode, access);
+    const subject = `Your ${BRAND_DISPLAY} solar report link`;
+    const body = `Hi ${name || 'there'},\n\nWe received another inquiry matching your recent solar request. Here is a secure link to view your report (expires in 7 days):\n\n${link}\n\nIf you did not submit this request, you can ignore this email.\n`;
+
+    const result = await sendPlatformEmail(email, subject, body);
+    return {
+      sent: Boolean(result?.ok || result?.simulated),
+      simulated: Boolean(result?.simulated),
+    };
+  } catch (err) {
+    console.error('[Marketplace] notifyHomeownerReportLink failed:', err.message);
     return { sent: false, reason: err.message };
   }
 }

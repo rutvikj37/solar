@@ -32,6 +32,7 @@ import {
 } from '../utils/homeownerReportPdf.js';
 import {
   buildHomeownerReportPayload,
+  attachSignedReportAccess,
 } from '../services/marketplace/enrichHomeownerInquiry.js';
 import {
   fetchGoogleSatelliteImage,
@@ -56,8 +57,23 @@ import {
   confirmHomeownerPhoneOtp,
 } from '../services/marketplace/contactVerify.js';
 import { getUserEntitlements } from '../services/planEntitlements.js';
+import { notifyHomeownerReportLink } from '../services/marketplace/notifications.js';
+import { signReportAccess, verifyReportAccess } from '../utils/signedReportAccess.js';
 
 const router = express.Router();
+
+function requireSignedReportAccess(req, res, leadCode) {
+  const exp = req.query.exp;
+  const sig = req.query.sig;
+  if (!verifyReportAccess(leadCode, exp, sig)) {
+    res.status(401).json({
+      error: 'A valid signed report link is required to view this report.',
+      code: 'REPORT_ACCESS_REQUIRED',
+    });
+    return false;
+  }
+  return true;
+}
 
 const inquiryLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -203,14 +219,29 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
       propertyLng,
     });
 
-    return res.status(201).json(formatInquiryResponse(lead));
+    const reportAccess = signReportAccess(lead.lead_code);
+    return res.status(201).json(formatInquiryResponse(lead, { reportAccess }));
   } catch (err) {
     if (err.code === 'DUPLICATE_INQUIRY') {
-      // Do not return existingLeadCode — it unlocks the public /report/:leadCode route.
+      // Never return existingLeadCode — email a signed report link to the address on file.
+      let reportEmailed = false;
+      try {
+        const mail = await notifyHomeownerReportLink({
+          email: err.existingEmail,
+          name: err.existingHomeownerName,
+          leadCode: err.existingLeadCode,
+        });
+        reportEmailed = Boolean(mail?.sent);
+      } catch (mailErr) {
+        console.error('[Marketplace] duplicate report email failed:', mailErr.message);
+      }
       return res.status(409).json({
-        error: err.message || 'A similar inquiry was already submitted recently.',
+        error:
+          err.message ||
+          'A similar inquiry was already submitted recently. If that was you, check your email for a report link.',
         code: err.code,
         existingStatus: err.existingStatus,
+        reportEmailed,
       });
     }
     console.error('[Marketplace] inquiry failed:', err);
@@ -218,13 +249,14 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
   }
 });
 
-/** Public homeowner report JSON by lead code */
+/** Homeowner report JSON — requires signed ?exp=&sig= (not bearer-of-code alone). */
 router.get('/report/:leadCode', reportJsonLimiter, async (req, res) => {
   try {
     const leadCode = String(req.params.leadCode || '').trim();
     if (!leadCode) {
       return res.status(400).json({ error: 'Report ID required' });
     }
+    if (!requireSignedReportAccess(req, res, leadCode)) return;
 
     const [rows] = await db.query(
       `SELECT * FROM marketplace_leads WHERE lead_code = ? LIMIT 1`,
@@ -235,12 +267,16 @@ router.get('/report/:leadCode', reportJsonLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
 
-    const formatted = formatInquiryResponse(lead);
-    const report = {
-      ...buildHomeownerReportPayload(lead),
-      ...formatted,
-      qualificationMessage: formatted.message,
-    };
+    const reportAccess = { exp: Number(req.query.exp), sig: String(req.query.sig) };
+    const formatted = formatInquiryResponse(lead, { reportAccess });
+    const report = attachSignedReportAccess(
+      {
+        ...buildHomeownerReportPayload(lead),
+        ...formatted,
+        qualificationMessage: formatted.message,
+      },
+      reportAccess,
+    );
 
     return res.json(report);
   } catch (err) {
@@ -249,13 +285,14 @@ router.get('/report/:leadCode', reportJsonLimiter, async (req, res) => {
   }
 });
 
-/** Public satellite rooftop image for homeowner report */
+/** Satellite rooftop image — requires signed ?exp=&sig=. */
 router.get('/report-image/:leadCode', reportImageLimiter, async (req, res) => {
   try {
     const leadCode = String(req.params.leadCode || '').trim();
     if (!leadCode) {
       return res.status(400).json({ error: 'Report ID required' });
     }
+    if (!requireSignedReportAccess(req, res, leadCode)) return;
 
     const [rows] = await db.query(
       `SELECT latitude, longitude, enrichment_json FROM marketplace_leads WHERE lead_code = ? LIMIT 1`,
@@ -305,13 +342,14 @@ router.get('/report-image/:leadCode', reportImageLimiter, async (req, res) => {
   }
 });
 
-/** Public homeowner report PDF download by lead code */
+/** Homeowner report PDF — requires signed ?exp=&sig=. */
 router.get('/report-pdf/:leadCode', reportPdfLimiter, async (req, res) => {
   try {
     const leadCode = String(req.params.leadCode || '').trim();
     if (!leadCode) {
       return res.status(400).json({ error: 'Report ID required' });
     }
+    if (!requireSignedReportAccess(req, res, leadCode)) return;
 
     const [rows] = await db.query(
       `SELECT * FROM marketplace_leads WHERE lead_code = ? LIMIT 1`,
@@ -322,7 +360,8 @@ router.get('/report-pdf/:leadCode', reportPdfLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
 
-    const formatted = formatInquiryResponse(lead);
+    const reportAccess = { exp: Number(req.query.exp), sig: String(req.query.sig) };
+    const formatted = formatInquiryResponse(lead, { reportAccess });
     const reportData = buildReportDataFromLead(lead, formatted);
     const buffer = await renderHomeownerReportPdf(reportData);
     const filename = homeownerReportPdfFilename(lead.lead_code, lead.address);

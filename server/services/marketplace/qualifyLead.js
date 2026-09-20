@@ -199,8 +199,9 @@ function safeJson(value) {
 
 /**
  * Public homeowner-facing payload — no verification or marketplace status details.
+ * Pass reportAccess so satellite/PDF refresh URLs are signed (bare lead codes are not enough).
  */
-export function formatInquiryResponse(lead) {
+export function formatInquiryResponse(lead, { reportAccess } = {}) {
   if (!lead) return null;
 
   const enrichment = safeJson(lead.enrichment_json) || {};
@@ -210,6 +211,14 @@ export function formatInquiryResponse(lead) {
     : rebuildValidationChecks(breakdown);
   const listedInMarketplace =
     lead.status === 'bidding' || lead.status === 'no_bid_expanding';
+
+  const imagePath = lead.lead_code
+    ? `/api/marketplace/report-image/${encodeURIComponent(lead.lead_code)}`
+    : null;
+  let satelliteImageUrl = imagePath;
+  if (imagePath && reportAccess?.exp && reportAccess?.sig) {
+    satelliteImageUrl = `${imagePath}?exp=${encodeURIComponent(reportAccess.exp)}&sig=${encodeURIComponent(reportAccess.sig)}`;
+  }
 
   return {
     ok: true,
@@ -238,9 +247,8 @@ export function formatInquiryResponse(lead) {
     listedInMarketplace,
     enrichmentSource: enrichment.googleSolarHit ? 'google_solar' : 'estimated',
     dataSources: enrichment.dataSources || null,
-    satelliteImageUrl: lead.lead_code
-      ? `/api/marketplace/report-image/${encodeURIComponent(lead.lead_code)}`
-      : null,
+    reportAccess: reportAccess || undefined,
+    satelliteImageUrl,
     solarReport: enrichment.googleSolarHit
       ? {
           panelCount: enrichment.panelCount,
@@ -347,7 +355,7 @@ export async function createInquiry(payload) {
   const normalizedAddress = String(address).trim().toLowerCase();
 
   const [dupes] = await db.query(
-    `SELECT id, lead_code, status, created_at FROM marketplace_leads
+    `SELECT id, lead_code, status, created_at, homeowner_name, email FROM marketplace_leads
      WHERE LOWER(email) = ?
        AND LOWER(TRIM(address)) = ?
        AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
@@ -356,9 +364,14 @@ export async function createInquiry(payload) {
     [normalizedEmail, normalizedAddress],
   );
   if (dupes[0]) {
-    const err = new Error('A similar inquiry was already submitted recently.');
+    const err = new Error(
+      'A similar inquiry was already submitted recently. If that was you, we emailed a link to your solar report.',
+    );
     err.code = 'DUPLICATE_INQUIRY';
-    // Intentionally omit lead_code — public report URLs must not leak to unauthenticated clients.
+    // Keep lead_code server-side only (for emailing a signed report link). Never return it in HTTP.
+    err.existingLeadCode = dupes[0].lead_code;
+    err.existingEmail = dupes[0].email || normalizedEmail;
+    err.existingHomeownerName = dupes[0].homeowner_name || null;
     err.existingStatus = dupes[0].status;
     throw err;
   }

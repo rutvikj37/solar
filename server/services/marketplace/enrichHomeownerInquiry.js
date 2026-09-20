@@ -171,3 +171,14 @@ export function buildHomeownerReportPayload(lead) {
       : null,
   };
 }
+
+/** Attach signed report access + signed satellite URL onto a homeowner payload. */
+export function attachSignedReportAccess(payload, access) {
+  if (!payload || !access?.exp || !access?.sig) return payload;
+  const out = { ...payload, reportAccess: access };
+  if (out.satelliteImageUrl && !String(out.satelliteImageUrl).includes('sig=')) {
+    const sep = String(out.satelliteImageUrl).includes('?') ? '&' : '?';
+    out.satelliteImageUrl = `${out.satelliteImageUrl}${sep}exp=${encodeURIComponent(access.exp)}&sig=${encodeURIComponent(access.sig)}`;
+  }
+  return out;
+}

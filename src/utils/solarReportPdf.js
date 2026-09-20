@@ -8,14 +8,33 @@ export function solarReportPdfFilename(leadCode, address = '') {
   return `SpaceToRoof-Report-${leadCode || 'estimate'}-${slug || 'property'}.pdf`;
 }
 
-/**
- * Download homeowner solar report PDF by lead code (public endpoint).
- */
-export async function downloadSolarReportPdf(leadCode, { address = '', download = true } = {}) {
-  if (!leadCode) throw new Error('Report ID missing');
+function reportAccessQuery(leadCode, reportAccess, { download = true } = {}) {
+  const params = new URLSearchParams();
+  if (download) params.set('download', '1');
+  if (reportAccess?.exp && reportAccess?.sig) {
+    params.set('exp', String(reportAccess.exp));
+    params.set('sig', String(reportAccess.sig));
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
 
-  const qs = download ? '?download=1' : '';
-  const res = await fetch(`${API_BASE}/api/marketplace/report-pdf/${encodeURIComponent(leadCode)}${qs}`);
+/**
+ * Download homeowner solar report PDF by lead code (requires signed reportAccess).
+ */
+export async function downloadSolarReportPdf(
+  leadCode,
+  { address = '', download = true, reportAccess = null } = {},
+) {
+  if (!leadCode) throw new Error('Report ID missing');
+  if (!reportAccess?.exp || !reportAccess?.sig) {
+    throw new Error('Report access expired. Please open your report link from email or submit a new inquiry.');
+  }
+
+  const qs = reportAccessQuery(leadCode, reportAccess, { download });
+  const res = await fetch(
+    `${API_BASE}/api/marketplace/report-pdf/${encodeURIComponent(leadCode)}${qs}`,
+  );
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
