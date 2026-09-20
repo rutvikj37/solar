@@ -119,16 +119,28 @@ export default function AdminDashboard() {
   const [planForm, setPlanForm] = useState({
     id: '',
     name: '',
-    lead_limit: 25,
-    email_limit: 1000,
-    price: 299,
+    lead_limit: 50,
+    email_limit: 2000,
+    whatsapp_limit: 25,
+    crm_user_limit: 2,
+    email_automation_limit: 2,
+    price_1mo: 299,
+    price_6mo: 249,
+    price_12mo: 199,
+    sort_order: 10,
     description: '',
-    features: 'Lead unlocks/month\nCSV export',
+    modules: ['Lead unlocks/month', 'CSV export'],
+    moduleDraft: '',
     is_active: true,
     stripe_price_id: '',
+    stripe_price_id_6mo: '',
+    stripe_price_id_12mo: '',
     billing_interval: 'month',
-    is_subscription: true
+    is_subscription: true,
   });
+  const [editingPlanId, setEditingPlanId] = useState(null);
+  const [editPlan, setEditPlan] = useState(null);
+  const [planSaveBusy, setPlanSaveBusy] = useState(false);
   const [ticketDetail, setTicketDetail] = useState(null);
   const [reply, setReply] = useState('');
   const navigate = useNavigate();
@@ -139,13 +151,54 @@ export default function AdminDashboard() {
     'Content-Type': 'application/json'
   });
 
-  const featuresToJson = (text) => {
-    const items = String(text || '')
+  const featuresToJson = (textOrList) => {
+    if (Array.isArray(textOrList)) {
+      return JSON.stringify(textOrList.map((s) => String(s).trim()).filter(Boolean));
+    }
+    const items = String(textOrList || '')
       .split(/\n|,/)
       .map((s) => s.trim())
       .filter(Boolean);
     return JSON.stringify(items.length ? items : ['Lead unlocks']);
   };
+
+  const parseModules = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      /* ignore */
+    }
+    return String(raw)
+      .split(/\n|,/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  };
+
+  const emptyPlanForm = () => ({
+    id: '',
+    name: '',
+    lead_limit: 50,
+    email_limit: 2000,
+    whatsapp_limit: 25,
+    crm_user_limit: 2,
+    email_automation_limit: 2,
+    price_1mo: 299,
+    price_6mo: 249,
+    price_12mo: 199,
+    sort_order: 10,
+    description: '',
+    modules: ['Lead unlocks/month', 'CSV export'],
+    moduleDraft: '',
+    is_active: true,
+    stripe_price_id: '',
+    stripe_price_id_6mo: '',
+    stripe_price_id_12mo: '',
+    billing_interval: 'month',
+    is_subscription: true,
+  });
 
   const loadTab = useCallback(async (active) => {
     const token = localStorage.getItem('solar_token');
@@ -540,8 +593,11 @@ export default function AdminDashboard() {
     e.preventDefault();
     const payload = {
       ...planForm,
-      features: featuresToJson(planForm.features),
+      price: planForm.price_1mo,
+      features: featuresToJson(planForm.modules),
     };
+    delete payload.modules;
+    delete payload.moduleDraft;
     const res = await fetch(`${API_BASE}/api/admin/plans`, {
       method: 'POST',
       headers: authHeaders(),
@@ -553,19 +609,7 @@ export default function AdminDashboard() {
       return;
     }
     toast.success('Plan created');
-    setPlanForm({
-      id: '',
-      name: '',
-      lead_limit: 25,
-      email_limit: 1000,
-      price: 299,
-      description: '',
-      features: 'Lead unlocks/month\nCSV export',
-      is_active: true,
-      stripe_price_id: '',
-      billing_interval: 'month',
-      is_subscription: true,
-    });
+    setPlanForm(emptyPlanForm());
     loadTab('plans');
   };
 
@@ -578,19 +622,69 @@ export default function AdminDashboard() {
     loadTab('plans');
   };
 
-  const savePlanEmailLimit = async (plan, emailLimit) => {
-    const res = await fetch(`${API_BASE}/api/admin/plans/${plan.id}`, {
-      method: 'PUT',
-      headers: authHeaders(),
-      body: JSON.stringify({ email_limit: Number(emailLimit) || 0 }),
+  const startEditPlan = (plan) => {
+    setEditingPlanId(plan.id);
+    setEditPlan({
+      name: plan.name || '',
+      lead_limit: Number(plan.lead_limit) || 0,
+      email_limit: Number(plan.email_limit) || 0,
+      whatsapp_limit: Number(plan.whatsapp_limit) || 0,
+      crm_user_limit: Number(plan.crm_user_limit) || 0,
+      email_automation_limit: Number(plan.email_automation_limit) || 0,
+      price_1mo: Number(plan.price_1mo ?? plan.price) || 0,
+      price_6mo: plan.price_6mo != null ? Number(plan.price_6mo) : '',
+      price_12mo: plan.price_12mo != null ? Number(plan.price_12mo) : '',
+      sort_order: Number(plan.sort_order) || 100,
+      description: plan.description || '',
+      modules: parseModules(plan.features),
+      moduleDraft: '',
+      stripe_price_id: plan.stripe_price_id || '',
+      stripe_price_id_6mo: plan.stripe_price_id_6mo || '',
+      stripe_price_id_12mo: plan.stripe_price_id_12mo || '',
+      is_subscription: Number(plan.is_subscription) === 1,
+      billing_interval: plan.billing_interval || 'month',
     });
-    if (!res.ok) {
+  };
+
+  const saveEditPlan = async () => {
+    if (!editingPlanId || !editPlan) return;
+    setPlanSaveBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/plans/${editingPlanId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          name: editPlan.name,
+          lead_limit: editPlan.lead_limit,
+          email_limit: editPlan.email_limit,
+          whatsapp_limit: editPlan.whatsapp_limit,
+          crm_user_limit: editPlan.crm_user_limit,
+          email_automation_limit: editPlan.email_automation_limit,
+          price_1mo: editPlan.price_1mo,
+          price_6mo: editPlan.price_6mo === '' ? null : editPlan.price_6mo,
+          price_12mo: editPlan.price_12mo === '' ? null : editPlan.price_12mo,
+          sort_order: editPlan.sort_order,
+          description: editPlan.description,
+          features: featuresToJson(editPlan.modules),
+          stripe_price_id: editPlan.stripe_price_id || null,
+          stripe_price_id_6mo: editPlan.stripe_price_id_6mo || null,
+          stripe_price_id_12mo: editPlan.stripe_price_id_12mo || null,
+          is_subscription: editPlan.is_subscription,
+          billing_interval: editPlan.billing_interval,
+        }),
+      });
       const data = await res.json().catch(() => ({}));
-      toast.error(data.error || 'Failed to update email limit');
-      return;
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save plan');
+        return;
+      }
+      toast.success('Plan updated');
+      setEditingPlanId(null);
+      setEditPlan(null);
+      loadTab('plans');
+    } finally {
+      setPlanSaveBusy(false);
     }
-    toast.success('Email limit updated');
-    loadTab('plans');
   };
 
   const openTicket = async (id) => {
@@ -1242,63 +1336,141 @@ export default function AdminDashboard() {
       )}
 
       {tab === 'plans' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <form onSubmit={createPlan} className="glass-card p-5 rounded-xl space-y-3 text-xs">
             <h3 className="text-on-surface font-bold text-sm">Create Plan</h3>
-            <input required placeholder="id (e.g. Pro50)" value={planForm.id}
+            <p className="text-on-surface-variant text-[11px]">
+              Founding Launch style — monthly usage limits + 1 / 6 / 12 month pricing. Editable anytime.
+            </p>
+            <input required placeholder="id (e.g. Scout)" value={planForm.id}
               onChange={(e) => setPlanForm({ ...planForm, id: e.target.value })}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
             <input required placeholder="Display name" value={planForm.name}
               onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" placeholder="Lead credits / month" value={planForm.lead_limit}
-                onChange={(e) => setPlanForm({ ...planForm, lead_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              <input type="number" placeholder="Emails / month" value={planForm.email_limit}
-                onChange={(e) => setPlanForm({ ...planForm, email_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" step="0.01" placeholder="Price USD / month" value={planForm.price}
-                onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-            </div>
-            <input placeholder="Stripe Price ID (price_...) — required for monthly plans" value={planForm.stripe_price_id}
-              onChange={(e) => setPlanForm({ ...planForm, stripe_price_id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
-            <div className="flex flex-wrap gap-4 items-center">
-              <label className="flex items-center gap-2 text-on-surface-variant">
-                <input
-                  type="checkbox"
-                  checked={planForm.is_subscription}
-                  onChange={(e) => setPlanForm({ ...planForm, is_subscription: e.target.checked })}
-                />
-                Monthly subscription
-              </label>
-              <select
-                value={planForm.billing_interval}
-                onChange={(e) => setPlanForm({ ...planForm, billing_interval: e.target.value })}
-                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
-              >
-                <option value="month">Bill monthly</option>
-                <option value="one_time">One-time pack</option>
-              </select>
-            </div>
-            <textarea placeholder="Description" value={planForm.description}
+            <textarea placeholder="Tagline / description" value={planForm.description}
               onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
               className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" rows={2} />
-            <textarea
-              placeholder="Features (one per line)"
-              value={planForm.features}
-              onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
-              rows={3}
-            />
+
+            <p className="text-on-surface font-semibold pt-1">Monthly usage limits</p>
+            <div className="grid grid-cols-2 gap-3">
+              <input type="number" placeholder="AI opportunities / mo" value={planForm.lead_limit}
+                onChange={(e) => setPlanForm({ ...planForm, lead_limit: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              <input type="number" placeholder="Emails / mo" value={planForm.email_limit}
+                onChange={(e) => setPlanForm({ ...planForm, email_limit: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              <input type="number" placeholder="WhatsApp / mo" value={planForm.whatsapp_limit}
+                onChange={(e) => setPlanForm({ ...planForm, whatsapp_limit: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              <input type="number" placeholder="CRM users" value={planForm.crm_user_limit}
+                onChange={(e) => setPlanForm({ ...planForm, crm_user_limit: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              <input type="number" placeholder="Email automations" value={planForm.email_automation_limit}
+                onChange={(e) => setPlanForm({ ...planForm, email_automation_limit: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              <input type="number" placeholder="Sort order" value={planForm.sort_order}
+                onChange={(e) => setPlanForm({ ...planForm, sort_order: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+            </div>
+
+            <p className="text-on-surface font-semibold pt-1">Price per month by commitment</p>
+            <div className="grid grid-cols-3 gap-3">
+              <label className="space-y-1">
+                <span className="text-on-surface-variant">1 mo</span>
+                <input type="number" step="0.01" value={planForm.price_1mo}
+                  onChange={(e) => setPlanForm({ ...planForm, price_1mo: e.target.value })}
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              </label>
+              <label className="space-y-1">
+                <span className="text-on-surface-variant">6 mo</span>
+                <input type="number" step="0.01" value={planForm.price_6mo}
+                  onChange={(e) => setPlanForm({ ...planForm, price_6mo: e.target.value })}
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              </label>
+              <label className="space-y-1">
+                <span className="text-on-surface-variant">12 mo</span>
+                <input type="number" step="0.01" value={planForm.price_12mo}
+                  onChange={(e) => setPlanForm({ ...planForm, price_12mo: e.target.value })}
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+              </label>
+            </div>
+
+            <p className="text-on-surface font-semibold pt-1">Modules</p>
+            <div className="space-y-2">
+              {planForm.modules.map((mod, idx) => (
+                <div key={`${mod}-${idx}`} className="flex gap-2 items-center">
+                  <input
+                    value={mod}
+                    onChange={(e) => {
+                      const next = [...planForm.modules];
+                      next[idx] = e.target.value;
+                      setPlanForm({ ...planForm, modules: next });
+                    }}
+                    className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPlanForm({
+                      ...planForm,
+                      modules: planForm.modules.filter((_, i) => i !== idx),
+                    })}
+                    className="text-red-400 font-bold px-2 py-1 rounded border border-red-400/30"
+                    title="Remove module"
+                  >
+                    −
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input
+                  placeholder="New module…"
+                  value={planForm.moduleDraft}
+                  onChange={(e) => setPlanForm({ ...planForm, moduleDraft: e.target.value })}
+                  className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = String(planForm.moduleDraft || '').trim();
+                    if (!text) return;
+                    setPlanForm({
+                      ...planForm,
+                      modules: [...planForm.modules, text],
+                      moduleDraft: '',
+                    });
+                  }}
+                  className="text-primary font-bold px-3 py-1 rounded border border-primary/40"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <input placeholder="Stripe Price ID 1mo (optional)" value={planForm.stripe_price_id}
+              onChange={(e) => setPlanForm({ ...planForm, stripe_price_id: e.target.value })}
+              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
+            <div className="grid grid-cols-2 gap-3">
+              <input placeholder="Stripe Price 6mo" value={planForm.stripe_price_id_6mo}
+                onChange={(e) => setPlanForm({ ...planForm, stripe_price_id_6mo: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
+              <input placeholder="Stripe Price 12mo" value={planForm.stripe_price_id_12mo}
+                onChange={(e) => setPlanForm({ ...planForm, stripe_price_id_12mo: e.target.value })}
+                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
+            </div>
+            <label className="flex items-center gap-2 text-on-surface-variant">
+              <input
+                type="checkbox"
+                checked={planForm.is_subscription}
+                onChange={(e) => setPlanForm({ ...planForm, is_subscription: e.target.checked })}
+              />
+              Monthly usage subscription
+            </label>
             <button type="submit" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg">
               Create Plan
             </button>
           </form>
+
           <div className="space-y-3">
             {loading && plans.length === 0 && (
               <p className="text-xs text-on-surface-variant animate-pulse">Loading plans…</p>
@@ -1306,47 +1478,208 @@ export default function AdminDashboard() {
             {!loading && plans.length === 0 && (
               <p className="text-xs text-on-surface-variant">No plans yet. Create one on the left.</p>
             )}
-            {plans.map((p) => (
-              <div key={p.id} className="glass-card p-4 rounded-xl text-xs flex justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-on-surface font-bold">{p.name} <span className="text-on-surface-variant font-normal">({p.id})</span></p>
-                  <p className="text-on-surface-variant mt-1">
-                    {p.lead_limit} leads · {Number(p.email_limit) || 0} emails/{Number(p.is_subscription) ? 'mo' : 'pack'} · ${Number(p.price).toLocaleString()}
-                    {Number(p.is_subscription) ? '/mo' : ''} ·{' '}
-                    {Number(p.is_active) ? <span className="text-green-400">Active</span> : <span className="text-red-400">Inactive</span>}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <label className="text-on-surface-variant">Emails/mo</label>
-                    <input
-                      type="number"
-                      min="0"
-                      defaultValue={Number(p.email_limit) || 0}
-                      key={`${p.id}-${p.email_limit}`}
-                      id={`email-limit-${p.id}`}
-                      className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1 text-on-surface"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById(`email-limit-${p.id}`);
-                        savePlanEmailLimit(p, el?.value);
-                      }}
-                      className="text-primary font-semibold"
-                    >
-                      Save
-                    </button>
+            {plans.map((p) => {
+              const modules = parseModules(p.features);
+              const isEditing = editingPlanId === p.id && editPlan;
+              return (
+                <div key={p.id} className="glass-card p-4 rounded-xl text-xs space-y-3">
+                  <div className="flex justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-on-surface font-bold">
+                        {p.name}{' '}
+                        <span className="text-on-surface-variant font-normal">({p.id})</span>
+                      </p>
+                      {!isEditing && (
+                        <>
+                          <p className="text-on-surface-variant mt-1">
+                            {p.lead_limit} opps · {Number(p.email_limit) || 0} emails ·{' '}
+                            {Number(p.whatsapp_limit) || 0} WA · CRM {Number(p.crm_user_limit) || 0}
+                          </p>
+                          <p className="text-on-surface-variant mt-0.5">
+                            ${Number(p.price_1mo ?? p.price).toLocaleString()}/mo · 6mo $
+                            {Number(p.price_6mo ?? p.price_1mo ?? p.price).toLocaleString()} · 12mo $
+                            {Number(p.price_12mo ?? p.price_6mo ?? p.price).toLocaleString()}
+                            {' · '}
+                            {Number(p.is_active) ? (
+                              <span className="text-green-400">Active</span>
+                            ) : (
+                              <span className="text-red-400">Inactive</span>
+                            )}
+                          </p>
+                          {modules.length > 0 && (
+                            <ul className="mt-2 space-y-0.5 text-on-surface-variant">
+                              {modules.slice(0, 4).map((m) => (
+                                <li key={m}>• {m}</li>
+                              ))}
+                              {modules.length > 4 && (
+                                <li>+{modules.length - 4} more modules</li>
+                              )}
+                            </ul>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 items-end shrink-0">
+                      {p.id !== 'Free' && (
+                        <button onClick={() => togglePlan(p)} className="text-primary font-semibold">
+                          {Number(p.is_active) ? 'Deactivate' : 'Activate'}
+                        </button>
+                      )}
+                      {!isEditing ? (
+                        <button onClick={() => startEditPlan(p)} className="text-on-surface font-semibold">
+                          Edit
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPlanId(null);
+                            setEditPlan(null);
+                          }}
+                          className="text-on-surface-variant"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {p.stripe_price_id && (
-                    <p className="text-on-surface-variant mt-1 font-mono text-[10px]">Stripe: {p.stripe_price_id}</p>
+
+                  {isEditing && (
+                    <div className="border-t border-glass-stroke pt-3 space-y-3">
+                      <input
+                        value={editPlan.name}
+                        onChange={(e) => setEditPlan({ ...editPlan, name: e.target.value })}
+                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
+                      />
+                      <textarea
+                        value={editPlan.description}
+                        onChange={(e) => setEditPlan({ ...editPlan, description: e.target.value })}
+                        rows={2}
+                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          ['lead_limit', 'Opportunities/mo'],
+                          ['email_limit', 'Emails/mo'],
+                          ['whatsapp_limit', 'WhatsApp/mo'],
+                          ['crm_user_limit', 'CRM users'],
+                          ['email_automation_limit', 'Email automations'],
+                          ['sort_order', 'Sort'],
+                        ].map(([key, label]) => (
+                          <label key={key} className="space-y-1">
+                            <span className="text-on-surface-variant">{label}</span>
+                            <input
+                              type="number"
+                              value={editPlan[key]}
+                              onChange={(e) => setEditPlan({ ...editPlan, [key]: e.target.value })}
+                              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          ['price_1mo', '1 mo $'],
+                          ['price_6mo', '6 mo $'],
+                          ['price_12mo', '12 mo $'],
+                        ].map(([key, label]) => (
+                          <label key={key} className="space-y-1">
+                            <span className="text-on-surface-variant">{label}</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editPlan[key]}
+                              onChange={(e) => setEditPlan({ ...editPlan, [key]: e.target.value })}
+                              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
+                            />
+                          </label>
+                        ))}
+                      </div>
+
+                      <p className="font-semibold text-on-surface">Modules (+/−)</p>
+                      {editPlan.modules.map((mod, idx) => (
+                        <div key={`${idx}-${mod}`} className="flex gap-2">
+                          <input
+                            value={mod}
+                            onChange={(e) => {
+                              const next = [...editPlan.modules];
+                              next[idx] = e.target.value;
+                              setEditPlan({ ...editPlan, modules: next });
+                            }}
+                            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditPlan({
+                                ...editPlan,
+                                modules: editPlan.modules.filter((_, i) => i !== idx),
+                              })
+                            }
+                            className="text-red-400 font-bold px-2"
+                          >
+                            −
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <input
+                          placeholder="Add module…"
+                          value={editPlan.moduleDraft}
+                          onChange={(e) => setEditPlan({ ...editPlan, moduleDraft: e.target.value })}
+                          className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = String(editPlan.moduleDraft || '').trim();
+                            if (!text) return;
+                            setEditPlan({
+                              ...editPlan,
+                              modules: [...editPlan.modules, text],
+                              moduleDraft: '',
+                            });
+                          }}
+                          className="text-primary font-bold px-3"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <input
+                        placeholder="Stripe 1mo price id"
+                        value={editPlan.stripe_price_id}
+                        onChange={(e) => setEditPlan({ ...editPlan, stripe_price_id: e.target.value })}
+                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 font-mono text-[10px] text-on-surface"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          placeholder="Stripe 6mo"
+                          value={editPlan.stripe_price_id_6mo}
+                          onChange={(e) => setEditPlan({ ...editPlan, stripe_price_id_6mo: e.target.value })}
+                          className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 font-mono text-[10px] text-on-surface"
+                        />
+                        <input
+                          placeholder="Stripe 12mo"
+                          value={editPlan.stripe_price_id_12mo}
+                          onChange={(e) => setEditPlan({ ...editPlan, stripe_price_id_12mo: e.target.value })}
+                          className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 font-mono text-[10px] text-on-surface"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={planSaveBusy}
+                        onClick={saveEditPlan}
+                        className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg disabled:opacity-60"
+                      >
+                        {planSaveBusy ? 'Saving…' : 'Save plan'}
+                      </button>
+                    </div>
                   )}
                 </div>
-                {p.id !== 'Free' && (
-                  <button onClick={() => togglePlan(p)} className="text-primary font-semibold self-start">
-                    {Number(p.is_active) ? 'Deactivate' : 'Activate'}
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

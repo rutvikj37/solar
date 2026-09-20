@@ -13,6 +13,11 @@ import {
 import { fulfillMarketplaceWalletFromStripeSession } from '../services/marketplace/walletTopup.js';
 import { getLedger, getWalletBalance, ensureWallet } from '../services/marketplace/wallet.js';
 import { clientErrorMessage } from '../utils/clientError.js';
+import {
+  normalizeBillingMonths,
+  resolveDurationPricing,
+  stripePriceIdForMonths,
+} from '../services/planPricing.js';
 
 const router = express.Router();
 
@@ -174,6 +179,55 @@ export async function refreshSubscriptionCredits(userId, packageId, credits) {
   await setSubscriptionCredits(userId, packageId, credits);
 }
 
+/** Activate a prepaid multi-month (or 1-mo without Stripe Price) plan from a paid Checkout session. */
+export async function fulfillPrepaidPlan({
+  session,
+  userId,
+  packageId,
+  credits,
+}) {
+  const billingMonths = normalizeBillingMonths(session.metadata?.billingMonths || 1);
+  const periodStart = new Date();
+  const periodEnd = new Date();
+  periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
+
+  await setSubscriptionCredits(userId, packageId, credits);
+  await upsertUserSubscription({
+    userId,
+    packageId,
+    paymentProvider: 'stripe',
+    stripeCustomerId: session.customer || null,
+    stripeSubscriptionId: `prepaid_${session.id}`,
+    status: 'active',
+    periodStart,
+    periodEnd,
+    cancelAtPeriodEnd: false,
+    billingMonths,
+    creditsRefreshedAt: periodStart,
+  });
+
+  const [invoices] = await db.query('SELECT * FROM invoices WHERE stripe_session_id = ?', [session.id]);
+  if (invoices.length > 0 && invoices[0].status !== 'paid') {
+    await db.query(
+      `UPDATE invoices SET status = 'paid', credits = ?, method = 'stripe_prepaid', billing_reason = 'initial' WHERE id = ?`,
+      [credits, invoices[0].id],
+    );
+  } else if (invoices.length === 0) {
+    await recordInvoice({
+      userId,
+      packageId,
+      amountCents: session.amount_total || 0,
+      credits,
+      status: 'paid',
+      method: 'stripe_prepaid',
+      stripeSessionId: session.id,
+      billingReason: 'initial',
+    });
+  }
+
+  return { credits, packageId, billingMonths, periodEnd };
+}
+
 async function getUserStripeCustomerId(userId) {
   const [rows] = await db.query('SELECT stripe_customer_id, email, name FROM users WHERE id = ?', [userId]);
   return rows[0] || null;
@@ -203,15 +257,20 @@ export async function upsertUserSubscription({
   status,
   periodStart,
   periodEnd,
-  cancelAtPeriodEnd = false
+  cancelAtPeriodEnd = false,
+  billingMonths = 1,
+  creditsRefreshedAt = null,
 }) {
+  const months = normalizeBillingMonths(billingMonths);
+  const refreshedAt = creditsRefreshedAt || periodStart || new Date();
   const [existing] = await db.query('SELECT id FROM user_subscriptions WHERE user_id = ?', [userId]);
   if (existing.length > 0) {
     await db.query(
       `UPDATE user_subscriptions SET
          package_id = ?, payment_provider = ?, stripe_customer_id = ?, stripe_subscription_id = ?,
          razorpay_subscription_id = COALESCE(?, razorpay_subscription_id), status = ?,
-         current_period_start = ?, current_period_end = ?, cancel_at_period_end = ?
+         current_period_start = ?, current_period_end = ?, cancel_at_period_end = ?,
+         billing_months = ?, credits_refreshed_at = ?
        WHERE user_id = ?`,
       [
         packageId,
@@ -223,15 +282,18 @@ export async function upsertUserSubscription({
         periodStart || null,
         periodEnd || null,
         cancelAtPeriodEnd ? 1 : 0,
-        userId
-      ]
+        months,
+        refreshedAt,
+        userId,
+      ],
     );
   } else {
     await db.query(
       `INSERT INTO user_subscriptions
        (user_id, package_id, payment_provider, stripe_customer_id, stripe_subscription_id,
-        razorpay_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        razorpay_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end,
+        billing_months, credits_refreshed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         packageId,
@@ -242,10 +304,55 @@ export async function upsertUserSubscription({
         status,
         periodStart || null,
         periodEnd || null,
-        cancelAtPeriodEnd ? 1 : 0
-      ]
+        cancelAtPeriodEnd ? 1 : 0,
+        months,
+        refreshedAt,
+      ],
     );
   }
+}
+
+/** For prepaid multi-month plans: refresh monthly lead allowance when a new month starts. */
+export async function maybeRefreshMonthlyCredits(userId) {
+  const [subs] = await db.query(
+    `SELECT s.*, p.lead_limit
+     FROM user_subscriptions s
+     LEFT JOIN packages p ON p.id = s.package_id
+     WHERE s.user_id = ? AND s.status IN ('active', 'trialing')
+     LIMIT 1`,
+    [userId],
+  );
+  const sub = subs[0];
+  if (!sub) return null;
+
+  const now = new Date();
+  if (sub.current_period_end && new Date(sub.current_period_end) < now) {
+    return null;
+  }
+
+  const months = Number(sub.billing_months) || 1;
+  // Stripe recurring (1-mo) refreshes via webhook; only auto-refresh prepaid commitments
+  if (months <= 1 && sub.payment_provider === 'stripe' && sub.stripe_subscription_id
+      && !String(sub.stripe_subscription_id).startsWith('dev_')
+      && !String(sub.stripe_subscription_id).startsWith('prepaid_')) {
+    return null;
+  }
+
+  const last = sub.credits_refreshed_at ? new Date(sub.credits_refreshed_at) : null;
+  const monthKey = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+  if (last && monthKey(last) === monthKey(now)) {
+    return null;
+  }
+
+  const credits = Number(sub.lead_limit) || 0;
+  if (credits <= 0) return null;
+
+  await setSubscriptionCredits(userId, sub.package_id, credits);
+  await db.query(
+    'UPDATE user_subscriptions SET credits_refreshed_at = ? WHERE user_id = ?',
+    [now, userId],
+  );
+  return { refreshed: true, credits, packageId: sub.package_id };
 }
 
 /** Prefer DB package lead_limit over Checkout metadata (metadata is set server-side but package is source of truth). */
@@ -396,12 +503,13 @@ async function loadActivePackage(packageId) {
   return rows[0] || null;
 }
 
-async function activateDevSubscription(userId, pkg) {
+async function activateDevSubscription(userId, pkg, billingMonths = 1) {
   const credits = Number(pkg.lead_limit) || 0;
-  const amountCents = Math.round(Number(pkg.price) * 100);
+  const pricing = resolveDurationPricing(pkg, billingMonths);
+  const amountCents = pricing.amountCents;
   const periodStart = new Date();
   const periodEnd = new Date();
-  periodEnd.setMonth(periodEnd.getMonth() + 1);
+  periodEnd.setMonth(periodEnd.getMonth() + pricing.months);
 
   await setSubscriptionCredits(userId, pkg.id, credits);
   await upsertUserSubscription({
@@ -413,7 +521,9 @@ async function activateDevSubscription(userId, pkg) {
     status: 'active',
     periodStart,
     periodEnd,
-    cancelAtPeriodEnd: false
+    cancelAtPeriodEnd: false,
+    billingMonths: pricing.months,
+    creditsRefreshedAt: periodStart,
   });
   await recordInvoice({
     userId,
@@ -422,7 +532,7 @@ async function activateDevSubscription(userId, pkg) {
     credits,
     status: 'paid',
     method: 'dev_subscription',
-    billingReason: 'initial'
+    billingReason: 'initial',
   });
 }
 
@@ -441,8 +551,8 @@ router.get('/packages', optionalAuthenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Admin access required' });
     }
     const sql = adminAll
-      ? 'SELECT * FROM packages ORDER BY price ASC'
-      : `SELECT * FROM packages WHERE is_active = 1 AND id != 'Free' AND price > 0 ORDER BY price ASC`;
+      ? 'SELECT * FROM packages ORDER BY sort_order ASC, price ASC'
+      : `SELECT * FROM packages WHERE is_active = 1 AND id != 'Free' AND price > 0 ORDER BY sort_order ASC, price ASC`;
     const [rows] = await db.query(sql);
     res.json(rows);
   } catch (error) {
@@ -535,6 +645,7 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
 
 router.post('/checkout', authenticateToken, async (req, res) => {
   const { packageId } = req.body;
+  const billingMonths = normalizeBillingMonths(req.body.billingMonths ?? req.body.months ?? 1);
   const pkg = await loadActivePackage(packageId);
   if (!pkg || pkg.id === 'Free' || Number(pkg.price) <= 0 || Number(pkg.is_active) === 0) {
     return res.status(400).json({ error: 'Invalid or inactive package' });
@@ -548,12 +659,15 @@ router.post('/checkout', authenticateToken, async (req, res) => {
   }
 
   const credits = Number(pkg.lead_limit) || 0;
-  const amountCents = Math.round(Number(pkg.price) * 100);
+  const pricing = resolveDurationPricing(pkg, billingMonths);
+  const amountCents = pricing.amountCents;
   const frontendUrl = frontendBase();
   const stripe = getStripe();
   const started = Date.now();
-  const subscriptionMode = isSubscriptionPackage(pkg);
+  const subscriptionMode = isSubscriptionPackage(pkg) && billingMonths === 1;
+  const prepaidMode = isSubscriptionPackage(pkg) && billingMonths > 1;
   const currency = getBillingCurrency();
+  const durationPriceId = stripePriceIdForMonths(pkg, billingMonths);
 
   try {
     if (!stripe) {
@@ -562,8 +676,8 @@ router.post('/checkout', authenticateToken, async (req, res) => {
           error: 'Payment not configured. Set STRIPE_SECRET_KEY or ALLOW_DEV_CHECKOUT=1 for local testing.'
         });
       }
-      if (subscriptionMode) {
-        await activateDevSubscription(req.user.id, pkg);
+      if (subscriptionMode || prepaidMode) {
+        await activateDevSubscription(req.user.id, pkg, billingMonths);
       } else {
         await grantCredits(req.user.id, packageId, credits);
         await recordInvoice({
@@ -579,10 +693,11 @@ router.post('/checkout', authenticateToken, async (req, res) => {
       await logApiCall('stripe', true, Date.now() - started);
       return res.json({
         mode: 'dev',
-        message: subscriptionMode
-          ? `Subscribed to ${pkg.name} — ${credits} credits/month (dev)`
+        message: subscriptionMode || prepaidMode
+          ? `Subscribed to ${pkg.name} (${billingMonths} mo) — ${credits} credits/month (dev)`
           : `Added ${credits} credits (dev checkout)`,
         credits,
+        billingMonths,
         redirectUrl: `${frontendUrl}/billing?success=1&package=${packageId}`
       });
     }
@@ -592,13 +707,48 @@ router.post('/checkout', authenticateToken, async (req, res) => {
       userId: String(req.user.id),
       packageId: pkg.id,
       credits: String(credits),
+      billingMonths: String(billingMonths),
+      perMonth: String(pricing.perMonth),
     };
 
+    // Recurring monthly (1-month commitment)
     if (subscriptionMode) {
-      if (!pkg.stripe_price_id) {
-        return res.status(400).json({
-          error: 'This plan requires a Stripe recurring Price ID. Ask an admin to configure stripe_price_id.'
+      if (!pkg.stripe_price_id && !durationPriceId) {
+        // Fall back to prepaid-style one-time for 1 month when no Stripe price configured
+        const session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          customer: customerId,
+          client_reference_id: String(req.user.id),
+          payment_method_types: ['card'],
+          line_items: [{
+            price_data: {
+              currency,
+              product_data: {
+                name: `${pkg.name} — 1 month`,
+                description: `${credits} AI opportunities / month`,
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          }],
+          metadata: { ...userMeta, prepaid: '1' },
+          success_url: `${frontendUrl}/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${frontendUrl}/billing?canceled=1#plans`,
         });
+
+        await recordInvoice({
+          userId: req.user.id,
+          packageId: pkg.id,
+          amountCents,
+          credits,
+          status: 'pending',
+          method: 'stripe_prepaid',
+          stripeSessionId: session.id,
+          billingReason: 'initial',
+        });
+
+        await logApiCall('stripe', true, Date.now() - started);
+        return res.json({ mode: 'stripe', sessionId: session.id, url: session.url });
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -606,7 +756,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
         customer: customerId,
         client_reference_id: String(req.user.id),
         payment_method_types: ['card'],
-        line_items: [{ price: pkg.stripe_price_id, quantity: 1 }],
+        line_items: [{ price: durationPriceId || pkg.stripe_price_id, quantity: 1 }],
         metadata: userMeta,
         subscription_data: {
           metadata: userMeta,
@@ -624,6 +774,48 @@ router.post('/checkout', authenticateToken, async (req, res) => {
         method: 'stripe_subscription',
         stripeSessionId: session.id,
         billingReason: 'initial'
+      });
+
+      await logApiCall('stripe', true, Date.now() - started);
+      return res.json({ mode: 'stripe', sessionId: session.id, url: session.url });
+    }
+
+    // 6 / 12 month prepaid commitment (discounted monthly rate × months)
+    if (prepaidMode) {
+      const lineItem = durationPriceId
+        ? { price: durationPriceId, quantity: 1 }
+        : {
+            price_data: {
+              currency,
+              product_data: {
+                name: `${pkg.name} — ${billingMonths} months`,
+                description: `${credits} AI opportunities / month · $${pricing.perMonth}/mo`,
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          };
+
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer: customerId,
+        client_reference_id: String(req.user.id),
+        payment_method_types: ['card'],
+        line_items: [lineItem],
+        metadata: { ...userMeta, prepaid: '1' },
+        success_url: `${frontendUrl}/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${frontendUrl}/billing?canceled=1#plans`,
+      });
+
+      await recordInvoice({
+        userId: req.user.id,
+        packageId: pkg.id,
+        amountCents,
+        credits,
+        status: 'pending',
+        method: 'stripe_prepaid',
+        stripeSessionId: session.id,
+        billingReason: 'initial',
       });
 
       await logApiCall('stripe', true, Date.now() - started);
@@ -723,13 +915,30 @@ router.post('/confirm', authenticateToken, async (req, res) => {
         status: subscription.status,
         periodStart,
         periodEnd,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        billingMonths: 1,
+        creditsRefreshedAt: periodStart,
       });
       await db.query(
         `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, credits = ?, billing_reason = 'initial' WHERE id = ? AND status <> 'paid'`,
         [subscription.id, credits, invoice.id]
       );
       return res.json({ message: 'Credits granted', credits, packageId });
+    }
+
+    if (session.metadata?.prepaid === '1' || invoice.method === 'stripe_prepaid') {
+      const result = await fulfillPrepaidPlan({
+        session,
+        userId: req.user.id,
+        packageId,
+        credits,
+      });
+      return res.json({
+        message: 'Plan activated',
+        credits: result.credits,
+        packageId: result.packageId,
+        billingMonths: result.billingMonths,
+      });
     }
 
     const fulfilled = await fulfillStripeOneTimeCredits({
@@ -782,7 +991,9 @@ async function handleCheckoutCompleted(stripe, session) {
       status: subscription.status,
       periodStart,
       periodEnd,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      billingMonths: 1,
+      creditsRefreshedAt: periodStart,
     });
 
     const [invoices] = await db.query('SELECT * FROM invoices WHERE stripe_session_id = ?', [session.id]);
@@ -805,6 +1016,12 @@ async function handleCheckoutCompleted(stripe, session) {
       });
     }
     console.log(`[Stripe Webhook] Subscription activated for user ${userId}, plan ${packageId}`);
+    return;
+  }
+
+  if (session.metadata?.prepaid === '1') {
+    await fulfillPrepaidPlan({ session, userId, packageId, credits });
+    console.log(`[Stripe Webhook] Prepaid plan activated for user ${userId}, plan ${packageId}`);
     return;
   }
 

@@ -1,4 +1,5 @@
 import db from "./db.js";
+import { FOUNDING_LAUNCH_PLANS, modulesToJson } from "./services/planPricing.js";
 
 async function columnExists(table, column) {
   const [rows] = await db.query(
@@ -156,16 +157,24 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  // Seed package catalog if empty
+  // Seed package catalog if empty (Founding Launch: Scout / Pioneer / Mission Control)
   const [pkgRows] = await db.query("SELECT COUNT(*) AS cnt FROM packages");
   if (pkgRows[0].cnt === 0) {
-    await db.query(
-      `INSERT INTO packages (id, name, lead_limit, price, description, features, is_active, is_subscription, billing_interval) VALUES
-       ('Starter', 'Starter', 20, 499.00, 'Essential monthly plan', '["20 High-Intent Leads/month","Basic Address Verification","CSV Download"]', 1, 1, 'month'),
-       ('Growth', 'Growth', 50, 1199.00, 'Performance monthly plan', '["50 Verified Leads/month","Roof Analysis","Direct API Push"]', 1, 1, 'month'),
-       ('Enterprise', 'Enterprise', 100, 2249.00, 'Scale monthly plan', '["100 Premium Leads/month","Bulk Area Scan","Priority Support"]', 1, 1, 'month')`,
-    );
-    console.log("[Schema] Seeded packages catalog");
+    for (const plan of FOUNDING_LAUNCH_PLANS) {
+      await db.query(
+        `INSERT INTO packages (id, name, lead_limit, price, description, features, is_active, is_subscription, billing_interval)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 1, 'month')`,
+        [
+          plan.id,
+          plan.name,
+          plan.lead_limit,
+          plan.price,
+          plan.description,
+          modulesToJson(plan.features),
+        ],
+      );
+    }
+    console.log("[Schema] Seeded Founding Launch packages catalog");
   }
 
   // Packages: admin-managed plan columns
@@ -1182,6 +1191,104 @@ export async function migrateSchema() {
     "INT NOT NULL DEFAULT 0",
   );
 
+  // Founding Launch: duration pricing + module limits (admin-editable anytime)
+  await ensureColumn("packages", "price_1mo", "DECIMAL(10,2) NULL");
+  await ensureColumn("packages", "price_6mo", "DECIMAL(10,2) NULL");
+  await ensureColumn("packages", "price_12mo", "DECIMAL(10,2) NULL");
+  await ensureColumn("packages", "sort_order", "INT NOT NULL DEFAULT 100");
+  await ensureColumn("packages", "whatsapp_limit", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("packages", "crm_user_limit", "INT NOT NULL DEFAULT 0");
+  await ensureColumn(
+    "packages",
+    "email_automation_limit",
+    "INT NOT NULL DEFAULT 0",
+  );
+  await ensureColumn("packages", "stripe_price_id_6mo", "VARCHAR(255) NULL");
+  await ensureColumn("packages", "stripe_price_id_12mo", "VARCHAR(255) NULL");
+  await ensureColumn(
+    "user_subscriptions",
+    "billing_months",
+    "INT UNSIGNED NOT NULL DEFAULT 1",
+  );
+  await ensureColumn(
+    "user_subscriptions",
+    "credits_refreshed_at",
+    "DATETIME NULL",
+  );
+
+  // Backfill monthly price columns from legacy price when empty
+  await db.query(
+    `UPDATE packages SET price_1mo = price
+     WHERE price_1mo IS NULL AND price IS NOT NULL`,
+  );
+
+  // Upsert Founding Launch plans (idempotent — admin can still edit anytime)
+  for (const plan of FOUNDING_LAUNCH_PLANS) {
+    const [existing] = await db.query(
+      "SELECT id FROM packages WHERE id = ? LIMIT 1",
+      [plan.id],
+    );
+    if (!existing.length) {
+      await db.query(
+        `INSERT INTO packages
+         (id, name, lead_limit, email_limit, whatsapp_limit, crm_user_limit, email_automation_limit,
+          price, price_1mo, price_6mo, price_12mo, sort_order, description, features,
+          is_active, is_subscription, billing_interval)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'month')`,
+        [
+          plan.id,
+          plan.name,
+          plan.lead_limit,
+          plan.email_limit,
+          plan.whatsapp_limit,
+          plan.crm_user_limit,
+          plan.email_automation_limit,
+          plan.price,
+          plan.price_1mo,
+          plan.price_6mo,
+          plan.price_12mo,
+          plan.sort_order,
+          plan.description,
+          modulesToJson(plan.features),
+        ],
+      );
+      console.log(`[Schema] Added Founding Launch plan: ${plan.id}`);
+    } else {
+      // Sync duration prices / limits only when still on defaults (null/0 duration cols)
+      await db.query(
+        `UPDATE packages SET
+           price_1mo = COALESCE(price_1mo, ?),
+           price_6mo = COALESCE(price_6mo, ?),
+           price_12mo = COALESCE(price_12mo, ?),
+           sort_order = CASE WHEN sort_order = 100 THEN ? ELSE sort_order END,
+           whatsapp_limit = CASE WHEN whatsapp_limit = 0 THEN ? ELSE whatsapp_limit END,
+           crm_user_limit = CASE WHEN crm_user_limit = 0 THEN ? ELSE crm_user_limit END,
+           email_automation_limit = CASE WHEN email_automation_limit = 0 THEN ? ELSE email_automation_limit END,
+           email_limit = CASE WHEN email_limit = 0 THEN ? ELSE email_limit END
+         WHERE id = ?`,
+        [
+          plan.price_1mo,
+          plan.price_6mo,
+          plan.price_12mo,
+          plan.sort_order,
+          plan.whatsapp_limit,
+          plan.crm_user_limit,
+          plan.email_automation_limit,
+          plan.email_limit,
+          plan.id,
+        ],
+      );
+    }
+  }
+
+  // Prefer Founding Launch catalog: deactivate legacy seed plans that still match original prices
+  await db.query(
+    `UPDATE packages SET is_active = 0
+     WHERE id IN ('Starter', 'Growth', 'Enterprise')
+       AND price IN (499, 1199, 2249)
+       AND EXISTS (SELECT 1 FROM (SELECT id FROM packages WHERE id = 'Scout' LIMIT 1) t)`,
+  );
+
   // Seed plan email quotas (idempotent updates for known plans)
   await db.query(
     `UPDATE packages SET email_limit = CASE id
@@ -1189,9 +1296,12 @@ export async function migrateSchema() {
        WHEN 'Starter' THEN 1000
        WHEN 'Growth' THEN 5000
        WHEN 'Enterprise' THEN 25000
+       WHEN 'Scout' THEN 2000
+       WHEN 'Pioneer' THEN 5000
+       WHEN 'MissionControl' THEN 10000
        ELSE GREATEST(COALESCE(email_limit, 0), 0)
      END
-     WHERE id IN ('Free', 'Starter', 'Growth', 'Enterprise')
+     WHERE id IN ('Free', 'Starter', 'Growth', 'Enterprise', 'Scout', 'Pioneer', 'MissionControl')
        AND (email_limit IS NULL OR email_limit = 0)`,
   );
 

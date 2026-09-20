@@ -917,7 +917,9 @@ router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
 // --- Dynamic plans CRUD ---
 router.get('/plans', ...adminChain, async (_req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM packages ORDER BY price ASC');
+    const [rows] = await db.query(
+      'SELECT * FROM packages ORDER BY sort_order ASC, price ASC',
+    );
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: 'Failed to list plans' });
@@ -930,13 +932,22 @@ router.post('/plans', ...adminChain, async (req, res) => {
     name,
     lead_limit,
     email_limit,
+    whatsapp_limit,
+    crm_user_limit,
+    email_automation_limit,
     price,
+    price_1mo,
+    price_6mo,
+    price_12mo,
+    sort_order,
     description,
     features,
     is_active,
     stripe_price_id,
+    stripe_price_id_6mo,
+    stripe_price_id_12mo,
     billing_interval,
-    is_subscription
+    is_subscription,
   } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name required' });
   const planId = String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 50);
@@ -945,34 +956,40 @@ router.post('/plans', ...adminChain, async (req, res) => {
   const subFlag =
     is_subscription === false || is_subscription === 0 || is_subscription === '0' ? 0 : 1;
   const interval = billing_interval === 'one_time' ? 'one_time' : 'month';
-
-  if (subFlag === 1 && is_active !== false && is_active !== 0 && is_active !== '0') {
-    if (!stripe_price_id) {
-      return res.status(400).json({
-        error: 'Monthly subscription plans require a Stripe Price ID (stripe_price_id)'
-      });
-    }
-  }
+  const price1 = Number(price_1mo ?? price) || 0;
 
   try {
     const featuresJson =
       typeof features === 'string' ? features : JSON.stringify(features || []);
     await db.query(
-      `INSERT INTO packages (id, name, lead_limit, email_limit, price, description, features, is_active, stripe_price_id, billing_interval, is_subscription)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO packages
+       (id, name, lead_limit, email_limit, whatsapp_limit, crm_user_limit, email_automation_limit,
+        price, price_1mo, price_6mo, price_12mo, sort_order, description, features,
+        is_active, stripe_price_id, stripe_price_id_6mo, stripe_price_id_12mo,
+        billing_interval, is_subscription)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         planId,
         name,
         Number(lead_limit) || 0,
         Number(email_limit) || 0,
-        Number(price) || 0,
+        Number(whatsapp_limit) || 0,
+        Number(crm_user_limit) || 0,
+        Number(email_automation_limit) || 0,
+        price1,
+        price1,
+        price_6mo !== undefined && price_6mo !== '' ? Number(price_6mo) : null,
+        price_12mo !== undefined && price_12mo !== '' ? Number(price_12mo) : null,
+        Number(sort_order) || 100,
         description || '',
         featuresJson,
         is_active === false || is_active === 0 || is_active === '0' ? 0 : 1,
         stripe_price_id || null,
+        stripe_price_id_6mo || null,
+        stripe_price_id_12mo || null,
         interval,
-        subFlag
-      ]
+        subFlag,
+      ],
     );
     const [rows] = await db.query('SELECT * FROM packages WHERE id = ?', [planId]);
     res.status(201).json(rows[0]);
@@ -987,13 +1004,22 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
     name,
     lead_limit,
     email_limit,
+    whatsapp_limit,
+    crm_user_limit,
+    email_automation_limit,
     price,
+    price_1mo,
+    price_6mo,
+    price_12mo,
+    sort_order,
     description,
     features,
     is_active,
     stripe_price_id,
+    stripe_price_id_6mo,
+    stripe_price_id_12mo,
     billing_interval,
-    is_subscription
+    is_subscription,
   } = req.body;
   try {
     const featuresJson =
@@ -1012,16 +1038,32 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
     const interval =
       billing_interval === undefined ? null : billing_interval === 'one_time' ? 'one_time' : 'month';
 
+    const resolvedPrice1 =
+      price_1mo !== undefined
+        ? Number(price_1mo)
+        : price !== undefined
+          ? Number(price)
+          : null;
+
     await db.query(
       `UPDATE packages SET
          name = COALESCE(?, name),
          lead_limit = COALESCE(?, lead_limit),
          email_limit = COALESCE(?, email_limit),
+         whatsapp_limit = COALESCE(?, whatsapp_limit),
+         crm_user_limit = COALESCE(?, crm_user_limit),
+         email_automation_limit = COALESCE(?, email_automation_limit),
          price = COALESCE(?, price),
+         price_1mo = COALESCE(?, price_1mo),
+         price_6mo = COALESCE(?, price_6mo),
+         price_12mo = COALESCE(?, price_12mo),
+         sort_order = COALESCE(?, sort_order),
          description = COALESCE(?, description),
          features = COALESCE(?, features),
          is_active = COALESCE(?, is_active),
          stripe_price_id = COALESCE(?, stripe_price_id),
+         stripe_price_id_6mo = COALESCE(?, stripe_price_id_6mo),
+         stripe_price_id_12mo = COALESCE(?, stripe_price_id_12mo),
          billing_interval = COALESCE(?, billing_interval),
          is_subscription = COALESCE(?, is_subscription)
        WHERE id = ?`,
@@ -1029,15 +1071,24 @@ router.put('/plans/:id', ...adminChain, async (req, res) => {
         name ?? null,
         lead_limit !== undefined ? Number(lead_limit) : null,
         email_limit !== undefined ? Number(email_limit) : null,
-        price !== undefined ? Number(price) : null,
+        whatsapp_limit !== undefined ? Number(whatsapp_limit) : null,
+        crm_user_limit !== undefined ? Number(crm_user_limit) : null,
+        email_automation_limit !== undefined ? Number(email_automation_limit) : null,
+        resolvedPrice1,
+        resolvedPrice1,
+        price_6mo !== undefined ? (price_6mo === '' || price_6mo === null ? null : Number(price_6mo)) : null,
+        price_12mo !== undefined ? (price_12mo === '' || price_12mo === null ? null : Number(price_12mo)) : null,
+        sort_order !== undefined ? Number(sort_order) : null,
         description ?? null,
         featuresJson,
         is_active === undefined ? null : is_active === false || is_active === 0 || is_active === '0' ? 0 : 1,
         stripe_price_id === undefined ? null : stripe_price_id,
+        stripe_price_id_6mo === undefined ? null : stripe_price_id_6mo,
+        stripe_price_id_12mo === undefined ? null : stripe_price_id_12mo,
         interval,
         subFlag,
-        req.params.id
-      ]
+        req.params.id,
+      ],
     );
     const [rows] = await db.query('SELECT * FROM packages WHERE id = ?', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Plan not found' });

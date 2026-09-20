@@ -115,6 +115,7 @@ export default function Billing() {
   const [invoicePdfError, setInvoicePdfError] = useState('');
   const [packages, setPackages] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('');
+  const [billingMonths, setBillingMonths] = useState(1);
   const [purchasing, setPurchasing] = useState(false);
   const [plansLoading, setPlansLoading] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -136,6 +137,13 @@ export default function Billing() {
     }
   };
 
+  const planPerMonth = (pkg, months = billingMonths) => {
+    const m = Number(months) || 1;
+    if (m === 12) return Number(pkg.price_12mo ?? pkg.price_6mo ?? pkg.price_1mo ?? pkg.price) || 0;
+    if (m === 6) return Number(pkg.price_6mo ?? pkg.price_1mo ?? pkg.price) || 0;
+    return Number(pkg.price_1mo ?? pkg.price) || 0;
+  };
+
   const loadPlans = async () => {
     try {
       const res = await fetch(`${API}/api/billing/packages`);
@@ -143,6 +151,10 @@ export default function Billing() {
       const list = Array.isArray(rows) ? rows : [];
       setPackages(list);
       const planParam = searchParams.get('plan');
+      const monthsParam = Number(searchParams.get('months'));
+      if ([1, 6, 12].includes(monthsParam)) {
+        setBillingMonths(monthsParam);
+      }
       if (planParam && list.some((p) => p.id === planParam)) {
         setSelectedPlan(planParam);
       } else if (list[0]) {
@@ -169,7 +181,7 @@ export default function Billing() {
       const res = await fetch(`${API}/api/billing/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ packageId: pkgId })
+        body: JSON.stringify({ packageId: pkgId, billingMonths })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Checkout failed');
@@ -713,10 +725,30 @@ export default function Billing() {
       {/* Monthly plans */}
       <section id="plans" className="mt-10 scroll-mt-24">
         <div className="mb-6 text-center sm:text-left">
-          <h3 className="font-headline-md text-xl font-bold text-primary">Monthly Plans</h3>
+          <h3 className="font-headline-md text-xl font-bold text-primary">Founding Launch Plans</h3>
           <p className="text-on-surface-variant text-sm mt-1 max-w-2xl">
-            1 lead unlock = 1 credit. Plans renew every month — credits refresh each billing cycle.
+            Monthly AI opportunity credits refresh every billing cycle. Choose commitment length for a lower monthly rate.
           </p>
+          <div className="mt-4 inline-flex rounded-xl border border-glass-stroke bg-surface-container-low/60 p-1 gap-1">
+            {[
+              { months: 1, label: '1 Month' },
+              { months: 6, label: '6 Months' },
+              { months: 12, label: '12 Months' },
+            ].map((opt) => (
+              <button
+                key={opt.months}
+                type="button"
+                onClick={() => setBillingMonths(opt.months)}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  billingMonths === opt.months
+                    ? 'bg-primary text-on-primary'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           {checkoutError && (
             <p className="mt-3 inline-flex items-center gap-1.5 text-amber-300 text-xs font-semibold bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 max-w-2xl">
               <span className="material-symbols-outlined text-sm">error</span>
@@ -732,6 +764,8 @@ export default function Billing() {
             {packages.map((pkg, idx) => {
               const features = parseFeatures(pkg.features);
               const isMonthly = Number(pkg.is_subscription) === 1 || pkg.billing_interval === 'month';
+              const perMonth = planPerMonth(pkg);
+              const total = Math.round(perMonth * billingMonths * 100) / 100;
               return (
                 <div
                   key={pkg.id}
@@ -747,19 +781,25 @@ export default function Billing() {
                   )}
                   <div className="mb-6">
                     <p className="font-label-mono text-[9px] text-primary uppercase tracking-widest mb-1">
-                      {isMonthly ? 'Monthly plan' : 'Credit pack'}
+                      {isMonthly ? `${billingMonths}-month plan` : 'Credit pack'}
                     </p>
                     <h4 className="font-headline-md text-xl font-bold text-on-surface">{pkg.name}</h4>
-                    <div className="mt-4 flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-on-surface">${Number(pkg.price).toLocaleString()}</span>
+                    <div className="mt-4 flex items-baseline gap-1 flex-wrap">
+                      <span className="text-3xl font-bold text-on-surface">${perMonth.toLocaleString()}</span>
                       <span className="text-xs text-on-surface-variant">
-                        {isMonthly ? '/ month' : ''} · {pkg.lead_limit} leads
-                        {Number(pkg.email_limit) > 0
-                          ? ` · ${Number(pkg.email_limit).toLocaleString()} emails`
-                          : ''}
-                        {isMonthly ? '/month' : ''}
+                        / month
+                        {billingMonths > 1 ? ` · $${total.toLocaleString()} billed` : ''}
                       </span>
                     </div>
+                    <p className="text-xs text-on-surface-variant mt-2">
+                      {pkg.lead_limit} opportunities/mo
+                      {Number(pkg.email_limit) > 0
+                        ? ` · ${Number(pkg.email_limit).toLocaleString()} emails/mo`
+                        : ''}
+                      {Number(pkg.whatsapp_limit) > 0
+                        ? ` · ${Number(pkg.whatsapp_limit)} WhatsApp`
+                        : ''}
+                    </p>
                     {pkg.description && <p className="text-xs text-on-surface-variant mt-3">{pkg.description}</p>}
                   </div>
                   <ul className="space-y-2 mb-8 flex-grow text-xs">
@@ -782,7 +822,7 @@ export default function Billing() {
                     {purchasing && selectedPlan === pkg.id
                       ? 'Processing…'
                       : isMonthly
-                        ? `Subscribe to ${pkg.name}`
+                        ? `Subscribe — ${billingMonths} mo`
                         : `Buy ${pkg.name}`}
                   </button>
                 </div>

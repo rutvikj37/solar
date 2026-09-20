@@ -10,7 +10,7 @@ import {
 } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { getEmailQuota } from "../services/email/emailQuota.js";
-import { checkLeadCreditAccess } from "./billing.js";
+import { checkLeadCreditAccess, maybeRefreshMonthlyCredits } from "./billing.js";
 import { getFirebaseAdmin, isFirebaseAdminConfigured } from "../firebase.js";
 import {
   getFirebaseWebConfig,
@@ -500,6 +500,7 @@ router.get(
       'SELECT package_id, remaining_leads, purchased_leads FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
       [user.id],
     );
+    await maybeRefreshMonthlyCredits(user.id).catch(() => null);
     const creditCheck = await checkLeadCreditAccess(user.id);
     const credits = creditCheck.credits ?? 0;
     const purchasedLeads = packages.length > 0 ? packages[0].purchased_leads : 0;

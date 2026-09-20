@@ -11,21 +11,83 @@ const TRUST_BADGES = [
   { icon: CreditCard, text: 'Card or invoice' }
 ];
 
+const DURATION_OPTIONS = [
+  { months: 1, label: '1 Month' },
+  { months: 6, label: '6 Months' },
+  { months: 12, label: '12 Months' },
+];
+
 const FALLBACK_PLANS = [
   {
-    id: 'Growth',
-    badge: 'Starter',
-    name: 'Growth',
-    price: '$299',
-    period: '',
-    description: 'Qualified solar lead credits for growing teams.',
+    id: 'Scout',
+    name: 'Scout',
+    description: 'Find opportunities',
+    lead_limit: 50,
+    price: 299,
+    price_1mo: 299,
+    price_6mo: 249,
+    price_12mo: 199,
     features: [
-      { text: 'Lead unlocks', included: true },
-      { text: 'AI roof analysis', included: true },
-      { text: 'CSV export', included: true }
+      '50 AI-identified opportunities / month',
+      'Property + roof intelligence Data',
+      'Opportunity score',
+      'Homeowner contact details',
+      'CRM — 2 users',
+      '2 email automations',
+      '25 WhatsApp messages',
+      'Lead & follow-up tracking',
+      'CSV export',
     ],
-    featured: false
-  }
+    is_subscription: 1,
+  },
+  {
+    id: 'Pioneer',
+    name: 'Pioneer',
+    description: 'Find + automate + marketplace',
+    lead_limit: 150,
+    price: 399,
+    price_1mo: 399,
+    price_6mo: 349,
+    price_12mo: 299,
+    features: [
+      '150 AI-identified opportunities / month',
+      'Advanced property + roof intelligence',
+      'Advanced scoring & filters',
+      'Verified homeowner contact data',
+      'CRM — 5 users',
+      '5 email automations',
+      '50 WhatsApp messages',
+      'Proposal maker',
+      'Marketplace access',
+      'Lead & follow-up tracking',
+      'CSV export',
+    ],
+    is_subscription: 1,
+  },
+  {
+    id: 'MissionControl',
+    name: 'Mission Control',
+    description: 'Scale + priority marketplace',
+    lead_limit: 400,
+    price: 499,
+    price_1mo: 499,
+    price_6mo: 449,
+    price_12mo: 399,
+    features: [
+      '400 AI-identified opportunities / month',
+      '7 days territory intelligence lock',
+      'Advanced scoring & analytics',
+      'Verified homeowner contact data',
+      'CRM — 10 users',
+      '10 email automations',
+      '100 WhatsApp messages',
+      'Proposal maker',
+      'Appointment setter',
+      'Marketplace access',
+      'Early access to new marketplace leads',
+    ],
+    is_subscription: 1,
+  },
 ];
 
 function parseFeatures(raw) {
@@ -40,24 +102,27 @@ function parseFeatures(raw) {
   return [];
 }
 
-function mapPackage(pkg, index, total) {
+function perMonthPrice(pkg, months) {
+  const m = Number(months) || 1;
+  if (m === 12) return Number(pkg.price_12mo ?? pkg.price_6mo ?? pkg.price_1mo ?? pkg.price) || 0;
+  if (m === 6) return Number(pkg.price_6mo ?? pkg.price_1mo ?? pkg.price) || 0;
+  return Number(pkg.price_1mo ?? pkg.price) || 0;
+}
+
+function mapPackage(pkg, index, total, billingMonths) {
   const features = parseFeatures(pkg.features);
-  if (pkg.lead_limit != null) {
-    features.unshift({ text: `${pkg.lead_limit} lead credits`, included: true });
-  }
-  if (pkg.email_limit != null && Number(pkg.email_limit) > 0) {
-    features.unshift({
-      text: `${Number(pkg.email_limit).toLocaleString()} emails/month (leads, drip, meetings)`,
-      included: true,
-    });
-  }
-  const priceNum = Number(pkg.price);
+  const priceNum = perMonthPrice(pkg, billingMonths);
+  const totalDue = Math.round(priceNum * billingMonths * 100) / 100;
   return {
     id: pkg.id,
-    badge: index === 1 || (total === 1 && index === 0) ? 'MOST POPULAR' : pkg.description?.slice(0, 24) || 'Plan',
+    badge: index === 1 || (total === 1 && index === 0) ? 'MOST POPULAR' : pkg.description?.slice(0, 28) || 'Plan',
     name: pkg.name || pkg.id,
     price: Number.isFinite(priceNum) ? `$${priceNum.toLocaleString('en-US')}` : String(pkg.price || ''),
-    period: Number(pkg.is_subscription) ? '/month' : '',
+    period: '/month',
+    totalNote:
+      billingMonths > 1
+        ? `$${totalDue.toLocaleString('en-US')} for ${billingMonths} months`
+        : null,
     description: pkg.description || 'Solar lead package',
     features: features.length
       ? features
@@ -66,12 +131,14 @@ function mapPackage(pkg, index, total) {
           { text: 'Owner contact when available', included: true }
         ],
     featured: index === Math.min(1, Math.max(0, total - 1)),
-    cta: 'Start with 5 free credits'
+    cta: 'Get started'
   };
 }
 
-function PricingCard({ plan, index, loggedIn }) {
-  const to = loggedIn ? '/billing#plans' : `/register?plan=${encodeURIComponent(plan.id)}`;
+function PricingCard({ plan, index, loggedIn, billingMonths }) {
+  const to = loggedIn
+    ? `/billing#plans`
+    : `/register?plan=${encodeURIComponent(plan.id)}&months=${billingMonths}`;
   return (
     <motion.div
       initial={{ opacity: 0, y: 40 }}
@@ -98,6 +165,9 @@ function PricingCard({ plan, index, loggedIn }) {
         <span className="font-display text-4xl font-semibold text-primary-glow">{plan.price}</span>
         {plan.period ? <span className="text-sm text-muted-foreground">{plan.period}</span> : null}
       </div>
+      {plan.totalNote ? (
+        <p className="mt-1 text-xs text-muted-foreground">{plan.totalNote}</p>
+      ) : null}
       <ul className="mt-8 flex-1 space-y-3 text-sm">
         {plan.features.map((f) => (
           <li key={f.text} className="flex items-start gap-2.5">
@@ -127,7 +197,8 @@ function PricingCard({ plan, index, loggedIn }) {
 }
 
 export function Pricing() {
-  const [plans, setPlans] = useState(FALLBACK_PLANS);
+  const [rawPackages, setRawPackages] = useState(FALLBACK_PLANS);
+  const [billingMonths, setBillingMonths] = useState(1);
   const [loading, setLoading] = useState(true);
   const loggedIn = useMemo(() => !!localStorage.getItem('solar_token'), []);
   const navigate = useNavigate();
@@ -138,13 +209,16 @@ export function Pricing() {
       .then((r) => r.json())
       .then((rows) => {
         const list = Array.isArray(rows) ? rows.filter((p) => Number(p.is_active) !== 0) : [];
-        if (list.length) {
-          setPlans(list.map((p, i) => mapPackage(p, i, list.length)));
-        }
+        if (list.length) setRawPackages(list);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const plans = useMemo(
+    () => rawPackages.map((p, i) => mapPackage(p, i, rawPackages.length, billingMonths)),
+    [rawPackages, billingMonths],
+  );
 
   return (
     <section id="pricing" className="relative overflow-hidden py-24 sm:py-32">
@@ -171,20 +245,44 @@ export function Pricing() {
           transition={{ duration: 0.8 }}
           className="mx-auto max-w-2xl text-center"
         >
-          <p className="font-mono text-[11px] tracking-[0.3em] text-primary-glow uppercase">Pricing</p>
+          <p className="font-mono text-[11px] tracking-[0.3em] text-primary-glow uppercase">
+            Founding Launch Pricing
+          </p>
           <h2 className="mt-4 text-[2rem] font-semibold text-balance sm:text-5xl lg:text-6xl">
-            <span className="text-gradient">Simple Pricing. Smarter Growth.</span>
+            <span className="text-gradient">Scout. Pioneer. Mission Control.</span>
           </h2>
           <p className="mt-5 text-base leading-relaxed text-muted-foreground">
             {loading
               ? 'Loading live packages…'
-              : 'Start free. Upgrade when you are ready to scale. Plans sync from your live billing catalog.'}
+              : 'Monthly AI opportunities with commitment discounts. Plans sync live from admin.'}
           </p>
+          <div className="mt-8 inline-flex rounded-full border border-glass-border bg-glass p-1 gap-1">
+            {DURATION_OPTIONS.map((opt) => (
+              <button
+                key={opt.months}
+                type="button"
+                onClick={() => setBillingMonths(opt.months)}
+                className={`rounded-full px-4 py-2 text-xs font-semibold transition-colors sm:px-5 ${
+                  billingMonths === opt.months
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </motion.div>
 
         <div className="mt-12 grid gap-6 sm:mt-16 lg:grid-cols-3 lg:items-center">
           {plans.map((plan, i) => (
-            <PricingCard key={plan.id} plan={plan} index={i} loggedIn={loggedIn} />
+            <PricingCard
+              key={plan.id}
+              plan={plan}
+              index={i}
+              loggedIn={loggedIn}
+              billingMonths={billingMonths}
+            />
           ))}
         </div>
 
