@@ -15,6 +15,7 @@ import {
 } from '../../lib/emailIntegrations.js';
 import { fetchMe, isAdminRole, peekAuthSessionCache, getToken } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import PlanUpgradeGate from '../../components/PlanUpgradeGate.jsx';
 import { downloadLeadSharePdf, shareLeadToWhatsApp } from '../../utils/leadSharePdf.js';
 import {
   STATUS_OPTIONS,
@@ -167,7 +168,7 @@ function LeadMapBlock({
 export default function LeadDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user: authUser } = useAuth();
+  const { user: authUser, can, entitlements } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -1727,6 +1728,14 @@ export default function LeadDetails() {
         )}
 
         {activeTab === 'appointments' && (
+          !can('appointments') ? (
+            <PlanUpgradeGate
+              title="Appointments require Mission Control"
+              message={`Upgrade from ${entitlements?.packageName || 'your current plan'} to schedule appointments.`}
+              feature="appointments"
+              packageName={entitlements?.packageName}
+            />
+          ) : (
           <div className="space-y-4">
             <Card title="Upcoming & past appointments">
               {leadAppointments.length === 0 ? (
@@ -1843,9 +1852,18 @@ export default function LeadDetails() {
               </div>
             </Card>
           </div>
+          )
         )}
 
         {activeTab === 'proposal' && (
+          !can('proposals') ? (
+            <PlanUpgradeGate
+              title="Proposal maker requires Pioneer or Mission Control"
+              message={`Upgrade from ${entitlements?.packageName || 'your current plan'} to create and send solar proposals.`}
+              feature="proposals"
+              packageName={entitlements?.packageName}
+            />
+          ) : (
           <LeadProposalPanel
             lead={lead}
             leadId={id}
@@ -1857,6 +1875,7 @@ export default function LeadDetails() {
             onOpenPreview={() => setShowProposalModal(true)}
             onRefresh={() => load()}
           />
+          )
         )}
 
         {activeTab === 'activity' && (

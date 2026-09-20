@@ -2,6 +2,7 @@ import express from 'express';
 import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { assertCrmSeatAvailable, getUserEntitlements } from '../services/planEntitlements.js';
 
 const router = express.Router();
 
@@ -15,7 +16,15 @@ router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
      ORDER BY tm.created_at DESC`,
     [req.user.id]
   );
-  res.json(members);
+  const entitlements = await getUserEntitlements(req.user.id, req.user.role);
+  res.json({
+    members,
+    entitlements: {
+      crmUserLimit: entitlements.limits.crmUserLimit,
+      crmSeats: entitlements.usage.crmSeats,
+      packageId: entitlements.packageId,
+    },
+  });
 }));
 
 // Invite team member
@@ -24,6 +33,12 @@ router.post('/invite', authenticateToken, asyncHandler(async (req, res) => {
   if (!memberEmail) return res.status(400).json({ error: 'memberEmail is required' });
   if (!['manager', 'canvasser', 'sales_rep'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
+  }
+
+  try {
+    await assertCrmSeatAvailable(req.user.id, req.user.role);
+  } catch (err) {
+    return res.status(err.status || 403).json(err.payload || { error: err.message });
   }
 
   const emailClean = memberEmail.trim().toLowerCase();

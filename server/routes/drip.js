@@ -11,6 +11,7 @@ import {
   computeInitialNextRun,
 } from '../services/drip/dripEngine.js';
 import { DEFAULT_DRIP_STEPS } from '../services/drip/dripTemplates.js';
+import { assertDripCampaignAvailable } from '../services/planEntitlements.js';
 
 const router = express.Router();
 
@@ -124,6 +125,12 @@ router.post('/campaigns', authenticateToken, asyncHandler(async (req, res) => {
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Campaign name is required' });
+
+  try {
+    await assertDripCampaignAvailable(req.user.id, req.user.role);
+  } catch (err) {
+    return res.status(err.status || 403).json(err.payload || { error: err.message });
+  }
 
   const [cRes] = await db.query(
     `INSERT INTO drip_campaigns

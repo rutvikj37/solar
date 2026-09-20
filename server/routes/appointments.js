@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { logActivity } from './crm.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
 import { sendEmail } from '../services/outreachDelivery.js';
+import { requirePlanFeature } from '../services/planEntitlements.js';
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ async function assertLeadOwnership(leadId, userId, role) {
 }
 
 // List appointments (optional ?leadId=)
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePlanFeature('appointments'), async (req, res) => {
   try {
     const leadId = req.query.leadId ? Number(req.query.leadId) : null;
     const params = [req.user.id];
@@ -35,7 +36,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Create appointment
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requirePlanFeature('appointments'), async (req, res) => {
   const { leadId, title, scheduledAt, durationMinutes = 60, location, notes } = req.body;
   if (!title || !scheduledAt) {
     return res.status(400).json({ error: 'title and scheduledAt required' });
@@ -104,7 +105,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // Update appointment
-router.patch('/:id', authenticateToken, async (req, res) => {
+router.patch('/:id', authenticateToken, requirePlanFeature('appointments'), async (req, res) => {
   const { id } = req.params;
   const { title, scheduledAt, durationMinutes, location, notes, status } = req.body;
 
@@ -145,7 +146,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
 });
 
 // Delete / cancel appointment
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requirePlanFeature('appointments'), async (req, res) => {
   try {
     const [result] = await db.query('DELETE FROM appointments WHERE id = ? AND user_id = ?', [
       req.params.id,

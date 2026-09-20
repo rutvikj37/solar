@@ -12,7 +12,7 @@ export default function Sidebar({
   collapsed = false,
   showBanner,
 }) {
-  const { user, refreshUserData } = useAuth();
+  const { user, refreshUserData, can, entitlements } = useAuth();
   const userRole = user?.role || '';
   const leadsCount = null;
   const isAdmin = isAdminRole(userRole);
@@ -49,7 +49,13 @@ export default function Sidebar({
     {
       title: 'PIPELINE',
       items: [
-        { name: 'Marketplace', path: '/marketplace', icon: 'storefront' },
+        {
+          name: 'Marketplace',
+          path: '/marketplace',
+          icon: 'storefront',
+          locked: !can('marketplace'),
+          lockHint: 'Pioneer+',
+        },
         { name: 'Leads CRM', path: '/my-leads', icon: 'assignment' },
         { name: 'Reports', path: '/reports', icon: 'analytics' },
         {
@@ -58,8 +64,21 @@ export default function Sidebar({
           icon: 'alternate_email',
           hint: 'Connect your email',
         },
-        { name: 'Drip Workflows', path: '/drip', icon: 'campaign' },
-        { name: 'Appointments', path: '/appointments', icon: 'calendar_month' },
+        {
+          name: 'Drip Workflows',
+          path: '/drip',
+          icon: 'campaign',
+          hint: entitlements?.limits?.emailAutomationLimit
+            ? `Up to ${entitlements.limits.emailAutomationLimit} automations`
+            : undefined,
+        },
+        {
+          name: 'Appointments',
+          path: '/appointments',
+          icon: 'calendar_month',
+          locked: !can('appointments'),
+          lockHint: 'Mission Control',
+        },
       ],
     },
     ...(isAdmin
@@ -95,10 +114,14 @@ export default function Sidebar({
       items: [
         { name: 'Billing', path: '/billing', icon: 'receipt_long' },
         { name: 'Support', path: '/support', icon: 'support_agent' },
-        ...(isAdmin
-          ? []
-          : []),
-        { name: 'Export CSV', action: 'export', icon: 'download' },
+        ...(isAdmin ? [] : []),
+        {
+          name: 'Export CSV',
+          action: 'export',
+          icon: 'download',
+          locked: !can('csvExport'),
+          lockHint: 'Scout+',
+        },
       ],
     },
   ];
@@ -106,6 +129,10 @@ export default function Sidebar({
   const handleAction = (actionName) => {
     handleMobileClose();
     if (actionName === 'export') {
+      if (!can('csvExport')) {
+        window.location.href = '/billing#plans';
+        return;
+      }
       if (typeof window.exportCSV === 'function') {
         window.exportCSV();
       } else {
@@ -171,8 +198,9 @@ export default function Sidebar({
               </h4>
               <div className="space-y-0.5">
                 {category.items.map((item) => {
-                  const tooltip =
-                    collapsed && item.hint
+                  const tooltip = item.locked
+                    ? `${item.name} — ${item.lockHint || 'Upgrade required'}`
+                    : collapsed && item.hint
                       ? `${item.name} — ${item.hint}`
                       : collapsed
                         ? item.name
@@ -182,7 +210,7 @@ export default function Sidebar({
                     return (
                       <NavLink
                         key={item.name}
-                        to={item.path}
+                        to={item.locked ? '/billing#plans' : item.path}
                         title={tooltip}
                         onClick={handleMobileClose}
                         className={({ isActive }) =>
@@ -191,15 +219,17 @@ export default function Sidebar({
                               ? 'lg:justify-center lg:px-0 lg:py-2.5 lg:mx-auto lg:w-11'
                               : 'gap-3 px-4 py-2'
                           } ${
-                            isActive
-                              ? 'text-primary bg-primary/10'
-                              : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
+                            item.locked
+                              ? 'text-on-surface-variant/50 hover:text-on-surface-variant hover:bg-white/5'
+                              : isActive
+                                ? 'text-primary bg-primary/10'
+                                : 'text-on-surface-variant hover:text-on-surface hover:bg-white/5'
                           }`
                         }
                       >
                         {({ isActive }) => (
                           <>
-                            {isActive && (
+                            {isActive && !item.locked && (
                               <div
                                 className={`absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-r-md ${
                                   collapsed ? 'lg:left-0.5' : ''
@@ -208,10 +238,14 @@ export default function Sidebar({
                             )}
                             <span
                               className={`material-symbols-outlined text-base shrink-0 ${
-                                isActive ? 'text-primary' : 'text-on-surface-variant group-hover:text-on-surface'
+                                item.locked
+                                  ? 'text-on-surface-variant/40'
+                                  : isActive
+                                    ? 'text-primary'
+                                    : 'text-on-surface-variant group-hover:text-on-surface'
                               }`}
                             >
-                              {item.icon}
+                              {item.locked ? 'lock' : item.icon}
                             </span>
                             <span
                               className={`flex-1 min-w-0 text-left transition-opacity duration-200 ${
@@ -219,9 +253,9 @@ export default function Sidebar({
                               }`}
                             >
                               <span className="block truncate">{item.name}</span>
-                              {item.hint && (
+                              {(item.hint || item.lockHint) && (
                                 <span className="block text-[9px] font-medium text-slate-500 truncate mt-0.5">
-                                  {item.hint}
+                                  {item.locked ? item.lockHint : item.hint}
                                 </span>
                               )}
                             </span>
@@ -261,14 +295,18 @@ export default function Sidebar({
                       type="button"
                       title={tooltip}
                       onClick={() => handleAction(item.action)}
-                      className={`w-full flex items-center rounded-lg text-xs font-semibold text-slate-300 hover:text-on-surface hover:bg-white/5 transition-all active:scale-[0.98] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
+                      className={`w-full flex items-center rounded-lg text-xs font-semibold transition-all active:scale-[0.98] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
+                        item.locked
+                          ? 'text-on-surface-variant/50 hover:bg-white/5'
+                          : 'text-slate-300 hover:text-on-surface hover:bg-white/5'
+                      } ${
                         collapsed
                           ? 'lg:justify-center lg:px-0 lg:py-2.5 lg:mx-auto lg:w-11'
                           : 'gap-3 px-4 py-2'
                       }`}
                     >
                       <span className="material-symbols-outlined text-base text-slate-400 shrink-0">
-                        {item.icon}
+                        {item.locked ? 'lock' : item.icon}
                       </span>
                       <span className={collapsed ? 'lg:hidden' : ''}>{item.name}</span>
                     </button>

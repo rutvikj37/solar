@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
+import { useAuth } from '../../context/AuthContext.jsx';
+import PlanUpgradeGate from '../../components/PlanUpgradeGate.jsx';
 
 const API = API_BASE;
 
@@ -15,6 +17,7 @@ const EMPTY_FORM = {
 };
 
 export default function Appointments() {
+  const { can, entitlements } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +126,19 @@ export default function Appointments() {
     }
     await load();
   };
+
+  if (!can('appointments')) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <PlanUpgradeGate
+          title="Appointments require Mission Control"
+          message={`Your current plan (${entitlements?.packageName || 'Free'}) does not include the Appointment setter. Upgrade to Mission Control to schedule site surveys and follow-ups.`}
+          feature="appointments"
+          packageName={entitlements?.packageName}
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

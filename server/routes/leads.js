@@ -4,6 +4,12 @@ import { authenticateToken, isAdminRole } from '../middleware/auth.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkLeadCreditAccess } from './billing.js';
+import {
+  requirePlanFeature,
+  getUserEntitlements,
+  getTerritoryLock,
+  claimTerritoryLock,
+} from '../services/planEntitlements.js';
 import { trackedFetch } from '../services/apiUsage.js';
 import { cacheRentcastRecords, getCachedRentcastRecord, normalizeAddress } from '../services/rentcastCache.js';
 import { getZipFromCoords } from '../services/leadService.js';
@@ -336,7 +342,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Export User Leads as CSV
-router.get('/export-csv', authenticateToken, asyncHandler(async (req, res) => {
+router.get('/export-csv', authenticateToken, requirePlanFeature('csvExport'), asyncHandler(async (req, res) => {
   const [leads] = await db.query('SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
   
   const headers = [
@@ -408,6 +414,28 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   if (!zip) return res.status(400).json({ error: 'ZIP code required or coordinates not resolvable' });
+
+  const entitlements = await getUserEntitlements(req.user.id, req.user.role);
+  if (!entitlements.unlimited && !entitlements.features.advancedFilters) {
+    if (skipPaneled || singleFamily || minSavings || intentLevel) {
+      return res.status(403).json({
+        error: 'Advanced map filters require Pioneer or Mission Control. Upgrade your plan to use them.',
+        code: 'PLAN_FEATURE_REQUIRED',
+        feature: 'advancedFilters',
+        upgradePath: '/billing#plans',
+      });
+    }
+  }
+
+  const lock = await getTerritoryLock(zip);
+  if (lock.locked && Number(lock.ownerUserId) !== Number(req.user.id) && !entitlements.unlimited) {
+    return res.status(403).json({
+      error: `ZIP ${zip} is under territory intelligence lock until ${new Date(lock.lockedUntil).toLocaleDateString()}. Mission Control subscribers can lock territories for 7 days.`,
+      code: 'TERRITORY_LOCKED',
+      lockedUntil: lock.lockedUntil,
+      upgradePath: '/billing#plans',
+    });
+  }
 
   const requestedQuota = Math.min(
     50,
@@ -855,6 +883,14 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   const [refreshedPackages] = await db.query('SELECT remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [req.user.id]);
   const currentCredits = adminBypass ? 9999 : (refreshedPackages[0]?.remaining_leads ?? 0);
 
+  if (
+    !adminBypass &&
+    entitlements.limits.territoryLockDays > 0 &&
+    summary.leadsCount > 0
+  ) {
+    await claimTerritoryLock(req.user.id, zip, entitlements.limits.territoryLockDays);
+  }
+
   summary.phase = 'completed';
   res.status(200).json({
     message: `Bulk scan complete. Created ${summary.leadsCount} leads (${summary.withContact} with contact details).`,
@@ -863,7 +899,11 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     createdLeadIds: [...new Set(createdLeadIds)],
     leads: uniqueLeadsPreview,
     summary,
-    adminBypass
+    adminBypass,
+    territoryLockedDays:
+      entitlements.limits.territoryLockDays > 0 && summary.leadsCount > 0
+        ? entitlements.limits.territoryLockDays
+        : 0,
   });
 }));
 

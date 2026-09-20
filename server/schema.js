@@ -1322,6 +1322,17 @@ export async function migrateSchema() {
   `);
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS territory_locks (
+      zip VARCHAR(20) NOT NULL PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      locked_until DATETIME NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_territory_locks_user (user_id),
+      INDEX idx_territory_locks_until (locked_until)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS email_send_log (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       user_id INT UNSIGNED NOT NULL,

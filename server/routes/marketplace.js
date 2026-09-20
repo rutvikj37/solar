@@ -2,6 +2,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import db from '../db.js';
 import { authenticateToken, attachUserSession } from '../middleware/auth.js';
+import { requirePlanFeature } from '../services/planEntitlements.js';
 import { createInquiry, formatInquiryResponse } from '../services/marketplace/qualifyLead.js';
 import { maskOpportunity, unlockOpportunity, computeBidStrength } from '../services/marketplace/mask.js';
 import { getWalletBalance, getLedger, ensureWallet } from '../services/marketplace/wallet.js';
@@ -103,7 +104,7 @@ const reportPdfLimiter = rateLimit({
   message: { error: 'Too many report downloads. Please try again later.' },
 });
 
-const auth = [authenticateToken];
+const auth = [authenticateToken, requirePlanFeature('marketplace')];
 
 function marketplaceRequireVerified() {
   const raw = String(process.env.MARKETPLACE_REQUIRE_VERIFIED || '').trim().toLowerCase();

@@ -8,6 +8,7 @@ export default function TeamWorkspacePanel() {
   const [memberEmail, setMemberEmail] = useState('');
   const [role, setRole] = useState('sales_rep');
   const [message, setMessage] = useState('');
+  const [seatInfo, setSeatInfo] = useState(null);
 
   const fetchMembers = async () => {
     try {
@@ -18,7 +19,11 @@ export default function TeamWorkspacePanel() {
       });
       if (res.ok) {
         const data = await res.json();
-        setMembers(data);
+        const list = Array.isArray(data) ? data : data.members || [];
+        setMembers(list);
+        if (!Array.isArray(data) && data.entitlements) {
+          setSeatInfo(data.entitlements);
+        }
       }
     } catch (err) {
       console.error('Fetch team error:', err);
@@ -77,11 +82,22 @@ export default function TeamWorkspacePanel() {
           <h3 className="font-bold text-white text-base">Company Sub-Accounts & Multi-Seat Workspaces</h3>
           <p className="text-on-surface-variant text-xs mt-0.5">
             Invite sales reps, canvassers, and managers to share your company's master lead credit pool.
+            {seatInfo ? (
+              <span className="block mt-1 text-primary/90 font-semibold">
+                Seats: {seatInfo.crmSeats || members.length + 1}
+                {seatInfo.crmUserLimit ? ` / ${seatInfo.crmUserLimit}` : ''}
+                {seatInfo.packageId ? ` · ${seatInfo.packageId}` : ''}
+              </span>
+            ) : null}
           </p>
         </div>
         <button
           onClick={() => setShowInviteModal(true)}
-          className="bg-primary text-on-primary font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-lg hover:brightness-110"
+          disabled={
+            seatInfo?.crmUserLimit != null &&
+            (seatInfo.crmSeats || members.length + 1) >= seatInfo.crmUserLimit
+          }
+          className="bg-primary text-on-primary font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-lg hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span className="material-symbols-outlined text-base">person_add</span>
           Invite Team Member

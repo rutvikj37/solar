@@ -5,6 +5,7 @@ import { API_BASE } from '../../config.js';
 import { isAdminRole } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useTheme } from '../../context/ThemeContext.jsx';
+import PlanUpgradeGate from '../../components/PlanUpgradeGate.jsx';
 import BiddingCountdown from '../../components/marketplace/BiddingCountdown.jsx';
 import {
   DISPUTE_TYPES,
@@ -31,9 +32,27 @@ function resetWalletCheckoutState(setWalletPaying, lockRef) {
 }
 
 export default function MarketplaceDashboard() {
-  const { user, unlimitedCredits } = useAuth();
+  const { user, unlimitedCredits, can, entitlements } = useAuth();
   const { theme } = useTheme();
   const isAdmin = isAdminRole(user?.role) || unlimitedCredits;
+
+  if (!can('marketplace')) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <PlanUpgradeGate
+          title="Marketplace requires Pioneer or Mission Control"
+          message={`Your current plan (${entitlements?.packageName || 'Free'}) does not include Marketplace bidding. Upgrade to Pioneer or Mission Control to access opportunities.`}
+          feature="marketplace"
+          packageName={entitlements?.packageName}
+        />
+      </div>
+    );
+  }
+
+  return <MarketplaceDashboardInner isAdmin={isAdmin} theme={theme} />;
+}
+
+function MarketplaceDashboardInner({ isAdmin, theme }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState('opportunities');
   const [loading, setLoading] = useState(false);

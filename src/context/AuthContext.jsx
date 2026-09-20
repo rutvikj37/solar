@@ -12,12 +12,41 @@ import {
 
 const AuthContext = createContext(null);
 
+const EMPTY_ENTITLEMENTS = {
+  packageId: 'Free',
+  packageName: 'Free',
+  unlimited: false,
+  features: {
+    marketplace: false,
+    proposals: false,
+    appointments: false,
+    csvExport: false,
+    advancedFilters: false,
+    dripAutomations: true,
+    territoryLock: false,
+    earlyMarketplace: false,
+  },
+  limits: {
+    leadLimit: 0,
+    emailLimit: 0,
+    whatsappLimit: 0,
+    crmUserLimit: 1,
+    emailAutomationLimit: 1,
+    territoryLockDays: 0,
+  },
+  usage: {
+    dripCampaigns: 0,
+    crmSeats: 1,
+  },
+};
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [credits, setCredits] = useState(0);
   const [activePackage, setActivePackage] = useState('Free');
   const [unlimitedCredits, setUnlimitedCredits] = useState(false);
   const [subscription, setSubscription] = useState(null);
+  const [entitlements, setEntitlements] = useState(EMPTY_ENTITLEMENTS);
   const [loading, setLoading] = useState(true);
 
   const resetSession = useCallback(() => {
@@ -26,6 +55,7 @@ export function AuthProvider({ children }) {
     setActivePackage('Free');
     setUnlimitedCredits(false);
     setSubscription(null);
+    setEntitlements(EMPTY_ENTITLEMENTS);
   }, []);
 
   const fetchUserData = useCallback(async () => {
@@ -48,6 +78,7 @@ export function AuthProvider({ children }) {
         setActivePackage(data.activePackage || 'Free');
         setUnlimitedCredits(Boolean(data.unlimitedCredits));
         setSubscription(data.subscription || null);
+        setEntitlements(data.entitlements || EMPTY_ENTITLEMENTS);
       } else {
         if (isAuthError(res.status) || res.status === 404) {
           clearToken();
@@ -93,12 +124,22 @@ export function AuthProvider({ children }) {
     logoutToLogin();
   };
 
+  const can = useCallback(
+    (feature) => {
+      if (unlimitedCredits || entitlements?.unlimited) return true;
+      return Boolean(entitlements?.features?.[feature]);
+    },
+    [entitlements, unlimitedCredits],
+  );
+
   const value = {
     user,
     credits,
     activePackage,
     unlimitedCredits,
     subscription,
+    entitlements,
+    can,
     loading,
     login,
     logout,

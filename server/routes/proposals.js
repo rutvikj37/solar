@@ -6,6 +6,7 @@ import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { maskLeadContactForPublic } from '../utils/leadAccess.js';
+import { requirePlanFeature } from '../services/planEntitlements.js';
 
 const router = express.Router();
 
@@ -221,7 +222,7 @@ function calculateSolarROI(params) {
 }
 
 // POST /api/proposals (Auth) - Create or update proposal configuration for a lead
-router.post('/', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandler(async (req, res) => {
   const userId = req.user.id;
     const {
       leadId,

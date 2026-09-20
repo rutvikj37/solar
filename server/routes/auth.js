@@ -10,6 +10,7 @@ import {
 } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { getEmailQuota } from "../services/email/emailQuota.js";
+import { getUserEntitlements } from "../services/planEntitlements.js";
 import { checkLeadCreditAccess, maybeRefreshMonthlyCredits } from "./billing.js";
 import { getFirebaseAdmin, isFirebaseAdminConfigured } from "../firebase.js";
 import {
@@ -525,6 +526,7 @@ router.get(
     const sub = subs[0] || null;
 
     const emailQuota = await getEmailQuota(user.id, user.role);
+    const entitlements = await getUserEntitlements(user.id, user.role);
 
     setAuthNoStore(res);
     res.json({
@@ -550,6 +552,7 @@ router.get(
         remaining: emailQuota.unlimited ? null : emailQuota.remaining,
         periodEnd: emailQuota.periodEnd,
       },
+      entitlements,
       activePackage: unlimitedCredits ? "Admin" : activePackage,
       unlimitedCredits,
       subscription: sub

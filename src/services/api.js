@@ -85,7 +85,11 @@ export const apiService = {
   getLeadDripEnrollments: (leadId) => apiRequest(`/api/drip/leads/${leadId}/enrollments`),
 
   // Team & Analytics
-  getTeamMembers: () => apiRequest('/api/team/members'),
+  getTeamMembers: async () => {
+    const data = await apiRequest('/api/team/members');
+    if (Array.isArray(data)) return data;
+    return data?.members || [];
+  },
   inviteTeamMember: (memberEmail, role) => apiRequest('/api/team/invite', { method: 'POST', body: JSON.stringify({ memberEmail, role }) }),
   revokeTeamMember: (id) => apiRequest(`/api/team/members/${id}`, { method: 'DELETE' }),
   getTerritoryAnalytics: () => apiRequest('/api/team/territory-analytics')
