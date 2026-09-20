@@ -5,8 +5,18 @@ import { logger } from '../utils/logger.js';
 import { BRAND_DISPLAY } from '../config/brand.js';
 import { resolveFrontendBaseUrl } from '../utils/frontendUrl.js';
 
+/** Never use HTTP 502 for app-level email failures — browsers/proxies label it Bad Gateway. */
+const EMAIL_FAIL_STATUS = 503;
+
 function frontendBase() {
-  return resolveFrontendBaseUrl();
+  try {
+    return resolveFrontendBaseUrl();
+  } catch (err) {
+    logger.error('resolveFrontendBaseUrl failed; using brand fallback', {
+      message: err?.message,
+    });
+    return 'https://spacetoroof.com';
+  }
 }
 
 /** Expiry as UTC MySQL DATETIME string (compared with UTC_TIMESTAMP()). */
@@ -24,6 +34,20 @@ function maskEmail(email) {
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function wrapEmailSendError(err, fallbackMessage) {
+  const notConfigured =
+    err?.code === 'EMAIL_NOT_CONFIGURED' || err?.code === 'SES_NOT_CONFIGURED';
+  const wrapped = new Error(
+    notConfigured
+      ? err.message ||
+        'Email delivery is not configured. Set Amazon SES or RESEND_API_KEY / SENDGRID_API_KEY.'
+      : fallbackMessage,
+  );
+  wrapped.code = notConfigured ? 'EMAIL_NOT_CONFIGURED' : err?.code || 'EMAIL_SEND_FAILED';
+  wrapped.status = EMAIL_FAIL_STATUS;
+  return wrapped;
 }
 
 export async function issueEmailVerification(userId, email, name) {
@@ -60,14 +84,10 @@ export async function issueEmailVerification(userId, email, name) {
       code: err.code || null,
       message: err.message,
     });
-    const wrapped = new Error(
-      err.code === 'EMAIL_NOT_CONFIGURED'
-        ? err.message
-        : 'Unable to send verification email. Please try again later or contact support.',
+    throw wrapEmailSendError(
+      err,
+      'Unable to send verification email. Please try again later or contact support.',
     );
-    wrapped.code = err.code || 'EMAIL_SEND_FAILED';
-    wrapped.status = err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 502;
-    throw wrapped;
   }
 }
 
@@ -90,54 +110,87 @@ export async function issuePasswordReset(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) return { ok: true, sent: false };
 
-  const [users] = await db.query(
-    'SELECT id, name, email FROM users WHERE LOWER(email) = ? LIMIT 1',
-    [normalized],
-  );
-  if (!users.length) return { ok: true, sent: false };
-
-  const user = users[0];
-  const toAddress = user.email || normalized;
-  const token = crypto.randomBytes(32).toString('hex');
-  const expires = tokenExpiryUtc(2);
-  await db.query(
-    `UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?`,
-    [token, expires, user.id],
-  );
-  const link = `${frontendBase()}/reset-password?token=${encodeURIComponent(token)}`;
-  const body = `Hi ${user.name || 'there'},\n\nReset your ${BRAND_DISPLAY} password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
+  let userIdForCleanup = null;
   try {
-    const result = await sendPlatformEmail(toAddress, `Reset your ${BRAND_DISPLAY} password`, body);
-    if (result.simulated) {
-      logger.info('Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)', {
+    const [users] = await db.query(
+      'SELECT id, name, email FROM users WHERE LOWER(email) = ? LIMIT 1',
+      [normalized],
+    );
+    if (!users.length) return { ok: true, sent: false };
+
+    const user = users[0];
+    userIdForCleanup = user.id;
+    const toAddress = user.email || normalized;
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = tokenExpiryUtc(2);
+    await db.query(
+      `UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?`,
+      [token, expires, user.id],
+    );
+    const link = `${frontendBase()}/reset-password?token=${encodeURIComponent(token)}`;
+    const body = `Hi ${user.name || 'there'},\n\nReset your ${BRAND_DISPLAY} password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
+    try {
+      const result = await sendPlatformEmail(
+        toAddress,
+        `Reset your ${BRAND_DISPLAY} password`,
+        body,
+      );
+      if (result.simulated) {
+        logger.info(
+          'Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)',
+          {
+            userId: user.id,
+            email: maskEmail(toAddress),
+            link,
+          },
+        );
+      }
+      return { ok: true, sent: true, simulated: Boolean(result.simulated) };
+    } catch (err) {
+      try {
+        await db.query(
+          `UPDATE users SET password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?`,
+          [user.id],
+        );
+      } catch {
+        /* ignore cleanup */
+      }
+      userIdForCleanup = null;
+      logger.error('Password reset send failed', {
         userId: user.id,
         email: maskEmail(toAddress),
-        link,
+        code: err.code || null,
+        message: err.message,
       });
-    }
-    return { ok: true, sent: true, simulated: Boolean(result.simulated) };
-  } catch (err) {
-    try {
-      await db.query(
-        `UPDATE users SET password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?`,
-        [user.id],
+      throw wrapEmailSendError(
+        err,
+        'Unable to send password reset email. Please try again later.',
       );
-    } catch {
-      /* ignore cleanup */
     }
-    logger.error('Password reset send failed', {
-      userId: user.id,
-      email: maskEmail(toAddress),
-      code: err.code || null,
-      message: err.message,
+  } catch (err) {
+    if (err?.status === EMAIL_FAIL_STATUS || err?.code === 'EMAIL_NOT_CONFIGURED' || err?.code === 'EMAIL_SEND_FAILED') {
+      throw err;
+    }
+    if (userIdForCleanup) {
+      try {
+        await db.query(
+          `UPDATE users SET password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?`,
+          [userIdForCleanup],
+        );
+      } catch {
+        /* ignore cleanup */
+      }
+    }
+    logger.error('Password reset request failed', {
+      email: maskEmail(normalized),
+      code: err?.code || null,
+      message: err?.message,
     });
     const wrapped = new Error(
-      err.code === 'EMAIL_NOT_CONFIGURED'
-        ? err.message
-        : 'Unable to send password reset email. Please try again later.',
+      'Unable to process password reset request. Please try again later.',
     );
-    wrapped.code = err.code || 'EMAIL_SEND_FAILED';
-    wrapped.status = err.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 502;
+    wrapped.code = 'PASSWORD_RESET_FAILED';
+    wrapped.status = EMAIL_FAIL_STATUS;
     throw wrapped;
   }
 }

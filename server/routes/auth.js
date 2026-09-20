@@ -132,7 +132,7 @@ router.post(
       } catch {
         /* ignore cleanup errors */
       }
-      return res.status(err.status || 503).json({
+      return res.status(err.status === 502 ? 503 : err.status || 503).json({
         error: err.message || "Unable to send verification email",
         code: err.code || "EMAIL_SEND_FAILED",
       });
@@ -219,7 +219,7 @@ router.post(
     try {
       await issueEmailVerification(users[0].id, email, users[0].name);
     } catch (err) {
-      return res.status(err.status || 503).json({
+      return res.status(err.status === 502 ? 503 : err.status || 503).json({
         error: err.message || "Unable to send verification email",
         code: err.code || "EMAIL_SEND_FAILED",
       });
@@ -243,7 +243,12 @@ router.post(
         code === "EMAIL_NOT_CONFIGURED"
           ? "Password reset email is temporarily unavailable. Please try again later or contact support."
           : err.message || "Unable to send password reset email";
-      return res.status(err.status || 503).json({
+      // Never return 502 — nginx/browsers surface it as Bad Gateway even with a JSON body.
+      let status = Number(err.status) || 503;
+      if (!Number.isFinite(status) || status < 400 || status > 599 || status === 502) {
+        status = 503;
+      }
+      return res.status(status).json({
         error: userFacing,
         code,
       });
@@ -264,14 +269,29 @@ router.post(
         error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
       });
     }
-    const consumed = await consumePasswordResetToken(token);
+    let consumed;
+    try {
+      consumed = await consumePasswordResetToken(token);
+    } catch {
+      return res.status(503).json({
+        error: "Unable to reset password right now. Please try again later.",
+        code: "PASSWORD_RESET_FAILED",
+      });
+    }
     if (!consumed.ok) return res.status(400).json({ error: consumed.error });
-    const salt = await bcrypt.genSalt(12);
-    const passwordHash = await bcrypt.hash(password, salt);
-    await db.query(
-      `UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL, email_verified = 1 WHERE id = ?`,
-      [passwordHash, consumed.userId],
-    );
+    try {
+      const salt = await bcrypt.genSalt(12);
+      const passwordHash = await bcrypt.hash(password, salt);
+      await db.query(
+        `UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL, email_verified = 1 WHERE id = ?`,
+        [passwordHash, consumed.userId],
+      );
+    } catch {
+      return res.status(503).json({
+        error: "Unable to reset password right now. Please try again later.",
+        code: "PASSWORD_RESET_FAILED",
+      });
+    }
     setAuthNoStore(res);
     res.json({ message: "Password updated. You can sign in now." });
   }),

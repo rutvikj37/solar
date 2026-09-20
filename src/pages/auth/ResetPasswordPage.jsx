@@ -6,6 +6,9 @@ function friendlyResetError(err, data, res) {
   if (res?.status === 429 || data?.error === 'Too many requests') {
     return 'Too many attempts. Please wait a few minutes and try again.';
   }
+  if (res?.status === 502 || res?.status === 503) {
+    return data?.error || 'Unable to reset password right now. Please try again later.';
+  }
   if (err?.message === 'Failed to fetch' || err?.name === 'TypeError') {
     return 'Could not reach the server. Check your connection and try again.';
   }
