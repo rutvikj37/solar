@@ -450,6 +450,70 @@ html.light ::-webkit-scrollbar-thumb {
   background: oklch(0.78 0.02 255);
 }
 
+/*
+ * Installer auth screens (login/register/etc.) always stay dark,
+ * even when the app shell theme is light.
+ */
+html.light .auth-dark-shell {
+  color-scheme: dark;
+  --color-on-background: oklch(0.98 0.005 250);
+  --color-background: oklch(0.13 0.045 275);
+  --color-surface: oklch(0.13 0.045 275);
+  --color-surface-dim: oklch(0.13 0.045 275);
+  --color-surface-bright: oklch(0.24 0.04 268);
+  --color-surface-variant: oklch(0.22 0.035 268);
+  --color-surface-elevated: oklch(0.18 0.04 270);
+  --color-surface-container-lowest: oklch(0.1 0.04 275);
+  --color-surface-container-low: oklch(0.15 0.04 273);
+  --color-surface-container: oklch(0.16 0.04 272);
+  --color-surface-container-high: oklch(0.2 0.04 270);
+  --color-surface-container-highest: oklch(0.22 0.035 268);
+  --color-on-surface: oklch(0.98 0.005 250);
+  --color-on-surface-variant: oklch(0.80 0.02 260);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: oklch(0.88 0.02 260);
+  --color-foreground: oklch(0.98 0.005 250);
+  --color-card: oklch(0.18 0.04 270);
+  --color-card-foreground: oklch(0.98 0.005 250);
+  --color-muted: oklch(0.22 0.035 268);
+  --color-muted-foreground: oklch(0.80 0.02 260);
+  --color-deep: oklch(0.1 0.04 275);
+  --color-glass: oklch(0.98 0.01 250 / 6%);
+  --color-glass-stroke: oklch(0.98 0.01 250 / 14%);
+  --color-glass-border: oklch(0.98 0.01 250 / 14%);
+  --color-outline: oklch(0.72 0.025 260);
+  --color-outline-variant: oklch(0.98 0.01 250 / 14%);
+  --color-border: oklch(0.98 0.01 250 / 12%);
+  --color-input: oklch(0.98 0.01 250 / 14%);
+  --color-primary: oklch(0.66 0.19 253);
+  --color-primary-glow: oklch(0.78 0.15 235);
+  --color-on-primary: oklch(0.99 0.002 250);
+  --color-primary-container: oklch(0.55 0.18 253);
+  --color-ring: oklch(0.66 0.19 253);
+  background-color: var(--color-deep);
+  color: var(--color-on-background);
+}
+html.light .auth-dark-shell .glass-card {
+  background: oklch(0.18 0.04 270 / 55%);
+  border: 1px solid oklch(0.98 0.01 250 / 14%);
+  box-shadow:
+    0 18px 40px -28px oklch(0 0 0 / 70%),
+    inset 0 1px 0 0 oklch(1 0 0 / 8%);
+}
+html.light .auth-dark-shell .text-white,
+html.light .auth-dark-shell.text-white {
+  color: #ffffff !important;
+}
+html.light .auth-dark-shell [class*="text-white/"] {
+  color: rgb(255 255 255 / 0.85) !important;
+}
+html.light .auth-dark-shell select,
+html.light .auth-dark-shell input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html.light .auth-dark-shell textarea {
+  color-scheme: dark;
+  color: #f8fafc;
+}
+
 /* Soften dark-only utility patterns used across CRM / shell */
 html.light .text-white {
   color: var(--color-on-surface);

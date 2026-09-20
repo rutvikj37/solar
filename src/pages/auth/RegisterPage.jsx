@@ -89,7 +89,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="auth-dark-shell theme-dark-canvas bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <SatelliteUplinkLoader visible={showAuthLoader} />
       <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary/15 blur-3xl rounded-full pointer-events-none" />
       <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-primary-glow/10 blur-3xl rounded-full pointer-events-none" />

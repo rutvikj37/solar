@@ -40,7 +40,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-deep flex items-center justify-center p-6 text-red-400">
+      <div className="auth-dark-shell theme-dark-canvas min-h-screen bg-deep flex items-center justify-center p-6 text-red-400">
         Invalid reset link.{' '}
         <Link to="/forgot-password" className="text-primary ml-2">
           Request a new one
@@ -50,7 +50,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
+    <div className="auth-dark-shell theme-dark-canvas min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
       <div className="glass-card max-w-md w-full p-8 rounded-2xl">
         <h1 className="text-xl font-bold text-white mb-6">Set new password</h1>
         {message ? (

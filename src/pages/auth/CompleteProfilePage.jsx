@@ -106,7 +106,7 @@ export default function CompleteProfilePage() {
 
   if (error && !form.company && !loading) {
     return (
-      <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4">
+      <div className="auth-dark-shell theme-dark-canvas bg-deep text-on-background min-h-screen flex items-center justify-center p-4">
         <div className="glass-card max-w-md w-full p-8 rounded-2xl text-center space-y-4">
           <p className="text-sm text-red-300">{error}</p>
           <button
@@ -127,7 +127,7 @@ export default function CompleteProfilePage() {
   }
 
   return (
-    <div className="bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="auth-dark-shell theme-dark-canvas bg-deep text-on-background min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/15 blur-3xl rounded-full pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary-glow/10 blur-3xl rounded-full pointer-events-none" />
 

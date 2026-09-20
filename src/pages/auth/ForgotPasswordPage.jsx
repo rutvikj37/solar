@@ -30,7 +30,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
+    <div className="auth-dark-shell theme-dark-canvas min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
       <div className="glass-card max-w-md w-full p-8 rounded-2xl">
         <h1 className="text-xl font-bold text-white mb-2">Forgot password</h1>
         <p className="text-xs text-on-surface-variant mb-6">We will email a reset link if the account exists.</p>

@@ -62,7 +62,7 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
+    <div className="auth-dark-shell theme-dark-canvas min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
       <div className="glass-card max-w-md w-full p-8 rounded-2xl text-center space-y-4">
         <h1 className="text-xl font-bold text-white">Email verification</h1>
         <p className={`text-sm ${status === 'error' ? 'text-red-400' : 'text-on-surface-variant'}`}>

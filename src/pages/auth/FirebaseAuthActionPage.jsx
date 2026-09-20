@@ -122,7 +122,7 @@ export default function FirebaseAuthActionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
+    <div className="auth-dark-shell theme-dark-canvas min-h-screen bg-deep text-on-background flex items-center justify-center p-6">
       <div className="glass-card max-w-md w-full p-8 rounded-2xl border border-glass-stroke">
         <div className="mb-6 text-center">
           <div className="font-display text-xl font-semibold tracking-tight">
