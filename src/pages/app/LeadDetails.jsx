@@ -314,11 +314,16 @@ export default function LeadDetails() {
       }
 
       try {
-        const apptRes = await fetch(`${API}/api/appointments?leadId=${id}`, {
-          headers: { Authorization: `Bearer ${t}` },
-        });
-        if (apptRes.ok) setLeadAppointments(await apptRes.json());
-        else setLeadAppointments([]);
+        // Plan without appointments returns 403 — skip the call to avoid console noise.
+        if (!can('appointments')) {
+          setLeadAppointments([]);
+        } else {
+          const apptRes = await fetch(`${API}/api/appointments?leadId=${id}`, {
+            headers: { Authorization: `Bearer ${t}` },
+          });
+          if (apptRes.ok) setLeadAppointments(await apptRes.json());
+          else setLeadAppointments([]);
+        }
       } catch {
         setLeadAppointments([]);
       }

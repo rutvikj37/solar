@@ -55,7 +55,7 @@ export async function placeAdvancedLeadMarker(
     map,
     position,
     title: title || 'Lead',
-    content: pin.element,
+    content: pin, // PinElement itself (pin.element is deprecated)
     gmpDraggable: draggable,
   });
 }
