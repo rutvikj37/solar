@@ -300,13 +300,21 @@ if (staticFrontendDir && fs.existsSync(staticFrontendDir)) {
   app.use(
     express.static(staticFrontendDir, {
       index: false,
-      setHeaders(res) {
+      setHeaders(res, filePath) {
         res.setHeader('Cross-Origin-Opener-Policy', COOP_ALLOW_POPUPS);
+        // Hashed /assets/* can be cached; HTML entry must stay fresh after deploys.
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        }
       },
     }),
   );
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path === '/health') return next();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Cross-Origin-Opener-Policy', COOP_ALLOW_POPUPS);
     res.sendFile(path.join(staticFrontendDir, 'index.html'), (err) => {
       if (err) next(err);
     });

@@ -14,69 +14,98 @@ import FullPageLoader from "./components/layout/FullPageLoader";
 import PageTransitionLoader from "./components/layout/PageTransitionLoader";
 import CookieConsent from "./components/CookieConsent";
 
-const LandingPage = lazy(() => import("./pages/homeowner/HomeownerLandingPage"));
-const InstallerLandingPage = lazy(() => import("./pages/marketing/InstallerLandingPage"));
-const HomeownerAboutPage = lazy(() => import("./pages/homeowner/HomeownerAboutPage"));
-const HomeownerContactPage = lazy(() => import("./pages/homeowner/HomeownerContactPage"));
-const SolarReportPage = lazy(() => import("./pages/homeowner/SolarReportPage"));
-const Dashboard = lazy(() => import("./pages/app/Dashboard"));
-const InteractiveMap = lazy(() => import("./pages/app/InteractiveMap"));
-const PropertyAnalysis = lazy(() => import("./pages/app/PropertyAnalysis"));
-const GeneratingLead = lazy(() => import("./pages/app/GeneratingLead"));
-const LeadDetails = lazy(() => import("./pages/app/LeadDetails"));
-const Billing = lazy(() => import("./pages/app/Billing"));
-const Profile = lazy(() => import("./pages/app/Profile"));
-const IntegrationsPage = lazy(() => import("./pages/app/IntegrationsPage"));
-const MyLeads = lazy(() => import("./pages/app/MyLeads"));
-const Downloads = lazy(() => import("./pages/app/Downloads"));
-const LoginPage = lazy(() => import("./pages/auth/LoginPage"));
-const RegisterPage = lazy(() => import("./pages/auth/RegisterPage"));
-const VerifyEmailPage = lazy(() => import("./pages/auth/VerifyEmailPage"));
-const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage"));
-const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage"));
-const FirebaseAuthActionPage = lazy(() => import("./pages/auth/FirebaseAuthActionPage"));
-const CompleteProfilePage = lazy(() => import("./pages/auth/CompleteProfilePage"));
-const BulkAreaScan = lazy(() => import("./pages/app/BulkAreaScan"));
+/** Lazy import that recovers from post-deploy 404s on hashed chunks. */
+function lazyRoute(factory) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (err) {
+      const msg = String(err?.message || err || "");
+      const isChunkMiss =
+        msg.includes("Failed to fetch dynamically imported module") ||
+        msg.includes("Importing a module script failed") ||
+        err?.name === "ChunkLoadError";
+      if (isChunkMiss) {
+        try {
+          const key = "str_chunk_reload";
+          if (!sessionStorage.getItem(key)) {
+            sessionStorage.setItem(key, "1");
+            window.location.reload();
+            return new Promise(() => {});
+          }
+          sessionStorage.removeItem(key);
+        } catch {
+          /* ignore */
+        }
+      }
+      throw err;
+    }
+  });
+}
 
-const AdminDashboard = lazy(() => import("./pages/app/AdminDashboard"));
-const Appointments = lazy(() => import("./pages/app/Appointments"));
-const Support = lazy(() => import("./pages/app/Support"));
-const SupportTicket = lazy(() => import("./pages/app/SupportTicket"));
-const DripCampaigns = lazy(() => import("./pages/app/DripCampaigns"));
+const LandingPage = lazyRoute(() => import("./pages/homeowner/HomeownerLandingPage"));
+const InstallerLandingPage = lazyRoute(() => import("./pages/marketing/InstallerLandingPage"));
+const HomeownerAboutPage = lazyRoute(() => import("./pages/homeowner/HomeownerAboutPage"));
+const HomeownerContactPage = lazyRoute(() => import("./pages/homeowner/HomeownerContactPage"));
+const SolarReportPage = lazyRoute(() => import("./pages/homeowner/SolarReportPage"));
+const Dashboard = lazyRoute(() => import("./pages/app/Dashboard"));
+const InteractiveMap = lazyRoute(() => import("./pages/app/InteractiveMap"));
+const PropertyAnalysis = lazyRoute(() => import("./pages/app/PropertyAnalysis"));
+const GeneratingLead = lazyRoute(() => import("./pages/app/GeneratingLead"));
+const LeadDetails = lazyRoute(() => import("./pages/app/LeadDetails"));
+const Billing = lazyRoute(() => import("./pages/app/Billing"));
+const Profile = lazyRoute(() => import("./pages/app/Profile"));
+const IntegrationsPage = lazyRoute(() => import("./pages/app/IntegrationsPage"));
+const MyLeads = lazyRoute(() => import("./pages/app/MyLeads"));
+const Downloads = lazyRoute(() => import("./pages/app/Downloads"));
+const LoginPage = lazyRoute(() => import("./pages/auth/LoginPage"));
+const RegisterPage = lazyRoute(() => import("./pages/auth/RegisterPage"));
+const VerifyEmailPage = lazyRoute(() => import("./pages/auth/VerifyEmailPage"));
+const ForgotPasswordPage = lazyRoute(() => import("./pages/auth/ForgotPasswordPage"));
+const ResetPasswordPage = lazyRoute(() => import("./pages/auth/ResetPasswordPage"));
+const FirebaseAuthActionPage = lazyRoute(() => import("./pages/auth/FirebaseAuthActionPage"));
+const CompleteProfilePage = lazyRoute(() => import("./pages/auth/CompleteProfilePage"));
+const BulkAreaScan = lazyRoute(() => import("./pages/app/BulkAreaScan"));
 
-const AiCallingDashboard = lazy(
+const AdminDashboard = lazyRoute(() => import("./pages/app/AdminDashboard"));
+const Appointments = lazyRoute(() => import("./pages/app/Appointments"));
+const Support = lazyRoute(() => import("./pages/app/Support"));
+const SupportTicket = lazyRoute(() => import("./pages/app/SupportTicket"));
+const DripCampaigns = lazyRoute(() => import("./pages/app/DripCampaigns"));
+
+const AiCallingDashboard = lazyRoute(
   () => import("./pages/ai-calling/AiCallingDashboard"),
 );
-const AiCallingCampaigns = lazy(
+const AiCallingCampaigns = lazyRoute(
   () => import("./pages/ai-calling/AiCallingCampaigns"),
 );
-const AiCallingLiveMonitor = lazy(
+const AiCallingLiveMonitor = lazyRoute(
   () => import("./pages/ai-calling/AiCallingLiveMonitor"),
 );
-const AiCallingKnowledgeBase = lazy(
+const AiCallingKnowledgeBase = lazyRoute(
   () => import("./pages/ai-calling/AiCallingKnowledgeBase"),
 );
-const AiCallingPrompts = lazy(
+const AiCallingPrompts = lazyRoute(
   () => import("./pages/ai-calling/AiCallingPrompts"),
 );
-const AiCallingAnalytics = lazy(
+const AiCallingAnalytics = lazyRoute(
   () => import("./pages/ai-calling/AiCallingAnalytics"),
 );
-const AiCallingSettings = lazy(
+const AiCallingSettings = lazyRoute(
   () => import("./pages/ai-calling/AiCallingSettings"),
 );
-const AiCallingCallDetail = lazy(
+const AiCallingCallDetail = lazyRoute(
   () => import("./pages/ai-calling/AiCallingCallDetail"),
 );
 
-const PublicProposalView = lazy(() => import("./pages/app/PublicProposalView"));
-const GetSolarQuote = lazy(() => import("./pages/app/GetSolarQuote"));
-const Reports = lazy(() => import("./pages/app/Reports"));
-const MarketplaceDashboard = lazy(
+const PublicProposalView = lazyRoute(() => import("./pages/app/PublicProposalView"));
+const GetSolarQuote = lazyRoute(() => import("./pages/app/GetSolarQuote"));
+const Reports = lazyRoute(() => import("./pages/app/Reports"));
+const MarketplaceDashboard = lazyRoute(
   () => import("./pages/marketplace/MarketplaceDashboard"),
 );
-const PrivacyPolicyPage = lazy(() => import("./pages/legal/PrivacyPolicyPage"));
-const TermsPage = lazy(() => import("./pages/legal/TermsPage"));
+const PrivacyPolicyPage = lazyRoute(() => import("./pages/legal/PrivacyPolicyPage"));
+const TermsPage = lazyRoute(() => import("./pages/legal/TermsPage"));
 
 function PackagesRedirect() {
   const { search } = useLocation();

@@ -36,6 +36,8 @@ npm run start
 
 Serve the `dist/` folder from your reverse proxy. Proxy `/api` and WebSocket `/media-stream` to the Node server.
 
+**After each deploy:** hashed files under `/assets/` change. If `index.html` is cached (CDN, browser, or nginx), clients keep an old entry that requests deleted chunks and fail with `Failed to fetch dynamically imported module` / `Dashboard-*.js` 404. Serve `index.html` with `Cache-Control: no-store` (see nginx example). A hard refresh clears it immediately; the app also reloads once on chunk load failure.
+
 Alternatively, set `STATIC_FRONTEND_DIR` to the built `dist/` path and let the Node process serve the SPA (see `Dockerfile`); Helmet then applies security headers including COOP to HTML and assets.
 
 ### Reverse proxy headers (required for Google sign-in)
