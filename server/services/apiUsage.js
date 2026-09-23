@@ -1,4 +1,5 @@
 import db from '../db.js';
+import { notifyAdminApiFailure } from './adminApiAlert.js';
 
 const PROVIDERS = [
   { id: 'google_maps', label: 'Google Maps / Geocoding', envKeys: ['GOOGLE_MAPS_API_KEY'] },
@@ -75,9 +76,30 @@ export async function trackedFetch(provider, url, options = {}) {
   try {
     const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
     await logApiCall(provider, res.ok, Date.now() - started);
+    if (!res.ok) {
+      const status = res.status;
+      // Alert on auth failures and upstream outages; skip normal 4xx like 404 empty.
+      if (status === 401 || status === 403 || status >= 500) {
+        void notifyAdminApiFailure({
+          service: provider,
+          operation: 'trackedFetch',
+          status,
+          errorMessage: `HTTP ${status}`,
+          detail: typeof url === 'string' ? url.split('?')[0].slice(0, 200) : undefined,
+        });
+      }
+    }
     return res;
   } catch (err) {
     await logApiCall(provider, false, Date.now() - started);
+    const aborted = err?.name === 'AbortError';
+    void notifyAdminApiFailure({
+      service: provider,
+      operation: aborted ? 'timeout' : 'network',
+      status: null,
+      errorMessage: aborted ? `Request timed out after ${timeoutMs}ms` : (err?.message || 'Network error'),
+      detail: typeof url === 'string' ? url.split('?')[0].slice(0, 200) : undefined,
+    });
     throw err;
   } finally {
     clearTimeout(timer);
@@ -96,6 +118,12 @@ export async function trackApiCall(provider, fn) {
     return result;
   } catch (err) {
     await logApiCall(provider, false, Date.now() - started);
+    void notifyAdminApiFailure({
+      service: provider,
+      operation: 'trackApiCall',
+      status: null,
+      errorMessage: err?.message || 'Provider call failed',
+    });
     throw err;
   }
 }

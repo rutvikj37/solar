@@ -12,6 +12,14 @@ import {
   fetchGoogleSatelliteImage,
 } from '../services/propertyService.js';
 import {
+  allowMockProperties,
+  PROPERTY_DATA_UNAVAILABLE,
+  PROPERTY_DATA_NOT_FOUND,
+  PROPERTY_DATA_UNAVAILABLE_CODE,
+  PROPERTY_DATA_NOT_FOUND_CODE,
+} from '../utils/mockProperties.js';
+import { notifyAdminApiFailure } from '../services/adminApiAlert.js';
+import {
   looksLikeStreetAddress,
   resolveExactAddressSearch,
   assertAddressMatchesSearch,
@@ -78,11 +86,13 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
   });
   let existing = null;
   if (req.user?.id && preview?.address) {
+    const { resolveWorkspaceContext } = await import('../utils/workspaceContext.js');
+    const workspace = await resolveWorkspaceContext(req.user.id);
     const [rows] = await db.query(
       `SELECT id, owner_name, phone, phone_type, email, email_status, linkedin,
               mailing_address, property_value, owner_occupied, parcel_id
        FROM leads WHERE user_id = ? AND address = ? LIMIT 1`,
-      [req.user.id, preview.address]
+      [workspace.ownerUserId, preview.address]
     );
     existing = rows[0] || null;
   }
@@ -363,7 +373,11 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
-  if (isKeyValid(rentcastApiKey) && !(isAddressSearch && exactMatch)) {
+  /** @type {'no_key'|'ok'|'empty'|'error'|'skipped'} */
+  let rentcastStatus = 'skipped';
+  if (!isKeyValid(rentcastApiKey)) {
+    rentcastStatus = 'no_key';
+  } else if (!(isAddressSearch && exactMatch)) {
     try {
       let rentcastUrl;
       const isNumericZip = /^\d{5}$/.test(zip);
@@ -423,6 +437,19 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
             };
           }
           console.log(`[RentCast Search API] Loaded ${list.length} property records.`);
+          if (list.length === 0) {
+            return res.json({
+              center: responseCenter,
+              properties: [],
+              total: 0,
+              matchedPropertyId: null,
+              searchType: exactMatch ? 'address' : (/^\d{5}$/.test(zip) ? 'zip' : 'area'),
+              searchQuery: isAddressSearch ? zip : null,
+              addressMatchVerified: exactMatch?.addressMatchVerified === true,
+              error: PROPERTY_DATA_NOT_FOUND,
+              code: PROPERTY_DATA_NOT_FOUND_CODE,
+            });
+          }
           return res.json({
             center: responseCenter,
             properties: list,
@@ -433,9 +460,14 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
             addressMatchVerified: exactMatch?.addressMatchVerified === true,
           });
         }
+        rentcastStatus = 'empty';
+      } else {
+        rentcastStatus = 'error';
+        console.error(`[RentCast Search API] HTTP ${response.status} — no mock fallback`);
       }
     } catch (err) {
-      console.error('[RentCast Search API] Failed, falling back to mock cluster:', err);
+      rentcastStatus = 'error';
+      console.error('[RentCast Search API] Failed — no mock fallback:', err);
     }
   }
 
@@ -451,7 +483,33 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
     });
   }
 
-  // Fallback mock properties around center
+  // Fallback mock properties around center (ALLOW_MOCK_PROPERTIES=1 only)
+  if (!allowMockProperties()) {
+    const providerDown = rentcastStatus === 'no_key' || rentcastStatus === 'error';
+    if (providerDown) {
+      void notifyAdminApiFailure({
+        service: 'rentcast',
+        operation: 'propertySearch',
+        status: rentcastStatus === 'no_key' ? 503 : 502,
+        errorMessage:
+          rentcastStatus === 'no_key'
+            ? 'RENTCAST_API_KEY missing or invalid'
+            : 'RentCast search failed or returned error',
+      });
+    }
+    return res.json({
+      center,
+      properties: [],
+      total: 0,
+      matchedPropertyId: null,
+      searchType: /^\d{5}$/.test(zip) ? 'zip' : 'area',
+      searchQuery: isAddressSearch ? zip : null,
+      error: providerDown ? PROPERTY_DATA_UNAVAILABLE : PROPERTY_DATA_NOT_FOUND,
+      code: providerDown ? PROPERTY_DATA_UNAVAILABLE_CODE : PROPERTY_DATA_NOT_FOUND_CODE,
+      mockBlocked: true,
+    });
+  }
+
   const count = Math.min(limit, 60);
   let list = [];
 

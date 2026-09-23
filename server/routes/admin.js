@@ -27,6 +27,10 @@ import {
 import { getEmailSetupStatus } from '../services/email/userEmailConnections.js';
 import { writeAdminAudit, clientIp } from '../utils/adminAudit.js';
 import { isAdminRole } from '../middleware/auth.js';
+import {
+  getPlatformEmailProvider,
+  isPlatformEmailConfigured,
+} from '../services/outreachDelivery.js';
 
 const router = express.Router();
 
@@ -209,6 +213,13 @@ router.get('/stats', ...adminChain, async (_req, res) => {
               COUNT(*) AS paid_orders
        FROM invoices WHERE status = 'paid'`
     );
+    const [[mrrRow]] = await db.query(
+      `SELECT COALESCE(SUM(p.price), 0) AS mrr
+       FROM user_subscriptions us
+       JOIN packages p ON p.id = us.package_id
+       WHERE us.status = 'active'
+         AND COALESCE(p.billing_interval, 'month') = 'month'`
+    );
     const [[subs]] = await db.query(
       `SELECT COUNT(*) AS active_subs
        FROM user_packages
@@ -237,6 +248,7 @@ router.get('/stats', ...adminChain, async (_req, res) => {
       /* marketplace tables may be absent in older envs */
     }
 
+    const mrrUsd = Math.round(Number(mrrRow?.mrr || 0));
     res.json({
       totalUsers: userCount.total,
       activeUsers: userCount.active,
@@ -245,7 +257,9 @@ router.get('/stats', ...adminChain, async (_req, res) => {
       remainingCredits: creditSum.remaining,
       revenueCents: revenue.cents,
       paidOrders: revenue.paid_orders,
-      mrrEstimate: Math.round(revenue.cents / 100),
+      mrrUsd,
+      /** @deprecated use mrrUsd — kept for older clients */
+      mrrEstimate: mrrUsd,
       activeSubscriptions: subs.active_subs,
       openTickets: openTickets.open_count,
       inquiryCount: inquiryCount.total,
@@ -255,6 +269,46 @@ router.get('/stats', ...adminChain, async (_req, res) => {
   } catch (error) {
     console.error('Admin stats error:', error);
     res.status(500).json({ error: 'Failed to load admin stats' });
+  }
+});
+
+router.get('/system-health', ...adminChain, async (_req, res) => {
+  try {
+    let dbOk = false;
+    try {
+      await db.query('SELECT 1');
+      dbOk = true;
+    } catch {
+      dbOk = false;
+    }
+
+    const isKeyValid = (key) =>
+      Boolean(key && String(key).trim() !== '' && !String(key).toLowerCase().includes('your_'));
+
+    const emailConfigured = isPlatformEmailConfigured();
+    const emailProvider = getPlatformEmailProvider();
+
+    res.json({
+      ok: dbOk,
+      db: { configured: dbOk },
+      email: {
+        configured: emailConfigured,
+        provider: emailProvider,
+      },
+      maps: {
+        googleMaps: isKeyValid(process.env.GOOGLE_MAPS_API_KEY) || isKeyValid(process.env.VITE_GOOGLE_MAPS_API_KEY),
+        googleSolar: isKeyValid(process.env.GOOGLE_SOLAR_API_KEY),
+      },
+      rentcast: {
+        configured: isKeyValid(process.env.RENTCAST_API_KEY) || isKeyValid(process.env.ATTOM_API_KEY),
+      },
+      stripe: {
+        configured: isKeyValid(process.env.STRIPE_SECRET_KEY),
+      },
+    });
+  } catch (error) {
+    console.error('Admin system-health error:', error);
+    res.status(500).json({ error: 'Failed to load system health' });
   }
 });
 

@@ -73,6 +73,7 @@ const Appointments = lazyRoute(() => import("./pages/app/Appointments"));
 const Support = lazyRoute(() => import("./pages/app/Support"));
 const SupportTicket = lazyRoute(() => import("./pages/app/SupportTicket"));
 const DripCampaigns = lazyRoute(() => import("./pages/app/DripCampaigns"));
+const Team = lazyRoute(() => import("./pages/app/Team"));
 
 
 
@@ -147,6 +148,7 @@ export default function App() {
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/packages" element={<PackagesRedirect />} />
               <Route path="/billing" element={<Billing />} />
+              <Route path="/team" element={<Team />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/my-leads" element={<MyLeads />} />

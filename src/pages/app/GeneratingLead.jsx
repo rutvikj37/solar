@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { bulkScan } from '../../services/api.js';
 import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
+import {
+  PROPERTY_DATA_UNAVAILABLE,
+  resolvePropertyDataMessage,
+} from '../../lib/propertyDataMessages.js';
 
 const SKIP_REASON_LABELS = {
   duplicate: 'Already in your leads',
@@ -90,8 +94,12 @@ export default function GeneratingLead() {
         setProgress(100);
       } catch (err) {
         console.error('Bulk scan API error:', err);
-        apiErrorRef.current = err.message;
-        setError(err.message);
+        const msg =
+          resolvePropertyDataMessage(err.data, { status: err.status }) ||
+          err.message ||
+          PROPERTY_DATA_UNAVAILABLE;
+        apiErrorRef.current = msg;
+        setError(msg);
       }
     };
 

@@ -26,6 +26,11 @@ import {
   fetchRentcastPropertyNearCoords,
   parseCoordinatePropertyId,
 } from './coordinateService.js';
+import {
+  allowMockProperties,
+  PROPERTY_DATA_UNAVAILABLE,
+  propertyDataUnavailableError,
+} from '../utils/mockProperties.js';
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -663,6 +668,9 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
 
   let usedMockPropertyFallback = false;
   if (!lat || !lng) {
+    if (!allowMockProperties()) {
+      throw propertyDataUnavailableError(PROPERTY_DATA_UNAVAILABLE);
+    }
     const zip = id.split('-')[0] || '90210';
     const offsetIndex = parseInt(id.split('-')[1]) || 1001;
     const idx = offsetIndex % 10;

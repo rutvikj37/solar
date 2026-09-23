@@ -574,17 +574,21 @@ router.get('/packages', optionalAuthenticateToken, async (req, res) => {
 
 router.get('/subscription', authenticateToken, async (req, res) => {
   try {
+    const { resolveWorkspaceContext } = await import('../utils/workspaceContext.js');
+    const workspace = await resolveWorkspaceContext(req.user.id);
+    const ownerUserId = workspace.ownerUserId;
+
     const [subs] = await db.query(
       `SELECT s.*, p.name AS package_name, p.lead_limit, p.price, p.billing_interval, p.description
        FROM user_subscriptions s
        LEFT JOIN packages p ON p.id = s.package_id
        WHERE s.user_id = ?
        LIMIT 1`,
-      [req.user.id]
+      [ownerUserId]
     );
     const [packages] = await db.query(
       'SELECT remaining_leads, package_id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
-      [req.user.id]
+      [ownerUserId]
     );
     const sub = subs[0] || null;
     const entitlements = await getUserEntitlements(req.user.id, req.user.role);
@@ -627,6 +631,11 @@ router.get('/subscription', authenticateToken, async (req, res) => {
       credits: packages[0]?.remaining_leads ?? 0,
       activePackage: activePkgId,
       entitlements,
+      workspace: {
+        ownerUserId,
+        isOwner: workspace.isOwner,
+        permissions: workspace.permissions,
+      },
     });
   } catch (error) {
     console.error('Subscription fetch error:', error);
@@ -1207,7 +1216,16 @@ router.post('/webhook', async (req, res) => {
 
 router.get('/invoices', authenticateToken, async (req, res) => {
   try {
-    const rows = await listUserInvoices(req.user.id, 50);
+    const { resolveWorkspaceContext, workspaceHasPermission } = await import('../utils/workspaceContext.js');
+    const workspace = await resolveWorkspaceContext(req.user.id);
+    if (!workspaceHasPermission(workspace, 'billing_view')) {
+      return res.status(403).json({
+        error: 'Missing workspace permission: billing_view',
+        code: 'WORKSPACE_PERMISSION_DENIED',
+        permission: 'billing_view',
+      });
+    }
+    const rows = await listUserInvoices(workspace.ownerUserId, 50);
     res.json(rows);
   } catch (error) {
     console.error('Invoices fetch error:', error);

@@ -11,6 +11,7 @@ const PERMISSION_DEFINITIONS = [
   { key: 'outreach_send', label: 'Email & SMS Outreach Campaigns', category: 'Outreach' },
   { key: 'analytics_view', label: 'View Territory Conversion & CPL', category: 'Analytics' },
   { key: 'team_manage', label: 'Manage Team & Invite Members', category: 'Team' },
+  { key: 'billing_view', label: 'View Billing & Invoices', category: 'Billing' },
 ];
 
 const COLOR_CLASSES = {
@@ -28,6 +29,7 @@ export default function TeamWorkspacePanel() {
   const [rolesData, setRolesData] = useState({ defaultRoles: [], customRoles: [], allRoles: [] });
   const [loading, setLoading] = useState(true);
   const [seatInfo, setSeatInfo] = useState(null);
+  const [canManageTeam, setCanManageTeam] = useState(true);
 
   // Invite Modal
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -88,7 +90,24 @@ export default function TeamWorkspacePanel() {
     }
   };
 
+  const fetchWorkspace = async () => {
+    try {
+      const token = localStorage.getItem('solar_token');
+      if (!token) return;
+      const res = await fetch(`${API_BASE}/api/team/workspace`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCanManageTeam(Boolean(data.canManageTeam));
+      }
+    } catch (err) {
+      console.error('Fetch workspace error:', err);
+    }
+  };
+
   useEffect(() => {
+    fetchWorkspace();
     fetchMembers();
     fetchRoles();
   }, []);
@@ -244,6 +263,11 @@ export default function TeamWorkspacePanel() {
 
   return (
     <div className="space-y-6 text-xs text-slate-800 dark:text-slate-100">
+      {!canManageTeam && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-amber-900 dark:text-amber-200 text-xs font-semibold">
+          Read-only — you can view team members and roles, but inviting or editing requires the team_manage permission.
+        </div>
+      )}
       {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 dark:border-white/[0.08] pb-5">
         <div>
@@ -268,6 +292,8 @@ export default function TeamWorkspacePanel() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {canManageTeam && (
+            <>
           <button
             onClick={() => setShowRoleModal(true)}
             className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#121826] hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-white/10 font-semibold text-xs flex items-center gap-1.5 shadow-xs transition"
@@ -292,6 +318,8 @@ export default function TeamWorkspacePanel() {
             <span className="material-symbols-outlined text-[18px]">person_add</span>
             <span>Invite Team Member</span>
           </button>
+            </>
+          )}
         </div>
       </div>
 

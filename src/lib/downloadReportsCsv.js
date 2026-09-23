@@ -10,8 +10,9 @@ function row(cells) {
 }
 
 function formatCpl(value) {
+  if (value == null || value === '') return '—';
   const n = Number(value);
-  if (!Number.isFinite(n)) return '0.50';
+  if (!Number.isFinite(n)) return '—';
   return n.toFixed(2);
 }
 

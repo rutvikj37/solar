@@ -4,6 +4,11 @@ import { authenticateToken, isAdminRole } from '../middleware/auth.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkLeadCreditAccess } from './billing.js';
+import { requireWorkspacePermission } from '../middleware/workspacePermissions.js';
+import {
+  resolveWorkspaceContext,
+  assignedToForActor,
+} from '../utils/workspaceContext.js';
 import {
   requirePlanFeature,
   getUserEntitlements,
@@ -21,6 +26,14 @@ import {
   parseCoordinatePropertyId,
   buildCoordinatePropertyId,
 } from '../services/coordinateService.js';
+import {
+  allowMockProperties,
+  PROPERTY_DATA_UNAVAILABLE,
+  PROPERTY_DATA_NOT_FOUND,
+  PROPERTY_DATA_UNAVAILABLE_CODE,
+  PROPERTY_DATA_NOT_FOUND_CODE,
+} from '../utils/mockProperties.js';
+import { notifyAdminApiFailure } from '../services/adminApiAlert.js';
 import {
   getFallbackZipCoords,
   isSingleFamilyType,
@@ -56,17 +69,37 @@ async function getRemainingCredits(userId, adminBypass) {
   return rows[0]?.remaining_leads ?? 0;
 }
 
+async function refundReservedCredits(packageRecord, reservedCredits) {
+  if (!packageRecord?.id || !(reservedCredits > 0)) return;
+  await db.query(
+    'UPDATE user_packages SET remaining_leads = remaining_leads + ? WHERE id = ?',
+    [reservedCredits, packageRecord.id],
+  );
+}
+
+function isMockEnrichment(details) {
+  if (!details) return true;
+  if (details.enrichmentMeta?.usedMockPropertyFallback) return true;
+  const owner = details.propertyData?.ownerName;
+  if (owner && String(owner).toLowerCase().includes('[dev mock]')) return true;
+  return false;
+}
+
 // Generate Lead & Deduct Credits
 router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   const { propertyId, detail } = req.body;
   if (!propertyId) return res.status(400).json({ error: 'Missing property data' });
 
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  const ownerUserId = workspace.ownerUserId;
+  const assignedTo = assignedToForActor(workspace);
+
   const [roleRows] = await db.query('SELECT role FROM users WHERE id = ?', [req.user.id]);
   const userRole = roleRows[0]?.role || req.user.role;
   const adminBypass = isAdminRole(userRole);
 
-  const [packages] = await db.query('SELECT id, remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [req.user.id]);
-  const creditCheck = await checkLeadCreditAccess(req.user.id);
+  const [packages] = await db.query('SELECT id, remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [ownerUserId]);
+  const creditCheck = await checkLeadCreditAccess(ownerUserId);
   if (!adminBypass && !creditCheck.allowed) {
     return res.status(402).json({
       error: creditCheck.error,
@@ -121,8 +154,22 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     );
   }
   if (!full?.address) {
-    return res.status(400).json({ error: 'Could not resolve this property' });
+    return res.status(400).json({
+      error: 'Could not resolve this property',
+      creditDeducted: false,
+    });
   }
+
+  // Never unlock / charge for mock or unavailable enrichment when mocks are blocked.
+  if (isMockEnrichment(full) && !allowMockProperties()) {
+    return res.status(503).json({
+      error: PROPERTY_DATA_UNAVAILABLE,
+      code: PROPERTY_DATA_UNAVAILABLE_CODE,
+      mockBlocked: true,
+      creditDeducted: false,
+    });
+  }
+
   if (expectedAddress && looksLikeStreetAddress(expectedAddress)) {
     const gate = assertAddressMatchesSearch(expectedAddress, full.address);
     if (!gate.ok) {
@@ -145,7 +192,7 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [req.user.id, full.address]);
+  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [ownerUserId, full.address]);
   if (existing.length > 0) {
     const row = existing[0];
     const sparse =
@@ -198,7 +245,7 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
           }),
           full.imageUrl || null,
           row.id,
-          req.user.id,
+          ownerUserId,
         ],
       );
       console.log(`[Lead Generate] Refreshed sparse saved lead #${row.id}`);
@@ -209,7 +256,7 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
       leadId: row.id,
       detail: { ...full, unlocked: true, leadId: row.id },
       unlocked: true,
-      creditsRemaining: await getRemainingCredits(req.user.id, adminBypass),
+      creditsRemaining: await getRemainingCredits(ownerUserId, adminBypass),
       creditDeducted: false,
     });
   }
@@ -226,10 +273,11 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
   try {
     await conn.beginTransaction();
     const [ins] = await conn.query(
-      `INSERT INTO leads (user_id, address, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO leads (user_id, assigned_to, address, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        req.user.id,
+        ownerUserId,
+        assignedTo,
         full.address,
         parseFloat(full.lat) || null,
         parseFloat(full.lng) || null,
@@ -292,8 +340,8 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     conn.release();
   }
 
-  // Auto-enroll lead into active drip campaigns
-  await enrollLeadInActiveCampaigns(req.user.id, leadResult.insertId);
+  // Auto-enroll lead into active drip campaigns (owner's campaigns)
+  await enrollLeadInActiveCampaigns(ownerUserId, leadResult.insertId);
 
   res.status(201).json({
     message: 'Lead generated successfully',
@@ -301,16 +349,17 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     adminBypass,
     detail: { ...full, unlocked: true, leadId: leadResult.insertId },
     unlocked: true,
-    creditsRemaining: await getRemainingCredits(req.user.id, adminBypass),
+    creditsRemaining: await getRemainingCredits(ownerUserId, adminBypass),
     creditDeducted: !adminBypass && !!packageRecord,
   });
 }));
 
 // Pipeline summary counts
 router.get('/pipeline/summary', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
   const [rows] = await db.query(
     'SELECT status, COUNT(*) AS count FROM leads WHERE user_id = ? GROUP BY status',
-    [req.user.id]
+    [workspace.ownerUserId]
   );
   const PIPELINE_STATUSES = ['new', 'contacted', 'appointment', 'proposal', 'won', 'lost', 'qualified', 'in_progress'];
   const summary = Object.fromEntries(PIPELINE_STATUSES.map((s) => [s, 0]));
@@ -322,6 +371,7 @@ router.get('/pipeline/summary', authenticateToken, asyncHandler(async (req, res)
 
 // Get User Leads (enriched with last activity for CRM list)
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
   const [leads] = await db.query(
     `SELECT l.*,
        la.type AS last_activity_type,
@@ -336,14 +386,15 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
      )
      WHERE l.user_id = ?
      ORDER BY l.created_at DESC`,
-    [req.user.id],
+    [workspace.ownerUserId],
   );
   res.json(leads);
 }));
 
 // Export User Leads as CSV
-router.get('/export-csv', authenticateToken, requirePlanFeature('csvExport'), asyncHandler(async (req, res) => {
-  const [leads] = await db.query('SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+router.get('/export-csv', authenticateToken, requirePlanFeature('csvExport'), requireWorkspacePermission('leads_export'), asyncHandler(async (req, res) => {
+  const workspace = req.workspace || (await resolveWorkspaceContext(req.user.id));
+  const [leads] = await db.query('SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC', [workspace.ownerUserId]);
   
   const headers = [
     'Lead ID',
@@ -385,7 +436,8 @@ router.post('/bulk-delete', authenticateToken, asyncHandler(async (req, res) => 
   if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
     return res.status(400).json({ error: 'leadIds array is required' });
   }
-  await db.query('DELETE FROM leads WHERE user_id = ? AND id IN (?)', [req.user.id, leadIds]);
+  const workspaceDel = await resolveWorkspaceContext(req.user.id);
+  await db.query('DELETE FROM leads WHERE user_id = ? AND id IN (?)', [workspaceDel.ownerUserId, leadIds]);
   res.json({ success: true, message: `Successfully deleted ${leadIds.length} leads` });
 }));
 
@@ -415,6 +467,10 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
   if (!zip) return res.status(400).json({ error: 'ZIP code required or coordinates not resolvable' });
 
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  const ownerUserId = workspace.ownerUserId;
+  const assignedTo = assignedToForActor(workspace);
+
   const entitlements = await getUserEntitlements(req.user.id, req.user.role);
   if (!entitlements.unlimited && !entitlements.features.advancedFilters) {
     if (skipPaneled || singleFamily || minSavings || intentLevel) {
@@ -428,7 +484,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   const lock = await getTerritoryLock(zip);
-  if (lock.locked && Number(lock.ownerUserId) !== Number(req.user.id) && !entitlements.unlimited) {
+  if (lock.locked && Number(lock.ownerUserId) !== Number(ownerUserId) && !entitlements.unlimited) {
     return res.status(403).json({
       error: `ZIP ${zip} is under territory intelligence lock until ${new Date(lock.lockedUntil).toLocaleDateString()}. Mission Control subscribers can lock territories for 7 days.`,
       code: 'TERRITORY_LOCKED',
@@ -446,8 +502,8 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   const userRole = roleRows[0]?.role || req.user.role;
   const adminBypass = isAdminRole(userRole);
 
-  const [packages] = await db.query('SELECT id, remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [req.user.id]);
-  const creditCheck = await checkLeadCreditAccess(req.user.id);
+  const [packages] = await db.query('SELECT id, remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [ownerUserId]);
+  const creditCheck = await checkLeadCreditAccess(ownerUserId);
   if (!adminBypass && !creditCheck.allowed) {
     return res.status(402).json({
       error: creditCheck.error,
@@ -533,26 +589,41 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
   let propertiesList = [];
   let usedMockListing = false;
+  /** @type {'no_key'|'ok'|'empty'|'error'|'skipped'} */
+  let rentcastStatus = 'skipped';
 
   const rentcastApiKey = process.env.RENTCAST_API_KEY || process.env.ATTOM_API_KEY;
-  if (isKeyValid(rentcastApiKey)) {
+  if (!isKeyValid(rentcastApiKey)) {
+    rentcastStatus = 'no_key';
+  } else {
     const rentcastLimit = Math.min(500, Math.max(80, queryLimit * 5));
     let rentcastSearchUrl = `https://api.rentcast.io/v1/properties?zipCode=${zip}&limit=${rentcastLimit}`;
     if (Number.isFinite(centerLat) && Number.isFinite(centerLng) && radiusMiles > 0) {
       rentcastSearchUrl = `https://api.rentcast.io/v1/properties?latitude=${centerLat}&longitude=${centerLng}&radius=${radiusMiles.toFixed(2)}&limit=${rentcastLimit}`;
     }
-    const searchRes = await trackedFetch('rentcast', rentcastSearchUrl, {
-      headers: {
-        'X-Api-Key': rentcastApiKey,
-        'accept': 'application/json'
+    try {
+      const searchRes = await trackedFetch('rentcast', rentcastSearchUrl, {
+        headers: {
+          'X-Api-Key': rentcastApiKey,
+          'accept': 'application/json'
+        }
+      });
+      if (searchRes.ok) {
+        const properties = await searchRes.json();
+        if (Array.isArray(properties) && properties.length > 0) {
+          propertiesList = properties;
+          cacheRentcastRecords(properties);
+          rentcastStatus = 'ok';
+        } else {
+          rentcastStatus = 'empty';
+        }
+      } else {
+        rentcastStatus = 'error';
+        console.error(`[Bulk Scan] RentCast HTTP ${searchRes.status} — no mock fallback`);
       }
-    });
-    if (searchRes.ok) {
-      const properties = await searchRes.json();
-      if (Array.isArray(properties)) {
-        propertiesList = properties;
-        cacheRentcastRecords(properties);
-      }
+    } catch (err) {
+      rentcastStatus = 'error';
+      console.error('[Bulk Scan] RentCast failed — no mock fallback:', err.message || err);
     }
   }
 
@@ -587,6 +658,31 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   });
 
   if (propertiesList.length === 0) {
+    if (!allowMockProperties()) {
+      await refundReservedCredits(packageRecord, reservedCredits);
+      const providerDown = rentcastStatus === 'no_key' || rentcastStatus === 'error';
+      if (providerDown) {
+        void notifyAdminApiFailure({
+          service: 'rentcast',
+          operation: 'bulkScan',
+          status: rentcastStatus === 'no_key' ? 503 : 502,
+          errorMessage:
+            rentcastStatus === 'no_key'
+              ? 'RENTCAST_API_KEY missing or invalid'
+              : 'RentCast bulk search failed',
+        });
+      }
+      return res.status(providerDown ? 503 : 404).json({
+        error: providerDown ? PROPERTY_DATA_UNAVAILABLE : PROPERTY_DATA_NOT_FOUND,
+        code: providerDown ? PROPERTY_DATA_UNAVAILABLE_CODE : PROPERTY_DATA_NOT_FOUND_CODE,
+        usedMockListing: false,
+        mockBlocked: true,
+        propertiesFound: 0,
+        leadsCount: 0,
+        creditsDeducted: 0,
+        creditsRemaining: await getRemainingCredits(ownerUserId, adminBypass),
+      });
+    }
     usedMockListing = true;
     const mockStreets = ['Alta Dr', 'Bedford Dr', 'Marilyn Dr', 'Oakhurst Dr', 'Beverly Dr', 'Crescent Dr', 'Loma Vista Dr', 'Sunset Blvd'];
     for (let i = 1; i <= Math.max(15, queryLimit); i++) {
@@ -616,7 +712,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   }
   propertiesList = dedupedProperties;
 
-  const [existingLeadRows] = await db.query('SELECT address FROM leads WHERE user_id = ?', [req.user.id]);
+  const [existingLeadRows] = await db.query('SELECT address FROM leads WHERE user_id = ?', [ownerUserId]);
   const existingNormalizedAddresses = new Set(
     existingLeadRows.map((row) => normalizeAddress(row.address)).filter(Boolean)
   );
@@ -679,14 +775,15 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
     const [insertResult] = await db.query(
       `INSERT INTO leads (
-        user_id, address, latitude, longitude, owner_name, lead_score,
+        user_id, assigned_to, address, latitude, longitude, owner_name, lead_score,
         phone, phone_type, email, email_status, linkedin, status,
         property_value, roof_size, estimated_savings, parcel_id,
         owner_occupied, solar_potential, mailing_address, notes,
         solar_json, property_json, image_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        req.user.id,
+        ownerUserId,
+        assignedTo,
         details.address,
         parseFloat(details.lat) || null,
         parseFloat(details.lng) || null,
@@ -762,13 +859,31 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
       continue;
     }
 
-    let details = await retrievePropertyDetails(
-      targetId,
-      latVal,
-      lngVal,
-      prop._isMockListing ? null : prop,
-      { skipContacts: true, bypassCache: true }
-    );
+    let details;
+    try {
+      details = await retrievePropertyDetails(
+        targetId,
+        latVal,
+        lngVal,
+        prop._isMockListing ? null : prop,
+        { skipContacts: true, bypassCache: true }
+      );
+    } catch (enrichErr) {
+      if (enrichErr?.code === PROPERTY_DATA_UNAVAILABLE_CODE || enrichErr?.mockBlocked) {
+        summary.skipped++;
+        summary.skippedReasons.noAddress++;
+        continue;
+      }
+      throw enrichErr;
+    }
+
+    if (!details || isMockEnrichment(details)) {
+      if (!allowMockProperties()) {
+        summary.skipped++;
+        summary.skippedReasons.noAddress++;
+        continue;
+      }
+    }
 
     if (!details.address || details.address === 'Not Available') {
       summary.skipped++;
@@ -880,7 +995,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     );
   }
 
-  const [refreshedPackages] = await db.query('SELECT remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [req.user.id]);
+  const [refreshedPackages] = await db.query('SELECT remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [ownerUserId]);
   const currentCredits = adminBypass ? 9999 : (refreshedPackages[0]?.remaining_leads ?? 0);
 
   if (
@@ -888,7 +1003,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     entitlements.limits.territoryLockDays > 0 &&
     summary.leadsCount > 0
   ) {
-    await claimTerritoryLock(req.user.id, zip, entitlements.limits.territoryLockDays);
+    await claimTerritoryLock(ownerUserId, zip, entitlements.limits.territoryLockDays);
   }
 
   summary.phase = 'completed';
@@ -1215,7 +1330,7 @@ router.post('/:id/activities', authenticateToken, asyncHandler(async (req, res) 
   const { type = 'note', content } = req.body;
   if (!content) return res.status(400).json({ error: 'content is required' });
 
-  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id');
+  const lead = await fetchLeadForUser(id, req.user.id, req.user.role, 'l.id, l.user_id');
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
   await db.query(
@@ -1223,7 +1338,7 @@ router.post('/:id/activities', authenticateToken, asyncHandler(async (req, res) 
     [id, req.user.id, type, content]
   );
   if (type === 'note') {
-    await db.query('UPDATE leads SET notes = ? WHERE id = ? AND user_id = ?', [content, id, req.user.id]);
+    await db.query('UPDATE leads SET notes = ? WHERE id = ? AND user_id = ?', [content, id, lead.user_id]);
   }
 
   const [activities] = await db.query(

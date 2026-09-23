@@ -35,6 +35,14 @@ import {
 } from '../../lib/pipelineApi.js';
 import LeadFollowUpsPanel from '../../components/leads/LeadFollowUpsPanel.jsx';
 import EmailSequenceBuilder from '../../components/leads/EmailSequenceBuilder.jsx';
+import {
+  buildGoogleCalendarUrl,
+  buildOutlookCalendarUrl,
+  downloadAppointmentIcs,
+  getAppointmentBucket,
+  statusBadgeClass,
+  statusLabel,
+} from '../../lib/appointmentCalendar.js';
 
 const API = API_BASE;
 const GMAPS_SCRIPT_ID = 'google-maps-script';
@@ -183,6 +191,9 @@ export default function LeadDetails() {
   const [conversationNotes, setConversationNotes] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [apptAt, setApptAt] = useState('');
+  const [apptTitle, setApptTitle] = useState('Site Survey');
+  const [apptDuration, setApptDuration] = useState(60);
+  const [apptSendEmail, setApptSendEmail] = useState(true);
   const [busy, setBusy] = useState('');
   const [googleMapsKey, setGoogleMapsKey] = useState('');
   const [mapsLoaded, setMapsLoaded] = useState(false);
@@ -656,17 +667,27 @@ export default function LeadDetails() {
       headers: authHeaders(),
       body: JSON.stringify({
         leadId: Number(id),
-        title: `Site Survey — ${lead.owner_name || 'Lead'}`,
+        title: apptTitle?.trim() || `Site Survey — ${lead.owner_name || 'Lead'}`,
         scheduledAt: apptAt,
+        durationMinutes: Number(apptDuration) || 60,
         location: lead.address,
+        sendConfirmation: apptSendEmail,
       }),
     });
     if (!res.ok) {
       const err = await res.json();
       alert(err.error || 'Failed');
     } else {
+      const created = await res.json().catch(() => ({}));
       await load();
-      alert('Appointment booked');
+      setApptAt('');
+      if (created.emailSent) {
+        alert('Appointment booked. Confirmation email sent with calendar links.');
+      } else if (apptSendEmail && !lead.email) {
+        alert('Appointment booked. Lead has no email — confirmation skipped.');
+      } else {
+        alert('Appointment booked');
+      }
       setTab('appointments');
     }
     setBusy('');
@@ -678,7 +699,11 @@ export default function LeadDetails() {
     const res = await fetch(`${API}/api/appointments/${apptId}`, {
       method: 'PATCH',
       headers: authHeaders(),
-      body: JSON.stringify({ scheduledAt: rescheduleAt, status: 'scheduled' }),
+      body: JSON.stringify({
+        scheduledAt: rescheduleAt,
+        status: 'scheduled',
+        sendConfirmation: Boolean(lead?.email),
+      }),
     });
     if (!res.ok) {
       alert('Failed to reschedule');
@@ -701,6 +726,35 @@ export default function LeadDetails() {
     if (!res.ok) alert('Failed to cancel');
     else await load();
     setBusy('');
+  };
+
+  const handleApptStatus = async (apptId, status) => {
+    setBusy(`appt-status-${apptId}`);
+    const res = await fetch(`${API}/api/appointments/${apptId}`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) alert('Failed to update status');
+    else await load();
+    setBusy('');
+  };
+
+  const handleResendApptEmail = async (apptId) => {
+    setBusy(`appt-resend-${apptId}`);
+    try {
+      const res = await fetch(`${API}/api/appointments/${apptId}/resend-confirmation`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to resend');
+      alert('Confirmation email resent with calendar links.');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy('');
+    }
   };
 
   const handleEnrollSequence = async () => {
@@ -1747,7 +1801,12 @@ export default function LeadDetails() {
                 <p className="text-[11px] text-on-surface-variant">No appointments for this lead yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {leadAppointments.map((a) => (
+                  {leadAppointments.map((a) => {
+                    const bucket = getAppointmentBucket(a);
+                    const status = String(a.status || 'scheduled').toLowerCase();
+                    const google = buildGoogleCalendarUrl(a);
+                    const outlook = buildOutlookCalendarUrl(a);
+                    return (
                     <div
                       key={a.id}
                       className="p-3 rounded-xl border border-glass-stroke bg-white/[0.03] space-y-2"
@@ -1757,46 +1816,113 @@ export default function LeadDetails() {
                           <p className="text-sm font-bold text-on-surface">{a.title}</p>
                           <p className="text-[11px] text-on-surface-variant">
                             {a.scheduled_at ? new Date(a.scheduled_at).toLocaleString() : '—'}
+                            {` · ${a.duration_minutes || 60} min`}
                             {a.location ? ` · ${a.location}` : ''}
                           </p>
                           <span
-                            className={`inline-block mt-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                              a.status === 'cancelled'
-                                ? 'text-red-300 border-red-500/30 bg-red-500/10'
-                                : a.status === 'completed'
-                                  ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
-                                  : 'text-primary border-primary/30 bg-primary/10'
-                            }`}
+                            className={`inline-block mt-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusBadgeClass(
+                              bucket === 'past_due' ? 'past_due' : status
+                            )}`}
                           >
-                            {a.status || 'scheduled'}
+                            {bucket === 'past_due' ? 'Past due' : statusLabel(status)}
                           </span>
                         </div>
-                        {a.status !== 'cancelled' && (
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRescheduleId(a.id);
-                                setRescheduleAt(
-                                  a.scheduled_at
-                                    ? new Date(a.scheduled_at).toISOString().slice(0, 16)
-                                    : '',
-                                );
-                              }}
-                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-on-surface"
-                            >
-                              Reschedule
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCancelAppt(a.id)}
-                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-500/15 text-red-300"
-                            >
-                              Cancel
-                            </button>
+                        {status !== 'cancelled' && (
+                          <div className="flex flex-wrap gap-1.5 justify-end">
+                            {status === 'scheduled' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApptStatus(a.id, 'completed')}
+                                  disabled={busy === `appt-status-${a.id}`}
+                                  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300"
+                                >
+                                  Complete
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApptStatus(a.id, 'no_show')}
+                                  disabled={busy === `appt-status-${a.id}`}
+                                  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-orange-500/15 text-orange-300"
+                                >
+                                  No-show
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRescheduleId(a.id);
+                                    setRescheduleAt(
+                                      a.scheduled_at
+                                        ? new Date(a.scheduled_at).toISOString().slice(0, 16)
+                                        : '',
+                                    );
+                                  }}
+                                  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-on-surface"
+                                >
+                                  Reschedule
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelAppt(a.id)}
+                                  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-500/15 text-red-300"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+                            {(status === 'completed' || status === 'no_show') && (
+                              <button
+                                type="button"
+                                onClick={() => handleApptStatus(a.id, 'scheduled')}
+                                className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-on-surface"
+                              >
+                                Reopen
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
+                      {status !== 'cancelled' && (
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => downloadAppointmentIcs({ ...a, owner_name: lead?.owner_name, address: lead?.address, phone: lead?.phone, email: lead?.email })}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/8 text-on-surface-variant hover:text-on-surface"
+                          >
+                            ICS
+                          </button>
+                          {google && (
+                            <a
+                              href={google}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/8 text-on-surface-variant hover:text-on-surface"
+                            >
+                              Google
+                            </a>
+                          )}
+                          {outlook && (
+                            <a
+                              href={outlook}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/8 text-on-surface-variant hover:text-on-surface"
+                            >
+                              Outlook
+                            </a>
+                          )}
+                          {lead?.email && (
+                            <button
+                              type="button"
+                              onClick={() => handleResendApptEmail(a.id)}
+                              disabled={busy === `appt-resend-${a.id}`}
+                              className="text-[10px] font-bold px-2 py-1 rounded-lg bg-primary/15 text-primary"
+                            >
+                              Resend email
+                            </button>
+                          )}
+                        </div>
+                      )}
                       {rescheduleId === a.id && (
                         <div className="flex flex-col sm:flex-row gap-2 sm:items-end pt-1">
                           <input
@@ -1816,39 +1942,77 @@ export default function LeadDetails() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Card>
 
             <Card title="Book Site Survey">
               <p className="text-[11px] text-on-surface-variant mb-3">
-                Booking sets lead stage to Appointment (existing automation).
+                Booking sets lead stage to Appointment. Confirmation email includes Google/Outlook calendar links when the lead has an email.
               </p>
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-                <div className="flex-1 w-full">
-                  <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Date & time</label>
-                  <input
-                    type="datetime-local"
-                    className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
-                    value={apptAt}
-                    onChange={(e) => setApptAt(e.target.value)}
-                  />
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Title</label>
+                    <select
+                      className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
+                      value={apptTitle}
+                      onChange={(e) => setApptTitle(e.target.value)}
+                    >
+                      <option value="Site Survey">Site Survey</option>
+                      <option value="Consultation">Consultation</option>
+                      <option value="Install Check">Install Check</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Duration (min)</label>
+                    <input
+                      type="number"
+                      className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-xs"
+                      value={apptDuration}
+                      onChange={(e) => setApptDuration(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleBookAppt}
-                  disabled={busy === 'appt'}
-                  className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold shrink-0"
-                >
-                  Book Appointment
-                </button>
-                <Link
-                  to="/appointments"
-                  className="text-primary font-bold hover:underline py-2 shrink-0 text-center"
-                >
-                  All Appointments →
-                </Link>
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                  <div className="flex-1 w-full">
+                    <label className="font-label-mono text-[9px] text-on-surface-variant uppercase">Date & time</label>
+                    <input
+                      type="datetime-local"
+                      className="w-full mt-1 bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface"
+                      value={apptAt}
+                      onChange={(e) => setApptAt(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBookAppt}
+                    disabled={busy === 'appt'}
+                    className="bg-secondary/20 text-secondary border border-secondary/30 px-4 py-2 rounded-lg font-bold shrink-0"
+                  >
+                    Book Appointment
+                  </button>
+                  <Link
+                    to="/appointments"
+                    className="text-primary font-bold hover:underline py-2 shrink-0 text-center"
+                  >
+                    All Appointments →
+                  </Link>
+                </div>
+                <label className="flex items-center gap-2 text-[11px] text-on-surface-variant cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={apptSendEmail}
+                    onChange={(e) => setApptSendEmail(e.target.checked)}
+                    className="rounded border-glass-stroke"
+                  />
+                  Send confirmation email with calendar links
+                  {!lead?.email && (
+                    <span className="text-amber-300/90">(lead has no email)</span>
+                  )}
+                </label>
               </div>
             </Card>
           </div>

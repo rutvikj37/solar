@@ -3,7 +3,10 @@ import React from 'react';
 export default function DripFunnelChart({ funnel }) {
   if (!funnel) return null;
 
-  const maxVal = Math.max(funnel.enrolled || 1, ...(funnel.steps || []).map((s) => s.sent || 0));
+  const maxVal = Math.max(
+    funnel.enrolled || 1,
+    ...(funnel.steps || []).map((s) => Math.max(s.sent || 0, s.simulated || 0)),
+  );
 
   return (
     <div className="space-y-4 p-4 rounded-xl bg-surface-container-low border border-glass-stroke">
@@ -29,13 +32,22 @@ export default function DripFunnelChart({ funnel }) {
               <span className="text-slate-400">
                 Step {step.stepOrder} · {step.actionType?.toUpperCase()}
               </span>
-              <span className="text-on-surface font-bold">{step.sent} sent</span>
+              <span className="text-on-surface font-bold">
+                {step.sent} sent
+                {step.simulated ? ` · ${step.simulated} simulated` : ''}
+              </span>
             </div>
-            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-2 rounded-full bg-white/5 overflow-hidden flex">
               <div
-                className="h-full bg-primary rounded-full transition-all"
+                className="h-full bg-primary transition-all"
                 style={{ width: `${Math.round(((step.sent || 0) / maxVal) * 100)}%` }}
               />
+              {(step.simulated || 0) > 0 && (
+                <div
+                  className="h-full bg-violet-500/70 transition-all"
+                  style={{ width: `${Math.round(((step.simulated || 0) / maxVal) * 100)}%` }}
+                />
+              )}
             </div>
           </div>
         ))}

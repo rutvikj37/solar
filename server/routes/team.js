@@ -8,69 +8,14 @@ import { assertCrmSeatAvailable, getUserEntitlements } from '../services/planEnt
 import { issueTeamInvitationEmail } from '../services/authEmailService.js';
 import { signUserToken } from './auth.js';
 import { resolveFrontendBaseUrl } from '../utils/frontendUrl.js';
+import { requireWorkspacePermission } from '../middleware/workspacePermissions.js';
+import {
+  DEFAULT_WORKSPACE_ROLES,
+  resolveWorkspaceContext,
+  workspaceHasPermission,
+} from '../utils/workspaceContext.js';
 
 const router = express.Router();
-
-const DEFAULT_WORKSPACE_ROLES = [
-  {
-    id: 'manager',
-    name: 'Manager',
-    description: 'Full pipeline, proposals, team management & analytics access',
-    color: 'purple',
-    isDefault: true,
-    permissions: [
-      'leads_view',
-      'leads_create',
-      'leads_edit',
-      'leads_export',
-      'proposals_create',
-      'proposals_edit',
-      'outreach_send',
-      'analytics_view',
-      'team_manage',
-    ],
-  },
-  {
-    id: 'sales_rep',
-    name: 'Sales Rep',
-    description: 'Prospect searching, pipeline management, and proposal generation',
-    color: 'blue',
-    isDefault: true,
-    permissions: [
-      'leads_view',
-      'leads_create',
-      'leads_edit',
-      'proposals_create',
-      'proposals_edit',
-      'outreach_send',
-    ],
-  },
-  {
-    id: 'canvasser',
-    name: 'Canvasser',
-    description: 'Field territory scanning, mobile lead capture, and status logging',
-    color: 'amber',
-    isDefault: true,
-    permissions: [
-      'leads_view',
-      'leads_create',
-      'leads_edit',
-    ],
-  },
-  {
-    id: 'estimator',
-    name: 'Estimator',
-    description: 'System design, solar equipment modeling, and proposal pricing',
-    color: 'emerald',
-    isDefault: true,
-    permissions: [
-      'leads_view',
-      'proposals_create',
-      'proposals_edit',
-      'analytics_view',
-    ],
-  },
-];
 
 // ==========================================
 // 1. WORKSPACE ROLES MANAGEMENT
@@ -78,9 +23,11 @@ const DEFAULT_WORKSPACE_ROLES = [
 
 // List standard and custom roles for workspace
 router.get('/roles', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  const ownerUserId = workspace.ownerUserId;
   const [customRoles] = await db.query(
     'SELECT id, name, description, color, permissions, created_at, updated_at FROM workspace_roles WHERE owner_user_id = ? ORDER BY id ASC',
-    [req.user.id]
+    [ownerUserId]
   );
   const formattedCustom = customRoles.map((r) => ({
     id: r.id,
@@ -100,7 +47,7 @@ router.get('/roles', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Create a custom workspace role
-router.post('/roles', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/roles', authenticateToken, requireWorkspacePermission('team_manage'), asyncHandler(async (req, res) => {
   const { name, description = '', color = 'blue', permissions = [] } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Role name is required' });
@@ -111,9 +58,10 @@ router.post('/roles', authenticateToken, asyncHandler(async (req, res) => {
   const safeColor = validColors.includes(color) ? color : 'blue';
   const permsJson = JSON.stringify(Array.isArray(permissions) ? permissions : []);
 
+  const ownerUserId = (req.workspace || await resolveWorkspaceContext(req.user.id)).ownerUserId;
   const [result] = await db.query(
     'INSERT INTO workspace_roles (owner_user_id, name, description, color, permissions) VALUES (?, ?, ?, ?, ?)',
-    [req.user.id, roleNameClean, description.trim().slice(0, 255), safeColor, permsJson]
+    [ownerUserId, roleNameClean, description.trim().slice(0, 255), safeColor, permsJson]
   );
 
   res.status(201).json({
@@ -128,7 +76,7 @@ router.post('/roles', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Update a custom workspace role
-router.put('/roles/:id', authenticateToken, asyncHandler(async (req, res) => {
+router.put('/roles/:id', authenticateToken, requireWorkspacePermission('team_manage'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, description = '', color = 'blue', permissions = [] } = req.body;
   if (!name || !name.trim()) {
@@ -140,7 +88,7 @@ router.put('/roles/:id', authenticateToken, asyncHandler(async (req, res) => {
 
   const [result] = await db.query(
     'UPDATE workspace_roles SET name = ?, description = ?, color = ?, permissions = ? WHERE id = ? AND owner_user_id = ?',
-    [roleNameClean, description.trim().slice(0, 255), color, permsJson, id, req.user.id]
+    [roleNameClean, description.trim().slice(0, 255), color, permsJson, id, (req.workspace || await resolveWorkspaceContext(req.user.id)).ownerUserId]
   );
 
   if (result.affectedRows === 0) {
@@ -158,11 +106,11 @@ router.put('/roles/:id', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Delete a custom workspace role
-router.delete('/roles/:id', authenticateToken, asyncHandler(async (req, res) => {
+router.delete('/roles/:id', authenticateToken, requireWorkspacePermission('team_manage'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const [result] = await db.query(
     'DELETE FROM workspace_roles WHERE id = ? AND owner_user_id = ?',
-    [id, req.user.id]
+    [id, (req.workspace || await resolveWorkspaceContext(req.user.id)).ownerUserId]
   );
   if (result.affectedRows === 0) {
     return res.status(404).json({ error: 'Role not found or unauthorized' });
@@ -176,6 +124,8 @@ router.delete('/roles/:id', authenticateToken, asyncHandler(async (req, res) => 
 
 // List team members for logged-in master account
 router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  const ownerUserId = workspace.ownerUserId;
   const [members] = await db.query(
     `SELECT tm.id, tm.member_email, tm.role, tm.role_id, tm.status, tm.invite_token, tm.invite_expires, tm.created_at,
             u.name, u.account_status,
@@ -185,7 +135,7 @@ router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
      LEFT JOIN workspace_roles wr ON wr.id = tm.role_id
      WHERE tm.owner_user_id = ?
      ORDER BY tm.created_at DESC`,
-    [req.user.id]
+    [ownerUserId]
   );
   const entitlements = await getUserEntitlements(req.user.id, req.user.role);
   const frontendBaseUrl = resolveFrontendBaseUrl();
@@ -206,12 +156,14 @@ router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Invite team member via Resend email
-router.post('/invite', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/invite', authenticateToken, requireWorkspacePermission('team_manage'), asyncHandler(async (req, res) => {
   const { memberEmail, role = 'sales_rep', roleId = null } = req.body;
   if (!memberEmail) return res.status(400).json({ error: 'memberEmail is required' });
 
+  const wsInvite = req.workspace || await resolveWorkspaceContext(req.user.id);
+  const ownerUserId = wsInvite.ownerUserId;
   try {
-    await assertCrmSeatAvailable(req.user.id, req.user.role);
+    await assertCrmSeatAvailable(ownerUserId, req.user.role);
   } catch (err) {
     return res.status(err.status || 403).json(err.payload || { error: err.message });
   }
@@ -227,7 +179,7 @@ router.post('/invite', authenticateToken, asyncHandler(async (req, res) => {
   if (roleId) {
     const [cr] = await db.query(
       'SELECT id, name FROM workspace_roles WHERE id = ? AND owner_user_id = ?',
-      [roleId, req.user.id]
+      [roleId, ownerUserId]
     );
     if (cr.length > 0) {
       customRoleId = cr[0].id;
@@ -238,7 +190,7 @@ router.post('/invite', authenticateToken, asyncHandler(async (req, res) => {
   // Check if member is already in workspace
   const [existing] = await db.query(
     'SELECT id, status FROM team_members WHERE owner_user_id = ? AND LOWER(member_email) = ?',
-    [req.user.id, emailClean]
+    [ownerUserId, emailClean]
   );
 
   const token = crypto.randomBytes(32).toString('hex');
@@ -257,7 +209,7 @@ router.post('/invite', authenticateToken, asyncHandler(async (req, res) => {
   } else {
     const [result] = await db.query(
       'INSERT INTO team_members (owner_user_id, member_email, role, role_id, status, invite_token, invite_expires) VALUES (?, ?, ?, ?, "pending", ?, ?)',
-      [req.user.id, emailClean, finalRoleName, customRoleId, token, expiresAt]
+      [ownerUserId, emailClean, finalRoleName, customRoleId, token, expiresAt]
     );
     memberId = result.insertId;
   }
@@ -305,13 +257,14 @@ router.post('/invite', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Resend invitation email
-router.post('/invite/resend', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/invite/resend', authenticateToken, requireWorkspacePermission('team_manage'), asyncHandler(async (req, res) => {
   const { memberId } = req.body;
   if (!memberId) return res.status(400).json({ error: 'memberId is required' });
 
+  const ownerUserId = (req.workspace || await resolveWorkspaceContext(req.user.id)).ownerUserId;
   const [rows] = await db.query(
     'SELECT id, member_email, role, status FROM team_members WHERE id = ? AND owner_user_id = ?',
-    [memberId, req.user.id]
+    [memberId, ownerUserId]
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Team member record not found' });
   const tm = rows[0];
@@ -457,9 +410,9 @@ router.post('/invite/accept', asyncHandler(async (req, res) => {
       company_name: tm.company_name,
     };
 
-    // Assign initial package for app compatibility
+    // Invitees share the owner's credit pool — do not grant a working Free/10 package.
     await db.query(
-      'INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status) VALUES (?, "Free", 10, 10, "active")',
+      'INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status) VALUES (?, "Free", 0, 0, "active")',
       [userRecord.id]
     );
   }
@@ -489,23 +442,45 @@ router.post('/invite/accept', asyncHandler(async (req, res) => {
 }));
 
 // Delete/Revoke team member
-router.delete('/members/:id', authenticateToken, asyncHandler(async (req, res) => {
+router.delete('/members/:id', authenticateToken, requireWorkspacePermission('team_manage'), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await db.query('DELETE FROM team_members WHERE id = ? AND owner_user_id = ?', [id, req.user.id]);
+  const ownerUserId = (req.workspace || await resolveWorkspaceContext(req.user.id)).ownerUserId;
+  await db.query('DELETE FROM team_members WHERE id = ? AND owner_user_id = ?', [id, ownerUserId]);
   res.json({ success: true, message: 'Team member seat revoked' });
 }));
 
 // Territory Conversion Analytics (Cost Per Qualified Lead CPL & Closing Rate per ZIP Code)
 router.get('/territory-analytics', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  const ownerUserId = workspace.ownerUserId;
+
   const [leads] = await db.query(
     'SELECT id, address, status, lead_score, property_value, estimated_savings, created_at FROM leads WHERE user_id = ?',
-    [req.user.id]
+    [ownerUserId]
   );
+
+  let unlockCostUsd = null;
+  try {
+    const [pkgRows] = await db.query(
+      `SELECT p.price, p.lead_limit
+       FROM user_packages up
+       JOIN packages p ON p.id = up.package_id
+       WHERE up.user_id = ? AND up.status = 'active'
+       ORDER BY up.id DESC LIMIT 1`,
+      [ownerUserId],
+    );
+    const price = Number(pkgRows[0]?.price);
+    const leadLimit = Number(pkgRows[0]?.lead_limit);
+    if (Number.isFinite(price) && price > 0 && Number.isFinite(leadLimit) && leadLimit > 0) {
+      unlockCostUsd = price / leadLimit;
+    }
+  } catch {
+    unlockCostUsd = null;
+  }
 
   const territoryMap = {};
 
   for (const lead of leads) {
-    // Extract ZIP code from address string (e.g. "123 Main St, Beverly Hills, CA 90210")
     const match = (lead.address || '').match(/\b\d{5}(?:-\d{4})?\b/);
     const zip = match ? match[0] : 'Other Territory';
 
@@ -529,11 +504,14 @@ router.get('/territory-analytics', authenticateToken, asyncHandler(async (req, r
 
   const territories = Object.values(territoryMap).map((t) => {
     const closingRatePct = t.totalScanned > 0 ? Number(((t.closedWonCount / t.totalScanned) * 100).toFixed(1)) : 0;
-    const cplUsd = t.qualifiedCount > 0 ? Number(((t.totalScanned * 0.50) / t.qualifiedCount).toFixed(2)) : 0.50;
+    const cplUsd =
+      unlockCostUsd != null && t.qualifiedCount > 0
+        ? Number(((t.totalScanned * unlockCostUsd) / t.qualifiedCount).toFixed(2))
+        : null;
     return {
       ...t,
       closingRatePct,
-      cplUsd
+      cplUsd,
     };
   });
 
@@ -542,7 +520,10 @@ router.get('/territory-analytics', authenticateToken, asyncHandler(async (req, r
   const totalScannedAll = leads.length;
   const totalWonAll = leads.filter((l) => l.status === 'won' || l.status === 'closed').length;
   const overallClosingRate = totalScannedAll > 0 ? ((totalWonAll / totalScannedAll) * 100).toFixed(1) : 0;
-  const avgCpl = territories.length > 0 ? (territories.reduce((acc, x) => acc + x.cplUsd, 0) / territories.length).toFixed(2) : '0.50';
+  const cplValues = territories.map((x) => x.cplUsd).filter((v) => v != null && Number.isFinite(v));
+  const avgCplUsd = cplValues.length > 0
+    ? Number((cplValues.reduce((acc, x) => acc + x, 0) / cplValues.length).toFixed(2))
+    : null;
 
   res.json({
     summary: {
@@ -550,9 +531,26 @@ router.get('/territory-analytics', authenticateToken, asyncHandler(async (req, r
       totalScannedLeads: totalScannedAll,
       totalClosedWon: totalWonAll,
       overallClosingRate: Number(overallClosingRate),
-      avgCplUsd: Number(avgCpl)
+      avgCplUsd,
+      unlockCostUsd,
     },
-    territories
+    territories,
+  });
+}));
+
+/** Current actor workspace context (permissions for UI). */
+router.get('/workspace', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  res.json({
+    ownerUserId: workspace.ownerUserId,
+    actorUserId: workspace.actorUserId,
+    isOwner: workspace.isOwner,
+    teamRole: workspace.teamRole,
+    roleId: workspace.roleId,
+    permissions: workspace.permissions,
+    canManageTeam: workspaceHasPermission(workspace, 'team_manage'),
+    canExportLeads: workspaceHasPermission(workspace, 'leads_export'),
+    canViewBilling: workspaceHasPermission(workspace, 'billing_view'),
   });
 }));
 

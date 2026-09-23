@@ -27,9 +27,11 @@ async function logActivity(leadId, userId, type, content, meta = null) {
 // Pipeline summary counts (must be before /:id routes)
 router.get('/pipeline/summary', authenticateToken, async (req, res) => {
   try {
+    const { resolveWorkspaceContext } = await import('../utils/workspaceContext.js');
+    const workspace = await resolveWorkspaceContext(req.user.id);
     const [rows] = await db.query(
       `SELECT status, COUNT(*) AS count FROM leads WHERE user_id = ? GROUP BY status`,
-      [req.user.id]
+      [workspace.ownerUserId]
     );
     const summary = Object.fromEntries(PIPELINE_STATUSES.map((s) => [s, 0]));
     rows.forEach((r) => {

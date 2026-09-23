@@ -254,7 +254,7 @@ export async function processDueEnrollments({ userId = null } = {}) {
       stepId: step.id,
       leadId: en.lead_id,
       channel: delivery.channel,
-      status: delivery.status === 'simulated' ? 'sent' : delivery.status,
+      status: delivery.status,
       errorMessage: delivery.errorMessage,
       externalId: delivery.externalId,
     });
@@ -313,10 +313,17 @@ export async function getCampaignFunnel(campaignId, userId) {
        WHERE en.campaign_id = ? AND en.user_id = ? AND e.step_id = ? AND e.status = 'sent'`,
       [campaignId, userId, step.id]
     );
+    const [simulated] = await db.query(
+      `SELECT COUNT(*) AS cnt FROM drip_step_executions e
+       JOIN drip_enrollments en ON en.id = e.enrollment_id
+       WHERE en.campaign_id = ? AND en.user_id = ? AND e.step_id = ? AND e.status = 'simulated'`,
+      [campaignId, userId, step.id]
+    );
     stepStats.push({
       stepOrder: step.step_order,
       actionType: step.action_type,
       sent: sent[0]?.cnt || 0,
+      simulated: simulated[0]?.cnt || 0,
     });
   }
 
@@ -333,6 +340,12 @@ export async function getCampaignStats(campaignId, userId) {
     `SELECT COUNT(*) AS cnt FROM drip_step_executions e
      JOIN drip_enrollments en ON en.id = e.enrollment_id
      WHERE en.campaign_id = ? AND en.user_id = ? AND e.status = 'sent'`,
+    [campaignId, userId]
+  );
+  const [simulated] = await db.query(
+    `SELECT COUNT(*) AS cnt FROM drip_step_executions e
+     JOIN drip_enrollments en ON en.id = e.enrollment_id
+     WHERE en.campaign_id = ? AND en.user_id = ? AND e.status = 'simulated'`,
     [campaignId, userId]
   );
   const [failed] = await db.query(
@@ -362,6 +375,7 @@ export async function getCampaignStats(campaignId, userId) {
 
   return {
     sent: sent[0]?.cnt || 0,
+    simulated: simulated[0]?.cnt || 0,
     failed: failed[0]?.cnt || 0,
     skipped: skipped[0]?.cnt || 0,
     activeEnrollments: active[0]?.cnt || 0,

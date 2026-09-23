@@ -51,7 +51,7 @@ export async function executeDripStep({ step, enrollment, lead, campaignName, us
         await db.query('UPDATE leads SET status = ? WHERE id = ?', ['contacted', lead.id]);
       }
       return {
-        status: result.simulated || result.ok ? 'sent' : 'failed',
+        status: result.simulated ? 'simulated' : result.ok ? 'sent' : 'failed',
         channel: 'email',
         externalId: result.id,
         outreachId: ins.insertId,

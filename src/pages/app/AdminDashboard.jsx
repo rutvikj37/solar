@@ -72,6 +72,7 @@ export default function AdminDashboard() {
   const [quickActionOpen, setQuickActionOpen] = useState(false);
 
   const [stats, setStats] = useState(null);
+  const [systemHealth, setSystemHealth] = useState(null);
   const [users, setUsers] = useState([]);
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -227,13 +228,17 @@ export default function AdminDashboard() {
       setLoading(true);
       try {
         if (active === 'dashboard') {
-          const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
+          const [res, healthRes] = await Promise.all([
+            fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() }),
+            fetch(`${API_BASE}/api/admin/system-health`, { headers: authHeaders() }),
+          ]);
           if (res.status === 403) {
             setError('Admin access required.');
             return;
           }
           if (!res.ok) throw new Error('Failed to load stats');
           setStats(await res.json());
+          if (healthRes.ok) setSystemHealth(await healthRes.json());
         }
         if (active === 'users') {
           const roleQs = roleFilter ? `&role=${encodeURIComponent(roleFilter)}` : '';
@@ -336,8 +341,12 @@ export default function AdminDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
+        const [res, healthRes] = await Promise.all([
+          fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() }),
+          fetch(`${API_BASE}/api/admin/system-health`, { headers: authHeaders() }),
+        ]);
         if (!cancelled && res.ok) setStats(await res.json());
+        if (!cancelled && healthRes.ok) setSystemHealth(await healthRes.json());
       } catch {
         /* ignore */
       }
@@ -350,11 +359,15 @@ export default function AdminDashboard() {
   const handleSyncTelemetry = async () => {
     setSyncing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
+      const [res, healthRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/admin/system-health`, { headers: authHeaders() }),
+      ]);
       if (res.ok) {
         setStats(await res.json());
         toast.success('Telemetry updated');
       }
+      if (healthRes.ok) setSystemHealth(await healthRes.json());
       await loadTab(tab);
     } catch {
       toast.error('Sync failed');
@@ -938,6 +951,20 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {systemHealth && systemHealth.email && !systemHealth.email.configured && (
+          <div className="mx-6 sm:mx-8 lg:mx-10 mt-6 p-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5 shadow-xs">
+            <span className="material-symbols-outlined text-base leading-none mt-0.5">mail</span>
+            <div>
+              <p className="font-semibold">
+                Platform auth email not configured — signup, password reset, and invites will fail closed in production.
+              </p>
+              <p className="mt-1 text-[11px] opacity-90">
+                Set RESEND_API_KEY (preferred) or SENDGRID_API_KEY / Amazon SES. ALLOW_EMAIL_SIMULATION must stay off in production.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Main Content Area */}
         <main className="p-6 sm:p-8 lg:p-10 max-w-[1540px] w-full mx-auto space-y-8 flex-1">
           {/* TAB: DASHBOARD (Overview) */}
@@ -1001,9 +1028,13 @@ export default function AdminDashboard() {
                 <AdminKpiCard
                   label="Active Subscriptions"
                   value={stats ? Number(stats.activeSubscriptions || 0).toLocaleString() : '—'}
-                  trend={stats?.mrrEstimate ? `$${(stats.mrrEstimate).toLocaleString()} MRR` : null}
+                  trend={
+                    stats?.mrrUsd != null || stats?.mrrEstimate != null
+                      ? `$${(stats.mrrUsd ?? stats.mrrEstimate).toLocaleString()} MRR`
+                      : null
+                  }
                   trendPositive={true}
-                  subtext={`${stats?.paidOrders || 0} paid transactions`}
+                  subtext={`$${(Number(stats?.revenueCents || 0) / 100).toLocaleString()} lifetime revenue`}
                   icon="card_membership"
                   iconColor="emerald"
                 />
@@ -1328,9 +1359,9 @@ export default function AdminDashboard() {
                   iconColor="emerald"
                 />
                 <AdminKpiCard
-                  label="Estimated MRR"
-                  value={`$${(stats?.mrrEstimate || 0).toLocaleString()}`}
-                  subtext="Calculated from active plan subscriptions"
+                  label="MRR"
+                  value={`$${(stats?.mrrUsd ?? stats?.mrrEstimate ?? 0).toLocaleString()}`}
+                  subtext={`$${(Number(stats?.revenueCents || 0) / 100).toLocaleString()} lifetime revenue · ${stats?.paidOrders || 0} paid orders`}
                   icon="payments"
                   iconColor="purple"
                 />

@@ -12,6 +12,10 @@ import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../config.js';
 import { buildScoreMarkerIcon } from '../../lib/mapMarkers.js';
 import { resolveGoogleMapsApiKey } from '../../lib/mapsKey.js';
+import {
+  PROPERTY_DATA_UNAVAILABLE,
+  resolvePropertyDataMessage,
+} from '../../lib/propertyDataMessages.js';
 
 /** Ask Hera chat stub — off for launch until chat is built. Set VITE_ENABLE_ASK_HERA=true to show. */
 const ENABLE_ASK_HERA = import.meta.env.VITE_ENABLE_ASK_HERA === 'true';
@@ -117,6 +121,7 @@ export default function InteractiveMap() {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searching, setSearching] = useState(false);
+  const [searchBanner, setSearchBanner] = useState('');
   const [generatedLeadStatus, setGeneratedLeadStatus] = useState('idle');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState('');
@@ -685,6 +690,7 @@ export default function InteractiveMap() {
     searchAbortRef.current = controller;
 
     setSearching(true);
+    setSearchBanner('');
     try {
       const token = localStorage.getItem('solar_token');
       const params = new URLSearchParams({ limit: '60' });
@@ -703,9 +709,25 @@ export default function InteractiveMap() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal
       });
-      if (!response.ok) throw new Error('Search failed');
-      const data = await response.json();
-      setProperties(data.properties || []);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg =
+          resolvePropertyDataMessage(data, { status: response.status }) ||
+          data.error ||
+          PROPERTY_DATA_UNAVAILABLE;
+        setProperties([]);
+        setSearchBanner(msg);
+        return;
+      }
+
+      const props = data.properties || [];
+      setProperties(props);
+      if (data.error || data.code) {
+        const msg = resolvePropertyDataMessage(data, { status: response.status });
+        if (msg) setSearchBanner(msg);
+      } else if (props.length === 0) {
+        setSearchBanner('');
+      }
 
       if (mapInstanceRef.current && data.center) {
         const isAddress = data.searchType === 'address' || looksLikeStreetAddress(query);
@@ -713,15 +735,19 @@ export default function InteractiveMap() {
         if (isAddress && (!activePolygon || activePolygon.length < 3)) {
           mapInstanceRef.current.setZoom(20);
         }
-        plotPropertyMarkers(data.properties || [], data.matchedPropertyId || null);
-        const matched = (data.properties || []).find((p) => p.id === data.matchedPropertyId)
-          || (data.properties || []).find((p) => p.isSearchMatch);
+        plotPropertyMarkers(props, data.matchedPropertyId || null);
+        const matched = props.find((p) => p.id === data.matchedPropertyId)
+          || props.find((p) => p.isSearchMatch);
         if (isAddress && matched) {
           handleMarkerClick(matched.id, matched);
         }
       }
     } catch (err) {
-      if (err.name !== 'AbortError') console.error('Search error:', err);
+      if (err.name !== 'AbortError') {
+        console.error('Search error:', err);
+        setProperties([]);
+        setSearchBanner(PROPERTY_DATA_UNAVAILABLE);
+      }
     } finally {
       if (searchAbortRef.current === controller) setSearching(false);
     }
@@ -751,8 +777,16 @@ export default function InteractiveMap() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal
       });
-      if (!response.ok) throw new Error('Failed to fetch details');
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg =
+          resolvePropertyDataMessage(data, { status: response.status }) ||
+          data.error ||
+          PROPERTY_DATA_UNAVAILABLE;
+        setSelectedProperty(null);
+        setSearchBanner(msg);
+        return;
+      }
       setSelectedProperty({
         ...data,
         isSearchMatch: Boolean(previewProp?.isSearchMatch || data.isSearchMatch),
@@ -767,6 +801,7 @@ export default function InteractiveMap() {
     } catch (err) {
       if (err.name !== 'AbortError') {
         setSelectedProperty(null);
+        setSearchBanner(PROPERTY_DATA_UNAVAILABLE);
       }
     }
   };
@@ -793,13 +828,22 @@ export default function InteractiveMap() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal
       });
-      if (!response.ok) throw new Error('Failed to fetch details');
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg =
+          resolvePropertyDataMessage(data, { status: response.status }) ||
+          data.error ||
+          PROPERTY_DATA_UNAVAILABLE;
+        setSelectedProperty(null);
+        setSearchBanner(msg);
+        return;
+      }
       setSelectedProperty(data);
       setGeneratedLeadStatus(data.unlocked ? 'generated' : 'idle');
     } catch (err) {
       if (err.name !== 'AbortError') {
         setSelectedProperty(null);
+        setSearchBanner(PROPERTY_DATA_UNAVAILABLE);
       }
     }
   };
@@ -954,6 +998,18 @@ export default function InteractiveMap() {
         );
         setShowUpgradeModal(true);
         setGeneratedLeadStatus('idle');
+      } else if (
+        response.status === 503 ||
+        data.code === 'PROPERTY_DATA_UNAVAILABLE' ||
+        data.mockBlocked
+      ) {
+        setUpgradeModalTitle('System update');
+        setShowUpgradeCta(false);
+        setUpgradeMessage(
+          resolvePropertyDataMessage(data, { status: response.status }) || PROPERTY_DATA_UNAVAILABLE
+        );
+        setShowUpgradeModal(true);
+        setGeneratedLeadStatus('idle');
       } else {
         setUpgradeModalTitle('Could not unlock lead');
         setShowUpgradeCta(false);
@@ -991,6 +1047,22 @@ export default function InteractiveMap() {
                 type="button"
                 className="text-amber-100/70 hover:text-on-surface text-sm"
                 onClick={() => setMapError('')}
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {searchBanner && !mapError && (
+          <div className="absolute top-4 left-4 right-4 z-50 max-w-xl mx-auto pointer-events-auto">
+            <div className="rounded-xl border border-sky-400/35 bg-slate-900/85 backdrop-blur-md px-4 py-3 text-xs text-slate-50 flex flex-wrap items-start justify-between gap-2 shadow-xl">
+              <p className="leading-relaxed pr-2">{searchBanner}</p>
+              <button
+                type="button"
+                className="text-slate-300/80 hover:text-white text-sm"
+                onClick={() => setSearchBanner('')}
                 aria-label="Dismiss"
               >
                 ✕

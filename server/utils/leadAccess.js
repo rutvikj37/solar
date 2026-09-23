@@ -1,26 +1,21 @@
 import db from '../db.js';
 import { isAdminRole } from '../middleware/auth.js';
+import { resolveWorkspaceContext } from './workspaceContext.js';
 
-const LEAD_ACCESS_WHERE = `
-  l.id = ? AND (
-    l.user_id = ?
-    OR tm.owner_user_id = ?
-    OR l.user_id IN (
-      SELECT id FROM users WHERE email IN (
-        SELECT member_email FROM team_members WHERE owner_user_id = ?
-      )
-    )
-  )
-`;
-
-/** Resolve a lead only if the user owns it (or team access). Admins may load any lead by id. */
+/**
+ * Lead is visible if it belongs to the workspace owner pool, the actor personally
+ * (legacy), or is assigned to the actor.
+ */
 export async function fetchLeadForUser(leadId, userId, role, selectClause = 'l.*') {
+  const ws = await resolveWorkspaceContext(userId);
   let [leads] = await db.query(
     `SELECT ${selectClause} FROM leads l
-     LEFT JOIN users u ON u.id = l.user_id
-     LEFT JOIN team_members tm ON LOWER(tm.member_email) = LOWER(u.email)
-     WHERE ${LEAD_ACCESS_WHERE}`,
-    [leadId, userId, userId, userId],
+     WHERE l.id = ? AND (
+       l.user_id = ?
+       OR l.user_id = ?
+       OR l.assigned_to = ?
+     )`,
+    [leadId, ws.ownerUserId, userId, userId],
   );
   if (leads.length === 0 && isAdminRole(role)) {
     const adminCols =
@@ -33,6 +28,11 @@ export async function fetchLeadForUser(leadId, userId, role, selectClause = 'l.*
 /** @deprecated Use fetchLeadForUser — kept for call-site compatibility */
 export async function assertLeadOwnership(leadId, userId, role = 'solar_company', selectClause = 'l.*') {
   return fetchLeadForUser(leadId, userId, role, selectClause);
+}
+
+/** SQL fragment helpers for workspace-scoped lead lists. */
+export function workspaceLeadOwnerId(workspace) {
+  return workspace?.ownerUserId;
 }
 
 export function maskLeadContactForPublic(lead) {

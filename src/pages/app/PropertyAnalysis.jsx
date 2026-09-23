@@ -72,7 +72,11 @@ export default function PropertyAnalysis() {
         </div>
         <div className="glass-card p-5 rounded-xl">
           <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">Avg. Cost Per Lead</p>
-          <p className="text-2xl font-bold text-primary font-mono mt-1">${summary.avgCplUsd || '0.50'}</p>
+          <p className="text-2xl font-bold text-primary font-mono mt-1">
+            {summary.avgCplUsd == null || !Number.isFinite(Number(summary.avgCplUsd))
+              ? '—'
+              : `$${Number(summary.avgCplUsd).toFixed(2)}`}
+          </p>
         </div>
       </div>
 
@@ -96,7 +100,11 @@ export default function PropertyAnalysis() {
             </div>
             <div>
               <p className="text-[9px] text-on-surface-variant uppercase">CPL</p>
-              <p className="text-lg font-bold text-primary font-mono">${topTerritory.cplUsd?.toFixed(2)}</p>
+              <p className="text-lg font-bold text-primary font-mono">
+                {topTerritory.cplUsd == null || !Number.isFinite(Number(topTerritory.cplUsd))
+                  ? '—'
+                  : `$${Number(topTerritory.cplUsd).toFixed(2)}`}
+              </p>
             </div>
             <div className="flex items-end">
               <Link

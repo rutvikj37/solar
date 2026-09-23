@@ -121,6 +121,7 @@ export default function Sidebar({
     {
       title: 'ACCOUNT',
       items: [
+        { name: 'Team', path: '/team', icon: 'group' },
         { name: 'Billing', path: '/billing', icon: 'receipt_long', tourId: 'tour-nav-billing' },
         { name: 'Support', path: '/support', icon: 'support_agent' },
         {

@@ -857,7 +857,7 @@ export async function migrateSchema() {
       step_id INT UNSIGNED NOT NULL,
       lead_id INT UNSIGNED NOT NULL,
       channel ENUM('sms','email','ai_call') NOT NULL,
-      status ENUM('sent','failed','skipped') NOT NULL,
+      status ENUM('sent','failed','skipped','simulated') NOT NULL,
       error_message TEXT NULL,
       external_id VARCHAR(255) NULL,
       executed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -866,6 +866,14 @@ export async function migrateSchema() {
       INDEX idx_drip_exec_status (status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  try {
+    await db.query(
+      "ALTER TABLE drip_step_executions MODIFY COLUMN status ENUM('sent','failed','skipped','simulated') NOT NULL",
+    );
+  } catch (err) {
+    console.error('[Schema] drip_step_executions status enum migration:', err.message);
+  }
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS drip_triggers (

@@ -161,7 +161,16 @@ export async function resolveUserPackage(userId, userRole = null) {
 }
 
 export async function getUserEntitlements(userId, userRole = null) {
-  const pkg = await resolveUserPackage(userId, userRole);
+  // Members inherit the workspace owner's package features/limits for lead ops.
+  let entitlementUserId = userId;
+  try {
+    const { resolveWorkspaceContext } = await import('../utils/workspaceContext.js');
+    const ws = await resolveWorkspaceContext(userId);
+    entitlementUserId = ws.ownerUserId;
+  } catch {
+    /* fall back to actor */
+  }
+  const pkg = await resolveUserPackage(entitlementUserId, userRole);
   const features = pkg.unlimited
     ? { ...ALL_FEATURES }
     : featuresForPackageId(pkg.packageId);
@@ -171,7 +180,7 @@ export async function getUserEntitlements(userId, userRole = null) {
   try {
     const [dripRows] = await db.query(
       `SELECT COUNT(*) AS cnt FROM drip_campaigns WHERE user_id = ?`,
-      [userId],
+      [entitlementUserId],
     );
     dripCampaigns = Number(dripRows[0]?.cnt) || 0;
   } catch {
@@ -180,7 +189,7 @@ export async function getUserEntitlements(userId, userRole = null) {
   try {
     const [seatRows] = await db.query(
       `SELECT COUNT(*) AS cnt FROM team_members WHERE owner_user_id = ? AND status = 'active'`,
-      [userId],
+      [entitlementUserId],
     );
     crmSeats = 1 + (Number(seatRows[0]?.cnt) || 0);
   } catch {
@@ -204,6 +213,7 @@ export async function getUserEntitlements(userId, userRole = null) {
       dripCampaigns,
       crmSeats,
     },
+    ownerUserId: entitlementUserId,
   };
 }
 
