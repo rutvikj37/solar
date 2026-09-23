@@ -104,6 +104,16 @@ export default function Sidebar({
                 icon: 'fact_check',
                 hint: 'Review homeowner forms',
               },
+              {
+                name: 'Users & Billing',
+                path: '/admin?tab=users',
+                icon: 'group',
+              },
+              {
+                name: 'Support Tickets',
+                path: '/admin?tab=tickets',
+                icon: 'support_agent',
+              },
             ],
           },
           {

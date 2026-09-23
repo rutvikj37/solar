@@ -217,6 +217,25 @@ router.get('/stats', ...adminChain, async (_req, res) => {
     const [[openTickets]] = await db.query(
       `SELECT COUNT(*) AS open_count FROM support_tickets WHERE status IN ('open','in_progress')`
     );
+    const [[inquiryCount]] = await db.query(
+      `SELECT COUNT(*) AS total FROM marketing_inquiries`
+    );
+    let pendingMarketplace = 0;
+    let pendingDisputes = 0;
+    try {
+      const [[mkt]] = await db.query(
+        `SELECT COUNT(*) AS pending
+         FROM marketplace_leads
+         WHERE status IN ('new', 'ai_qualified', 'pending_admin')`
+      );
+      pendingMarketplace = Number(mkt?.pending || 0);
+      const [[disp]] = await db.query(
+        `SELECT COUNT(*) AS pending FROM marketplace_disputes WHERE status = 'pending'`
+      );
+      pendingDisputes = Number(disp?.pending || 0);
+    } catch {
+      /* marketplace tables may be absent in older envs */
+    }
 
     res.json({
       totalUsers: userCount.total,
@@ -228,7 +247,10 @@ router.get('/stats', ...adminChain, async (_req, res) => {
       paidOrders: revenue.paid_orders,
       mrrEstimate: Math.round(revenue.cents / 100),
       activeSubscriptions: subs.active_subs,
-      openTickets: openTickets.open_count
+      openTickets: openTickets.open_count,
+      inquiryCount: inquiryCount.total,
+      pendingMarketplace,
+      pendingDisputes,
     });
   } catch (error) {
     console.error('Admin stats error:', error);

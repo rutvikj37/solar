@@ -35,8 +35,17 @@ function leadMatchesSearch(l, query) {
   );
 }
 
-export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
-  const [sub, setSub] = useState(initialSub);
+export default function AdminMarketplacePanel({
+  activeSub,
+  initialSub = 'leads',
+  onSubChange,
+}) {
+  const [sub, setSubInternal] = useState(activeSub || initialSub);
+
+  const setSub = (id) => {
+    setSubInternal(id);
+    onSubChange?.(id);
+  };
   const [metrics, setMetrics] = useState(null);
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -170,10 +179,13 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
   }, [load]);
 
   useEffect(() => {
-    if (initialSub && initialSub !== sub) {
-      setSub(initialSub);
+    const next = activeSub || initialSub;
+    if (next && next !== sub) {
+      setSubInternal(next);
     }
-  }, [initialSub]);
+    // Only react to parent URL / prop changes — not local sub flips
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSub, initialSub]);
 
   const openLead = async (id) => {
     try {
@@ -504,8 +516,14 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
     }
   };
 
+  const pendingLeadCount = leads.filter((l) => PENDING_STATUSES.includes(l.status)).length;
+
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-on-surface-variant">
+        Approve homeowner submissions under <strong className="text-on-surface">Review &amp; approve</strong>,
+        then manage bidding, installers, claims, and wallets from the subtabs below.
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           {SUBTABS.map((t) => (
@@ -513,11 +531,18 @@ export default function AdminMarketplacePanel({ initialSub = 'leads' }) {
               key={t.id}
               type="button"
               onClick={() => setSub(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                sub === t.id ? 'bg-primary text-black' : 'bg-white/5 text-on-surface/70'
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 ${
+                sub === t.id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
               }`}
             >
               {t.label}
+              {t.id === 'leads' && pendingLeadCount > 0 && (
+                <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                  sub === t.id ? 'bg-black/20' : 'bg-amber-500/20 text-amber-300'
+                }`}>
+                  {pendingLeadCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
