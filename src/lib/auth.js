@@ -20,6 +20,7 @@ const PUBLIC_EXACT = new Set([
   '/forgot-password',
   '/reset-password',
   '/verify-email',
+  '/accept-invite',
   '/auth/action',
   '/get-solar-quote',
 ]);

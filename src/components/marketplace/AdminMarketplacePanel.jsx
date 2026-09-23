@@ -363,10 +363,10 @@ export default function AdminMarketplacePanel({
 
   const contactCheckBadge = (ok, label) => (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
         ok
-          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-          : 'bg-red-500/20 text-red-300 border-red-500/30'
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30'
+          : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30'
       }`}
     >
       {ok ? '✓' : '✗'} {label}
@@ -519,78 +519,107 @@ export default function AdminMarketplacePanel({
   const pendingLeadCount = leads.filter((l) => PENDING_STATUSES.includes(l.status)).length;
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-on-surface-variant">
-        Approve homeowner submissions under <strong className="text-on-surface">Review &amp; approve</strong>,
-        then manage bidding, installers, claims, and wallets from the subtabs below.
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {SUBTABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setSub(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 ${
-                sub === t.id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              {t.label}
-              {t.id === 'leads' && pendingLeadCount > 0 && (
-                <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
-                  sub === t.id ? 'bg-black/20' : 'bg-amber-500/20 text-amber-300'
-                }`}>
-                  {pendingLeadCount}
-                </span>
-              )}
-            </button>
-          ))}
+    <div className="space-y-5">
+      {/* Information Banner */}
+      <div className="rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50/70 dark:bg-amber-500/5 px-4 py-3 text-xs text-amber-900 dark:text-amber-300 shadow-xs flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-lg">info</span>
+          <span>
+            Review homeowner submissions under <strong className="font-bold underline decoration-amber-400">Review &amp; approve</strong>, then orchestrate live bidding, verified installers, dispute claims, and escrow wallets.
+          </span>
         </div>
-        {loading && <span className="text-xs text-on-surface/45">Loading…</span>}
       </div>
 
+      {/* Segmented Subtabs Navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="p-1 rounded-2xl bg-slate-200/60 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 inline-flex flex-wrap gap-1 shadow-xs">
+          {SUBTABS.map((t) => {
+            const active = sub === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setSub(t.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition-all ${
+                  active
+                    ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {t.label}
+                {t.id === 'leads' && pendingLeadCount > 0 && (
+                  <span
+                    className={`text-[10px] font-mono font-bold tabular-nums px-1.5 py-0.2 rounded-full ${
+                      active
+                        ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300'
+                        : 'bg-amber-200/80 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300'
+                    }`}
+                  >
+                    {pendingLeadCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {loading && (
+          <span className="text-xs text-slate-500 dark:text-slate-400 animate-pulse font-mono">
+            Loading…
+          </span>
+        )}
+      </div>
+
+      {/* ── Subtab 1: Overview ── */}
       {sub === 'overview' && metrics && (
         <div className="space-y-4">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Stat label="Total leads" value={metrics.counts?.total_leads} />
-            <Stat label="Active bidding" value={metrics.counts?.active_bidding} />
-            <Stat label="Winners" value={metrics.counts?.won_count} />
-            <Stat label="Avg score" value={Number(metrics.counts?.avg_score || 0).toFixed(0)} />
-            <Stat label="Converted won" value={metrics.counts?.converted_won} />
-            <Stat label="Converted lost" value={metrics.counts?.converted_lost} />
-            <Stat label="Unsold" value={metrics.counts?.unsold} />
-            <Stat label="Refunded" value={metrics.counts?.refunded} />
-            <Stat label="Total bids" value={metrics.bidStats?.total_bids} />
+            <Stat label="Total Leads" value={metrics.counts?.total_leads} />
+            <Stat label="Active Bidding" value={metrics.counts?.active_bidding} />
+            <Stat label="Won Leads" value={metrics.counts?.won_count} />
+            <Stat label="Avg Quality Score" value={Number(metrics.counts?.avg_score || 0).toFixed(0)} />
+            <Stat label="Converted Won" value={metrics.counts?.converted_won} />
+            <Stat label="Converted Lost" value={metrics.counts?.converted_lost} />
+            <Stat label="Closed Unsold" value={metrics.counts?.unsold} />
+            <Stat label="Refunded / Claims" value={metrics.counts?.refunded} />
+            <Stat label="Total Bids Placed" value={metrics.bidStats?.total_bids} />
             <Stat
-              label="Avg winning bid"
+              label="Avg Winning Bid"
               value={formatMoney(metrics.counts?.avg_winning_bid)}
             />
-            <Stat label="Pending claims" value={metrics.disputeStats?.pending_disputes} />
-            <Stat label="Approved claims" value={metrics.disputeStats?.approved_disputes} />
+            <Stat label="Pending Claims" value={metrics.disputeStats?.pending_disputes} />
+            <Stat label="Approved Claims" value={metrics.disputeStats?.approved_disputes} />
           </div>
-          <div className="rounded-xl border border-white/10 p-3">
-            <h3 className="text-xs font-semibold text-on-surface/60 mb-2">By status</h3>
-            <ul className="grid sm:grid-cols-3 gap-1 text-xs">
+
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-5 shadow-xs">
+            <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+              Distribution by Pipeline Status
+            </h3>
+            <ul className="grid sm:grid-cols-3 gap-2 text-xs">
               {(metrics.byStatus || []).map((row) => (
-                <li key={row.status} className="flex justify-between gap-2 border-b border-white/5 py-1">
-                  <span>{row.status}</span>
-                  <span className="font-mono">{row.cnt}</span>
+                <li key={row.status} className="flex justify-between items-center gap-2 border-b border-slate-100 dark:border-white/5 py-1.5 px-1">
+                  <span className="text-slate-700 dark:text-slate-300 font-medium capitalize">{row.status.replace(/_/g, ' ')}</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white tabular-nums bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">
+                    {row.cnt}
+                  </span>
                 </li>
               ))}
             </ul>
           </div>
+
           {canShowPurgeDemos && (
-            <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-3 text-xs text-on-surface/60 space-y-2">
-              <p className="font-semibold text-red-200/90">Danger zone</p>
-              <p>
-                Marketplace uses real homeowner inquiries. Only use this if old demo seed rows are still
-                in the database. Hidden in production builds.
+            <div className="rounded-2xl border border-rose-200 dark:border-rose-500/20 bg-rose-50/70 dark:bg-rose-500/5 p-4 text-xs text-rose-900 dark:text-rose-300 space-y-2.5 shadow-xs">
+              <p className="font-bold flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-rose-600 text-base">warning</span>
+                Demo Data Cleanup (Non-Prod Utility)
+              </p>
+              <p className="text-rose-800 dark:text-rose-400">
+                Marketplace uses real homeowner inquiries. Only click this if legacy demo seed leads need purging from development database.
               </p>
               <button
                 type="button"
                 onClick={clearDemoData}
                 disabled={clearingDemos}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 text-red-200 hover:bg-red-500/30 disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50 transition active:scale-95 shadow-xs"
               >
                 {clearingDemos ? 'Removing demo leads…' : 'Purge demo marketplace leads'}
               </button>
@@ -600,29 +629,32 @@ export default function AdminMarketplacePanel({
       )}
 
       {sub === 'overview' && !metrics && loading && (
-        <p className="text-sm text-on-surface/50">Loading overview…</p>
+        <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] animate-pulse">
+          Loading overview telemetry…
+        </div>
       )}
 
+      {/* ── Subtab 2: Settings ── */}
       {sub === 'settings' && (
         <form
           onSubmit={saveSettings}
-          className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-4 max-w-lg"
+          className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-6 space-y-4 max-w-xl shadow-xs"
         >
           <div>
-            <h3 className="text-sm font-semibold text-on-surface">Bidding window</h3>
-            <p className="text-xs text-on-surface/50 mt-1">
-              Applies to new homeowner leads and leads reopened after a no-bid cycle.
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Bidding Window &amp; Dynamic Expansion Rules</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Applies to incoming qualified homeowner leads and automatic geo-expansion cycles.
             </p>
           </div>
           <label className="block space-y-1">
-            <span className="text-xs text-on-surface/60">Bid window (hours)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Bid window (hours)</span>
             <input
               type="number"
               min="1"
               max="720"
               step="1"
               required
-              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
+              className={inputCls}
               value={settingsForm.defaultBidWindowHours}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, defaultBidWindowHours: e.target.value }))
@@ -630,13 +662,13 @@ export default function AdminMarketplacePanel({
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-on-surface/60">Minimum bid (USD)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Minimum bid floor (USD)</span>
             <input
               type="number"
               min="1"
               step="0.01"
               required
-              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
+              className={inputCls}
               value={settingsForm.defaultMinBid}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, defaultMinBid: e.target.value }))
@@ -644,13 +676,13 @@ export default function AdminMarketplacePanel({
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-on-surface/60">Max expansion stages (no-bid cycles)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Max expansion stages (no-bid cycles)</span>
             <input
               type="number"
               min="1"
               max="10"
               required
-              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
+              className={inputCls}
               value={settingsForm.maxExpansionStages}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, maxExpansionStages: e.target.value }))
@@ -658,12 +690,12 @@ export default function AdminMarketplacePanel({
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-on-surface/60">Expansion radii (miles, comma-separated)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Expansion radii (miles, comma-separated)</span>
             <input
               type="text"
               required
               placeholder="25,50,100"
-              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
+              className={inputCls}
               value={settingsForm.expansionRadii}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, expansionRadii: e.target.value }))
@@ -671,14 +703,14 @@ export default function AdminMarketplacePanel({
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-on-surface/60">Min bid reduction per stage (%)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Min bid reduction per stage (%)</span>
             <input
               type="number"
               min="0"
               max="90"
               step="0.1"
               required
-              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
+              className={inputCls}
               value={settingsForm.minBidReductionPct}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, minBidReductionPct: e.target.value }))
@@ -686,13 +718,13 @@ export default function AdminMarketplacePanel({
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-on-surface/60">Low-price floor min bid (USD)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Low-price absolute floor (USD)</span>
             <input
               type="number"
               min="1"
               step="0.01"
               required
-              className="w-full bg-surface-container border border-white/15 rounded-lg px-3 py-2 text-sm text-on-surface"
+              className={inputCls}
               value={settingsForm.lowPriceMinBid}
               onChange={(e) =>
                 setSettingsForm((f) => ({ ...f, lowPriceMinBid: e.target.value }))
@@ -700,36 +732,42 @@ export default function AdminMarketplacePanel({
             />
           </label>
           {settings?.updated_at && (
-            <p className="text-[10px] text-on-surface/40">
-              Last updated {formatWhen(settings.updated_at)}
+            <p className="text-xs font-mono text-slate-400 dark:text-slate-500">
+              Last saved: {formatWhen(settings.updated_at)}
             </p>
           )}
           <button
             type="submit"
             disabled={savingSettings}
-            className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2 disabled:opacity-50"
+            className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-5 py-2.5 shadow-xs transition active:scale-95 disabled:opacity-50"
           >
-            {savingSettings ? 'Saving…' : 'Save settings'}
+            {savingSettings ? 'Saving…' : 'Save Marketplace Settings'}
           </button>
         </form>
       )}
 
       {sub === 'leads' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100/90">
-            Homeowner form → pending review here → bulk approve → installer marketplace bidding.
+          <div className="rounded-2xl border border-blue-200 dark:border-blue-500/20 bg-blue-50/70 dark:bg-blue-500/5 px-4 py-3 text-xs text-blue-900 dark:text-blue-300 shadow-xs flex items-center gap-2">
+            <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-base">checklist</span>
+            <span>Homeowner form inquiries → pending review below → approve to open live competitive installer bidding.</span>
           </div>
-          <div className="flex flex-wrap gap-2 items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10">
-            <div className="flex flex-wrap gap-2 items-center flex-1">
-              <input
-                type="text"
-                placeholder="Search by code, name, phone, city, ZIP..."
-                className="bg-surface-container border border-white/15 rounded-lg px-3 py-1.5 text-xs text-on-surface placeholder:text-on-surface/40 min-w-[240px] flex-1 outline-none focus:border-primary/50"
-                value={leadSearch}
-                onChange={(e) => setLeadSearch(e.target.value)}
-              />
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-wrap gap-2.5 items-center justify-between bg-white dark:bg-[#121826] p-3 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
+            <div className="flex flex-wrap gap-2.5 items-center flex-1">
+              <div className="relative flex-1 min-w-[240px]">
+                <span className="material-symbols-outlined absolute left-3 top-2 text-slate-400 text-base pointer-events-none">search</span>
+                <input
+                  type="text"
+                  placeholder="Search by lead code, homeowner, phone, city, ZIP..."
+                  className="w-full bg-slate-50 dark:bg-black/30 border border-slate-300 dark:border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  value={leadSearch}
+                  onChange={(e) => setLeadSearch(e.target.value)}
+                />
+              </div>
               <select
-                className="bg-surface-container border border-white/15 rounded-lg px-3 py-1.5 text-xs text-on-surface outline-none focus:border-primary/50"
+                className="bg-slate-50 dark:bg-black/30 border border-slate-300 dark:border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium"
                 value={leadFilter}
                 onChange={(e) => {
                   setLeadFilter(e.target.value);
@@ -737,12 +775,12 @@ export default function AdminMarketplacePanel({
                 }}
               >
                 <option value="pending">
-                  Awaiting approval ({leads.filter((l) => PENDING_STATUSES.includes(l.status)).length})
+                  Awaiting Approval ({leads.filter((l) => PENDING_STATUSES.includes(l.status)).length})
                 </option>
                 <option value="all">All Statuses ({leads.length})</option>
                 <option value="pending_admin">Pending Admin</option>
                 <option value="new">New</option>
-                <option value="ai_qualified">AI Qualified (review)</option>
+                <option value="ai_qualified">AI Qualified (Review)</option>
                 <option value="bidding">Bidding Active</option>
                 <option value="no_bid_expanding">Expanding Radius</option>
                 <option value="lead_unlocked">Lead Unlocked (Won)</option>
@@ -758,157 +796,168 @@ export default function AdminMarketplacePanel({
               {((leadFilter !== 'all' && leadFilter !== 'pending') || leadSearch.trim()) ? (
                 <button
                   type="button"
-                  className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-on-surface/70 hover:bg-white/10"
+                  className="rounded-xl border border-slate-300 dark:border-white/10 px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 transition"
                   onClick={() => {
                     setLeadFilter('pending');
                     setLeadSearch('');
                     setSelectedLeadIds([]);
                   }}
                 >
-                  Reset to awaiting
+                  Reset Filter
                 </button>
               ) : null}
             </div>
-            <div className="text-xs text-on-surface/50">
+            <div className="text-xs font-mono font-medium text-slate-500 dark:text-slate-400">
               Showing {visibleLeads.length} of {leads.length} leads
             </div>
           </div>
 
+          {/* Bulk Approval Banner */}
           {pendingVisibleIds.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
-              <label className="flex items-center gap-2 text-xs text-on-surface/80">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/80 dark:bg-emerald-500/10 px-4 py-3 shadow-xs">
+              <label className="flex items-center gap-2.5 text-xs font-semibold text-emerald-950 dark:text-emerald-200 cursor-pointer">
                 <input
                   type="checkbox"
+                  className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
                   checked={pendingVisibleIds.length > 0 && pendingVisibleIds.every((id) => selectedLeadIds.includes(id))}
                   onChange={(e) => toggleSelectVisiblePending(e.target.checked)}
                 />
-                Select all pending ({pendingVisibleIds.length})
+                <span>Select all pending ({pendingVisibleIds.length})</span>
               </label>
               <button
                 type="button"
                 disabled={bulkApproving || selectedLeadIds.length === 0}
-                className="rounded-lg bg-emerald-500 text-black text-xs font-bold px-3 py-1.5 disabled:opacity-50"
+                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 disabled:opacity-50 transition active:scale-95 shadow-xs"
                 onClick={bulkApproveLeads}
               >
                 {bulkApproving
                   ? 'Approving…'
-                  : `Approve ${selectedLeadIds.length || ''} selected → Marketplace`}
+                  : `Approve ${selectedLeadIds.length || ''} Selected → Live Bidding`}
               </button>
             </div>
           )}
 
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+          {/* Split View: Lead List & Selected Detail */}
+          <div className="grid lg:grid-cols-2 gap-4 items-start">
+            <div className="space-y-2.5 max-h-[72vh] overflow-y-auto pr-1">
               {visibleLeads.map((l) => (
-                  <div
-                    key={l.id}
-                    className={`w-full rounded-xl border p-3 text-xs transition-all flex gap-2 ${
-                      selected?.id === l.id
-                        ? 'border-primary bg-primary/10 shadow-lg'
-                        : 'border-white/10 bg-white/5 hover:border-white/20'
-                    }`}
+                <div
+                  key={l.id}
+                  className={`w-full rounded-2xl border p-4 text-xs transition-all flex gap-3 ${
+                    selected?.id === l.id
+                      ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-500/10 shadow-sm ring-2 ring-blue-500/20'
+                      : 'border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] hover:border-slate-300 dark:hover:border-white/20 shadow-xs'
+                  }`}
+                >
+                  {PENDING_STATUSES.includes(l.status) ? (
+                    <input
+                      type="checkbox"
+                      className="mt-1 shrink-0 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      checked={selectedLeadIds.includes(l.id)}
+                      onChange={(e) => toggleLeadSelected(l.id, e.target.checked)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="w-4 shrink-0" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => openLead(l.id)}
+                    className="flex-1 text-left min-w-0"
                   >
-                    {PENDING_STATUSES.includes(l.status) ? (
-                      <input
-                        type="checkbox"
-                        className="mt-1 shrink-0"
-                        checked={selectedLeadIds.includes(l.id)}
-                        onChange={(e) => toggleLeadSelected(l.id, e.target.checked)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="w-4 shrink-0" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => openLead(l.id)}
-                      className="flex-1 text-left min-w-0"
-                    >
                     <div className="flex justify-between items-start gap-2">
-                      <span className="font-mono text-on-surface/45 text-[11px]">{l.leadCode}</span>
+                      <span className="font-mono text-slate-500 dark:text-slate-400 text-xs font-medium">
+                        {l.leadCode}
+                      </span>
                       <div className="flex flex-col items-end gap-1.5">
                         {isBiddingOpen(l.status) && l.biddingClosesAt && (
                           <BiddingCountdown closesAt={l.biddingClosesAt} compact />
                         )}
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${
                             l.status === 'bidding'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30'
                               : PENDING_STATUSES.includes(l.status)
-                                ? 'bg-amber-500/20 text-amber-200 border-amber-500/30'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30'
                                 : l.status === 'won' || l.status === 'lead_unlocked'
-                                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30'
                                   : l.status === 'invalid_refunded'
-                                    ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                                    : 'bg-white/10 text-on-surface/70 border-white/15'
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/15'
                           }`}
                         >
                           {l.status}
                         </span>
                       </div>
                     </div>
-                    <div className="font-bold text-sm text-on-surface mt-1">{l.homeownerName}</div>
-                    <div className="text-on-surface/60 text-[11px] mt-1 flex flex-wrap gap-2">
-                      <span>ZIP: {l.zip || '—'}</span>
+                    <div className="font-bold text-sm text-slate-900 dark:text-white mt-1">
+                      {l.homeownerName}
+                    </div>
+                    <div className="text-slate-600 dark:text-slate-400 text-xs mt-1.5 flex flex-wrap gap-2">
+                      <span>ZIP: <strong className="text-slate-800 dark:text-slate-200 font-medium">{l.zip || '—'}</strong></span>
                       <span>·</span>
                       <span>
-                        Lead: {l.leadScore ?? l.opportunityScore}
+                        Quality: <strong className="text-slate-800 dark:text-slate-200 font-medium">{l.leadScore ?? l.opportunityScore ?? '—'}</strong>
                         {l.solarPotentialScore != null && l.solarPotentialScore > 0
                           ? ` · Solar: ${l.solarPotentialScore}`
                           : ''}
                       </span>
                       <span>·</span>
-                      <span>Min Bid: {formatMoney(l.minBid ?? l.winningAmount)}</span>
+                      <span>Floor: <strong className="text-slate-800 dark:text-slate-200 font-medium">{formatMoney(l.minBid ?? l.winningAmount)}</strong></span>
                     </div>
-                    </button>
-                  </div>
-                ))}
+                  </button>
+                </div>
+              ))}
               {visibleLeads.length === 0 && !loading && (
-                <div className="text-center py-8 text-on-surface/40 text-xs space-y-2">
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400 text-xs space-y-3 rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826]">
+                  <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600">inbox</span>
                   <p>
                     {leadFilter === 'pending'
-                      ? 'No leads waiting for approval.'
-                      : 'No marketplace leads found.'}
+                      ? 'No leads currently waiting for approval.'
+                      : 'No marketplace leads found matching filters.'}
                   </p>
                   {leadFilter !== 'pending' && (
                     <button
                       type="button"
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] text-on-surface/70 hover:bg-white/10"
+                      className="rounded-xl border border-slate-300 dark:border-white/15 px-3.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 font-semibold"
                       onClick={() => {
                         setLeadFilter('pending');
                         setLeadSearch('');
                       }}
                     >
-                      Show awaiting approval
+                      Show Awaiting Approval
                     </button>
                   )}
                 </div>
               )}
               {loading && leads.length === 0 && (
-                <div className="text-center py-8 text-on-surface/40 text-xs">Loading leads…</div>
+                <div className="text-center py-12 text-slate-500 dark:text-slate-400 text-xs rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] animate-pulse">
+                  Loading marketplace leads…
+                </div>
               )}
             </div>
 
+            {/* Selected Lead Detailed Inspection Card */}
             {selected ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
-                <div className="flex justify-between items-start border-b border-white/10 pb-3 gap-3">
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-5 space-y-4 text-xs max-h-[75vh] overflow-y-auto shadow-xs">
+                <div className="flex justify-between items-start border-b border-slate-100 dark:border-white/10 pb-3 gap-3">
                   <div>
-                    <span className="font-mono text-xs text-on-surface/45">{selected.leadCode}</span>
-                    <h3 className="text-base font-bold text-on-surface">{selected.homeownerName}</h3>
+                    <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{selected.leadCode}</span>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white mt-0.5">{selected.homeownerName}</h3>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     {isBiddingOpen(selected.status) && selected.biddingClosesAt && (
                       <BiddingCountdown closesAt={selected.biddingClosesAt} />
                     )}
                     <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                      className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider border ${
                         selected.status === 'bidding'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30'
                           : selected.status === 'won' || selected.status === 'lead_unlocked'
-                            ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30'
                             : selected.status === 'invalid_refunded'
-                              ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                              : 'bg-white/10 text-on-surface/80 border-white/20'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-white/10 dark:text-slate-300 dark:border-white/20'
                       }`}
                     >
                       {selected.status}
@@ -916,85 +965,85 @@ export default function AdminMarketplacePanel({
                   </div>
                 </div>
 
-                {/* Visual Marketplace Workflow Tracker */}
-                <div className="bg-surface-container border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
-                    Marketplace Workflow Pipeline Stage
+                {/* Workflow Pipeline Tracker */}
+                <div className="bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] rounded-xl p-3.5 space-y-2">
+                  <div className="text-[10px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                    Marketplace Pipeline Stage
                   </div>
-                  <div className="grid grid-cols-3 gap-1 text-[11px] text-center">
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px] text-center">
                     <div
                       className={`p-2 rounded-lg border font-semibold ${
                         ['bidding', 'no_bid_expanding'].includes(selected.status)
-                          ? 'bg-primary/20 border-primary text-primary'
-                          : 'bg-white/5 border-white/10 text-on-surface/40'
+                          ? 'bg-blue-50 dark:bg-blue-500/20 border-blue-300 dark:border-blue-500 text-blue-700 dark:text-blue-300'
+                          : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'
                       }`}
                     >
-                      1. Bidding / Open
+                      1. Open Bidding
                     </div>
                     <div
                       className={`p-2 rounded-lg border font-semibold ${
                         ['lead_unlocked', 'closed_unsold', 'won', 'lost', 'contacted', 'interested', 'appointment', 'proposal'].includes(selected.status)
-                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                          : 'bg-white/5 border-white/10 text-on-surface/40'
+                          ? 'bg-emerald-50 dark:bg-emerald-500/20 border-emerald-300 dark:border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'
                       }`}
                     >
-                      2. Winner Selected
+                      2. Winner Chosen
                     </div>
                     <div
                       className={`p-2 rounded-lg border font-semibold ${
                         ['won', 'lead_unlocked'].includes(selected.status)
-                          ? 'bg-green-500/20 border-green-500 text-green-300'
+                          ? 'bg-purple-50 dark:bg-purple-500/20 border-purple-300 dark:border-purple-500 text-purple-700 dark:text-purple-300'
                           : selected.status === 'invalid_refunded'
-                            ? 'bg-red-500/20 border-red-500 text-red-300'
-                            : 'bg-white/5 border-white/10 text-on-surface/40'
+                            ? 'bg-rose-50 dark:bg-rose-500/20 border-rose-300 dark:border-rose-500 text-rose-700 dark:text-rose-300'
+                            : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'
                       }`}
                     >
-                      3. Converted / Final
+                      3. Closed / Final
                     </div>
                   </div>
                 </div>
 
                 {isBiddingOpen(selected.status) && (
-                  <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="bg-blue-50/70 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
-                        Bidding window
+                      <div className="text-[10px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                        Bidding Window Countdown
                       </div>
-                      <div className="text-lg font-bold text-primary mt-1">
+                      <div className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
                         <BiddingCountdown closesAt={selected.biddingClosesAt} />
                       </div>
                     </div>
-                    <div className="text-xs text-on-surface/55 text-right">
-                      <div>Opens {formatWhen(selected.biddingOpensAt)}</div>
-                      <div>Closes {formatWhen(selected.biddingClosesAt)}</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400 text-right">
+                      <div>Opens: {formatWhen(selected.biddingOpensAt)}</div>
+                      <div>Closes: {formatWhen(selected.biddingClosesAt)}</div>
                     </div>
                   </div>
                 )}
 
-                {/* Admin Status Override Form */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
-                    Admin actions
+                {/* Admin Actions */}
+                <div className="bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] rounded-xl p-3.5 space-y-2.5">
+                  <div className="text-[10px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                    Admin Actions &amp; Overrides
                   </div>
                   {['new', 'ai_qualified', 'pending_admin'].includes(selected.status) && (
-                    <div className="flex flex-wrap gap-2 items-center pb-2 border-b border-white/10">
+                    <div className="flex flex-wrap gap-2 items-center pb-2.5 border-b border-slate-200 dark:border-white/10">
                       <button
                         type="button"
-                        className="rounded-lg bg-emerald-500 text-black text-xs font-bold px-3 py-1.5 hover:bg-emerald-400"
+                        className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-1.5 transition active:scale-95 shadow-xs"
                         onClick={() => approveLead(selected.id)}
                       >
-                        Approve → Marketplace
+                        Approve → Live Marketplace
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg bg-cyan-500/20 text-cyan-200 text-xs font-semibold px-3 py-1.5 hover:bg-cyan-500/30"
+                        className="rounded-xl bg-cyan-100 hover:bg-cyan-200 text-cyan-900 dark:bg-cyan-500/20 dark:text-cyan-200 text-xs font-semibold px-3 py-1.5 transition"
                         onClick={() => verifyLeadContact(selected.id)}
                       >
-                        Re-check email & phone
+                        Re-check email &amp; phone
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg bg-white/10 text-on-surface/80 text-xs font-semibold px-3 py-1.5 hover:bg-white/15"
+                        className="rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-white/10 dark:text-slate-200 text-xs font-semibold px-3 py-1.5 transition"
                         onClick={() => reQualifyLead(selected.id)}
                       >
                         Re-qualify
@@ -1003,7 +1052,7 @@ export default function AdminMarketplacePanel({
                   )}
                   <div className="flex flex-wrap gap-2 items-center">
                     <select
-                      className="bg-surface-container-high border border-white/15 rounded-lg px-2.5 py-1.5 text-xs text-on-surface flex-1 outline-none"
+                      className="bg-white dark:bg-black/30 border border-slate-300 dark:border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white flex-1 outline-none focus:ring-2 focus:ring-blue-500/20"
                       value={statusDraft}
                       onChange={(e) => setStatusDraft(e.target.value)}
                     >
@@ -1024,14 +1073,14 @@ export default function AdminMarketplacePanel({
                     </select>
                     <button
                       type="button"
-                      className="rounded-lg bg-white/15 text-on-surface text-xs font-semibold px-3 py-1.5 hover:bg-white/25"
+                      className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-1.5 transition active:scale-95 shadow-xs"
                       onClick={() => updateLeadStatus(selected.id, statusDraft)}
                     >
                       Update Status
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg bg-white/10 text-on-surface text-xs font-semibold px-3 py-1.5 hover:bg-white/20"
+                      className="rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-white/10 dark:text-slate-200 text-xs font-semibold px-3 py-1.5 transition"
                       onClick={() => closeBidding(selected.id)}
                     >
                       Close Bidding
@@ -1039,84 +1088,92 @@ export default function AdminMarketplacePanel({
                   </div>
                 </div>
 
-                {/* Admin contact verification (Verifalia + Twilio Lookup — no OTP to homeowner) */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
-                    Contact verification (admin)
+                {/* Contact Verification Telemetry */}
+                <div className="bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] rounded-xl p-3.5 space-y-2">
+                  <div className="text-[10px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                    Contact Verification Telemetry
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-on-surface/45">Email status: </span>
-                      <span className="text-on-surface font-semibold">{selected.emailStatus || selected.email_status || 'Not checked'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Email Status: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">
+                        {selected.emailStatus || selected.email_status || 'Not checked'}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-on-surface/45">Phone type: </span>
-                      <span className="text-on-surface font-semibold">{selected.phoneType || selected.phone_type || 'Not checked'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Phone Type: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">
+                        {selected.phoneType || selected.phone_type || 'Not checked'}
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {contactCheckBadge(
                       /deliverable/i.test(String(selected.emailStatus || selected.email_status || '')) &&
                         !/undeliverable/i.test(String(selected.emailStatus || selected.email_status || '')),
-                      'Email deliverable',
+                      'Email Deliverable',
                     )}
                     {contactCheckBadge(
                       /mobile|landline|fixed/i.test(String(selected.phoneType || selected.phone_type || '')),
-                      'Real phone number',
+                      'Real Phone Number',
                     )}
                   </div>
                 </div>
 
                 {/* Homeowner & Property Details */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
-                    Homeowner & Property Info
+                <div className="bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] rounded-xl p-3.5 space-y-2">
+                  <div className="text-[10px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                    Homeowner &amp; Property Info
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-on-surface/45">Phone: </span>
-                      <span className="text-on-surface font-semibold">{selected.phone || '—'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Phone: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">{selected.phone || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-on-surface/45">Email: </span>
-                      <span className="text-on-surface font-semibold">{selected.email || '—'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Email: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">{selected.email || '—'}</span>
                     </div>
                     <div className="sm:col-span-2">
-                      <span className="text-on-surface/45">Address: </span>
-                      <span className="text-on-surface font-semibold">{selected.address || '—'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Address: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">{selected.address || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-on-surface/45">Monthly Bill: </span>
-                      <span className="text-on-surface font-semibold">{selected.electricityBillRange || selected.monthlyBill || '—'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Monthly Bill: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">
+                        {selected.electricityBillRange || selected.monthlyBill || '—'}
+                      </span>
                     </div>
                     <div>
-                      <span className="text-on-surface/45">Timeline: </span>
-                      <span className="text-on-surface font-semibold">{selected.installationTimeline || '—'}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Timeline: </span>
+                      <span className="text-slate-900 dark:text-white font-semibold">{selected.installationTimeline || '—'}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Bids & Winner Details */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-on-surface/50 tracking-wider">
-                    Bids ({bids.length}) & Winning Installer
+                {/* Bids List */}
+                <div className="bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] rounded-xl p-3.5 space-y-2">
+                  <div className="text-[10px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                    Installer Bids ({bids.length})
                   </div>
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-2">
                     {bids.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between gap-2 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs bg-surface-container-low"
+                        className="flex items-center justify-between gap-2 border border-slate-200/80 dark:border-white/10 rounded-xl px-3 py-2 text-xs bg-white dark:bg-black/30 shadow-xs"
                       >
                         <div>
-                          <span className="font-semibold text-on-surface">{b.installerName || b.installerEmail}</span>
-                          <span className="text-on-surface/45"> · {formatMoney(b.amount)} · </span>
+                          <span className="font-bold text-slate-900 dark:text-white">{b.installerName || b.installerEmail}</span>
+                          <span className="text-slate-500 dark:text-slate-400"> · </span>
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{formatMoney(b.amount)}</span>
+                          <span className="text-slate-500 dark:text-slate-400"> · </span>
                           <span
                             className={
                               b.status === 'won'
-                                ? 'text-emerald-400 font-bold'
+                                ? 'text-emerald-600 dark:text-emerald-400 font-bold'
                                 : b.status === 'active'
-                                  ? 'text-sky-300'
-                                  : 'text-on-surface/40'
+                                  ? 'text-sky-600 dark:text-sky-300 font-medium'
+                                  : 'text-slate-400 dark:text-slate-500'
                             }
                           >
                             {b.status}
@@ -1125,7 +1182,7 @@ export default function AdminMarketplacePanel({
                         {b.status === 'active' && (
                           <button
                             type="button"
-                            className="rounded bg-primary text-black font-bold px-2 py-0.5 text-[11px]"
+                            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 text-xs shadow-xs transition active:scale-95"
                             onClick={() => selectWinner(selected.id, b.id)}
                           >
                             Pick Winner
@@ -1133,89 +1190,110 @@ export default function AdminMarketplacePanel({
                         )}
                       </li>
                     ))}
-                    {!bids.length && <li className="text-on-surface/40 italic">No bids submitted yet for this lead.</li>}
+                    {!bids.length && (
+                      <li className="text-slate-400 dark:text-slate-500 italic py-1">No bids submitted yet for this lead.</li>
+                    )}
                   </ul>
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-white/15 p-8 text-center text-on-surface/40 text-xs">
-                Select any lead on the left to view full workflow, homeowner details, and bids.
+              <div className="rounded-2xl border border-dashed border-slate-300 dark:border-white/15 p-12 text-center text-slate-500 dark:text-slate-400 text-xs bg-white/50 dark:bg-white/[0.02]">
+                <span className="material-symbols-outlined text-3xl mb-1 text-slate-400 block">touch_app</span>
+                Select any lead on the left to view full workflow stages, contact verification, and installer bids.
               </div>
             )}
           </div>
         </div>
       )}
 
+      {/* ── Subtab 4: Disputes / Claims ── */}
       {sub === 'disputes' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {disputes.map((d) => (
             <div
               key={d.id}
-              className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs space-y-2"
+              className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-4 text-xs space-y-2.5 shadow-xs"
             >
-              <div className="flex justify-between gap-2">
-                <span className="font-mono">{d.lead_code}</span>
-                <span className="font-semibold">{d.status}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{d.lead_code}</span>
+                <span className={`font-mono font-bold uppercase text-[10px] px-2.5 py-0.5 rounded-full border ${
+                  d.status === 'pending'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30'
+                    : d.status === 'approved'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30'
+                      : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30'
+                }`}>
+                  {d.status}
+                </span>
               </div>
-              <div>
-                {d.claim_type} · {d.installer_name || d.installer_email}
+              <div className="text-slate-700 dark:text-slate-300 font-semibold">
+                Claim Type: {d.claim_type} · Installer: {d.installer_name || d.installer_email}
               </div>
-              <div className="text-on-surface/50">{d.details || 'No details'}</div>
+              <div className="text-slate-600 dark:text-slate-400 leading-relaxed bg-slate-50 dark:bg-black/20 p-2.5 rounded-xl border border-slate-200/60 dark:border-white/5">
+                {d.details || 'No additional details provided by installer.'}
+              </div>
               {d.status === 'pending' && (
-                <div className="flex gap-2">
+                <div className="flex gap-2 pt-1">
                   <button
                     type="button"
-                    className="rounded-lg bg-emerald-500/20 text-emerald-300 px-3 py-1"
+                    className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 font-semibold text-xs transition active:scale-95 shadow-xs"
                     onClick={() => reviewDispute(d.id, 'approved')}
                   >
-                    Approve refund
+                    Approve Refund
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg bg-red-500/20 text-red-300 px-3 py-1"
+                    className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 font-semibold text-xs transition active:scale-95 shadow-xs"
                     onClick={() => reviewDispute(d.id, 'denied')}
                   >
-                    Deny
+                    Deny Claim
                   </button>
                 </div>
               )}
             </div>
           ))}
-          {!disputes.length && <p className="text-sm text-on-surface/50">No disputes.</p>}
+          {!disputes.length && (
+            <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826]">
+              No active or historical dispute claims.
+            </div>
+          )}
         </div>
       )}
 
+      {/* ── Subtab 5: Installers ── */}
       {sub === 'installers' && (
         <div className="space-y-4">
-          <div className="overflow-x-auto rounded-xl border border-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs">
             <table className="w-full text-xs">
-              <thead className="bg-white/5 text-left text-on-surface/50">
+              <thead className="bg-slate-50 dark:bg-white/[0.02] text-left text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200/80 dark:border-white/[0.08]">
                 <tr>
                   <th className="p-3">Installer</th>
                   <th className="p-3">Verification</th>
-                  <th className="p-3">Coverage Service Areas</th>
+                  <th className="p-3">Service Areas</th>
                   <th className="p-3">Wallet Balance</th>
                   <th className="p-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {installers.map((u) => (
-                  <tr key={u.id} className="hover:bg-white/[0.02]">
+                  <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
                     <td className="p-3 align-top">
-                      <div className="font-bold text-on-surface text-sm">{u.name}</div>
-                      <div className="text-on-surface/45 text-[11px] font-mono">{u.email}</div>
+                      <div className="font-bold text-slate-900 dark:text-white text-sm">{u.name}</div>
+                      <div className="text-slate-500 dark:text-slate-400 text-xs font-mono">{u.email}</div>
                       {u.company_name && (
-                        <div className="text-primary/80 text-[11px] font-semibold mt-0.5">{u.company_name}</div>
+                        <div className="text-blue-600 dark:text-blue-400 text-xs font-semibold mt-0.5">
+                          {u.company_name}
+                        </div>
                       )}
                     </td>
                     <td className="p-3 align-top">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border uppercase tracking-wider ${
                           u.verification_status === 'verified'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30'
                             : u.verification_status === 'pending'
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                              : 'bg-white/10 text-on-surface/50 border-white/15'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30'
+                              : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/10 dark:text-slate-400 dark:border-white/15'
                         }`}
                       >
                         {u.verification_status || 'unverified'}
@@ -1226,7 +1304,7 @@ export default function AdminMarketplacePanel({
                         {(u.areas || []).map((a) => (
                           <span
                             key={a.id}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300"
                           >
                             <span>
                               {[a.zip, a.state, a.radius_miles ? `${a.radius_miles}mi` : null]
@@ -1240,40 +1318,42 @@ export default function AdminMarketplacePanel({
                                 setAreaUserId(u.id);
                                 await deleteArea(a.id);
                               }}
-                              className="text-emerald-400/70 hover:text-red-400 font-bold ml-0.5"
+                              className="text-emerald-600 hover:text-rose-600 font-bold ml-0.5"
                             >
                               ✕
                             </button>
                           </span>
                         ))}
                         {(!u.areas || u.areas.length === 0) && (
-                          <span className="text-amber-400/80 text-[11px] italic">No service areas</span>
+                          <span className="text-slate-400 dark:text-slate-500 text-xs italic">No service areas set</span>
                         )}
                       </div>
                     </td>
-                    <td className="p-3 align-top font-bold text-on-surface font-mono">{formatMoney(u.wallet_balance)}</td>
+                    <td className="p-3 align-top font-bold text-slate-900 dark:text-white font-mono text-sm">
+                      {formatMoney(u.wallet_balance)}
+                    </td>
                     <td className="p-3 align-top">
                       <div className="flex flex-wrap gap-1.5">
                         <button
                           type="button"
-                          className="rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 px-2 py-1 text-[11px] font-semibold"
+                          className="rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/30 px-2.5 py-1 text-xs font-semibold transition"
                           onClick={() => setVerification(u.id, 'verified')}
                         >
                           Verify
                         </button>
                         <button
                           type="button"
-                          className="rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-2 py-1 text-[11px] font-semibold"
+                          className="rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30 px-2.5 py-1 text-xs font-semibold transition"
                           onClick={() => setVerification(u.id, 'pending')}
                         >
                           Pending
                         </button>
                         <button
                           type="button"
-                          className="rounded bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 px-2 py-1 text-[11px] font-semibold"
+                          className="rounded-xl bg-blue-100 hover:bg-blue-200 text-blue-900 dark:bg-blue-500/20 dark:text-blue-300 dark:hover:bg-blue-500/30 px-2.5 py-1 text-xs font-semibold transition"
                           onClick={() => loadAreas(u.id)}
                         >
-                          Manage Areas
+                          Areas
                         </button>
                       </div>
                     </td>
@@ -1282,10 +1362,11 @@ export default function AdminMarketplacePanel({
               </tbody>
             </table>
           </div>
+
           {areaUserId && (
-            <div className="rounded-xl border border-white/10 p-4 space-y-3 bg-white/5">
+            <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] p-5 space-y-3 bg-white dark:bg-[#121826] shadow-xs">
               <div className="flex justify-between items-center">
-                <h4 className="text-xs font-bold text-on-surface">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono">
                   Service Areas for{' '}
                   {installers.find((u) => Number(u.id) === Number(areaUserId))?.name ||
                     installers.find((u) => Number(u.id) === Number(areaUserId))?.email ||
@@ -1294,15 +1375,15 @@ export default function AdminMarketplacePanel({
                 <button
                   type="button"
                   onClick={() => setAreaUserId(null)}
-                  className="text-xs text-on-surface/40 hover:text-on-surface"
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
                 >
                   Close
                 </button>
               </div>
               <ul className="text-xs space-y-1.5 max-h-48 overflow-y-auto">
                 {areas.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-2 border border-white/10 rounded-lg px-3 py-1.5 bg-surface-container-low">
-                    <span className="text-on-surface/80">
+                  <li key={a.id} className="flex items-center justify-between gap-2 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 bg-slate-50 dark:bg-black/20">
+                    <span className="text-slate-800 dark:text-slate-200 font-medium">
                       {[a.zip && `ZIP: ${a.zip}`, a.state && `State: ${a.state}`, a.radius_miles && `${a.radius_miles} mi`]
                         .filter(Boolean)
                         .join(' · ')}
@@ -1310,18 +1391,18 @@ export default function AdminMarketplacePanel({
                     <button
                       type="button"
                       onClick={() => deleteArea(a.id)}
-                      className="text-red-400 font-bold hover:underline text-[11px] px-2 py-0.5 rounded hover:bg-red-500/10"
+                      className="text-rose-600 font-bold hover:underline text-xs px-2 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-500/10"
                     >
                       Remove
                     </button>
                   </li>
                 ))}
                 {!areas.length && (
-                  <li className="text-on-surface/40 italic">No service areas set for this installer yet.</li>
+                  <li className="text-slate-400 dark:text-slate-500 italic">No service areas set for this installer yet.</li>
                 )}
               </ul>
-              <form onSubmit={addArea} className="flex flex-wrap gap-2 items-end pt-2 border-t border-white/10">
-                <label className="text-[11px] text-on-surface/60">
+              <form onSubmit={addArea} className="flex flex-wrap gap-2.5 items-end pt-3 border-t border-slate-100 dark:border-white/10">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   ZIP
                   <input
                     className={inputCls}
@@ -1330,7 +1411,7 @@ export default function AdminMarketplacePanel({
                     onChange={(e) => setAreaForm((f) => ({ ...f, zip: e.target.value }))}
                   />
                 </label>
-                <label className="text-[11px] text-on-surface/60">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   State
                   <input
                     className={inputCls}
@@ -1339,7 +1420,7 @@ export default function AdminMarketplacePanel({
                     onChange={(e) => setAreaForm((f) => ({ ...f, state: e.target.value }))}
                   />
                 </label>
-                <label className="text-[11px] text-on-surface/60">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Radius (mi)
                   <input
                     type="number"
@@ -1349,7 +1430,10 @@ export default function AdminMarketplacePanel({
                     onChange={(e) => setAreaForm((f) => ({ ...f, radiusMiles: e.target.value }))}
                   />
                 </label>
-                <button type="submit" className="rounded-lg bg-primary text-black text-xs px-4 py-2 font-bold hover:bg-primary/90">
+                <button
+                  type="submit"
+                  className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 font-semibold shadow-xs transition active:scale-95"
+                >
                   Add Area
                 </button>
               </form>
@@ -1358,13 +1442,14 @@ export default function AdminMarketplacePanel({
         </div>
       )}
 
+      {/* ── Subtab 6: Wallets ── */}
       {sub === 'wallets' && (
         <div className="space-y-4">
           <form
             onSubmit={adjustWallet}
-            className="rounded-xl border border-white/10 p-4 flex flex-wrap gap-2 items-end"
+            className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-5 flex flex-wrap gap-3 items-end shadow-xs"
           >
-            <label className="text-xs">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
               Installer
               <select
                 className={inputCls}
@@ -1380,8 +1465,8 @@ export default function AdminMarketplacePanel({
                 ))}
               </select>
             </label>
-            <label className="text-xs">
-              Amount
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Amount ($)
               <input
                 className={inputCls}
                 value={walletForm.amount}
@@ -1389,63 +1474,79 @@ export default function AdminMarketplacePanel({
                 required
               />
             </label>
-            <label className="text-xs">
-              Mode
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Action Mode
               <select
                 className={inputCls}
                 value={walletForm.mode}
                 onChange={(e) => setWalletForm((f) => ({ ...f, mode: e.target.value }))}
               >
-                <option value="add">Add</option>
-                <option value="subtract">Subtract</option>
-                <option value="set">Set</option>
+                <option value="add">Credit (+)</option>
+                <option value="subtract">Debit (-)</option>
+                <option value="set">Set Fixed Balance (=)</option>
               </select>
             </label>
-            <label className="text-xs grow">
-              Note
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 grow">
+              Admin Note
               <input
                 className={inputCls}
+                placeholder="Audit reason (e.g. manual wire, dispute refund)"
                 value={walletForm.note}
                 onChange={(e) => setWalletForm((f) => ({ ...f, note: e.target.value }))}
               />
             </label>
-            <button type="submit" className="rounded-lg bg-primary text-black text-xs font-bold px-4 py-2">
-              Adjust
+            <button
+              type="submit"
+              className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-5 py-2.5 shadow-xs transition active:scale-95"
+            >
+              Adjust Balance
             </button>
           </form>
-          <div className="overflow-x-auto rounded-xl border border-white/10">
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs">
             <table className="w-full text-xs">
-              <thead className="bg-white/5 text-left text-on-surface/50">
+              <thead className="bg-slate-50 dark:bg-white/[0.02] text-left text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200/80 dark:border-white/[0.08]">
                 <tr>
-                  <th className="p-2">User</th>
-                  <th className="p-2">Balance</th>
-                  <th className="p-2">Updated</th>
+                  <th className="p-3">User</th>
+                  <th className="p-3">Current Balance</th>
+                  <th className="p-3">Last Updated</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {wallets.map((w) => (
-                  <tr key={w.user_id} className="border-t border-white/5">
-                    <td className="p-2">
-                      #{w.user_id} {w.name} <span className="text-on-surface/40">{w.email}</span>
+                  <tr key={w.user_id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                    <td className="p-3">
+                      <div className="font-bold text-slate-900 dark:text-white">
+                        #{w.user_id} {w.name}
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400 text-xs font-mono">{w.email}</div>
                     </td>
-                    <td className="p-2 font-semibold">{formatMoney(w.balance)}</td>
-                    <td className="p-2">{formatWhen(w.updated_at)}</td>
+                    <td className="p-3 font-mono font-bold text-slate-900 dark:text-white text-sm">
+                      {formatMoney(w.balance)}
+                    </td>
+                    <td className="p-3 text-slate-500 dark:text-slate-400 font-mono text-xs">{formatWhen(w.updated_at)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div>
-            <h4 className="text-xs font-semibold text-on-surface/50 mb-2">Recent ledger</h4>
-            <ul className="text-xs space-y-1 max-h-60 overflow-y-auto">
+
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-5 shadow-xs">
+            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+              Recent Marketplace Escrow Ledger
+            </h4>
+            <ul className="text-xs space-y-2 max-h-60 overflow-y-auto">
               {ledger.map((row) => (
-                <li key={row.id} className="border-b border-white/5 py-1 flex justify-between gap-2">
-                  <span>
-                    {row.user_name || row.user_id} · {row.entry_type} · {formatMoney(row.amount)}
+                <li key={row.id} className="border-b border-slate-100 dark:border-white/5 py-1.5 flex justify-between items-center gap-2">
+                  <span className="text-slate-800 dark:text-slate-200 font-medium">
+                    {row.user_name || row.user_id} · <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">{row.entry_type}</span> · {formatMoney(row.amount)}
                   </span>
-                  <span className="text-on-surface/40">{formatWhen(row.created_at)}</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-mono text-xs">{formatWhen(row.created_at)}</span>
                 </li>
               ))}
+              {!ledger.length && (
+                <li className="text-slate-400 dark:text-slate-500 italic py-1">No ledger entries recorded yet.</li>
+              )}
             </ul>
           </div>
         </div>
@@ -1456,12 +1557,16 @@ export default function AdminMarketplacePanel({
 
 function Stat({ label, value }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-on-surface/45">{label}</div>
-      <div className="text-xl font-bold mt-1">{value ?? '—'}</div>
+    <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] p-4 shadow-xs">
+      <div className="text-[11px] font-mono font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        {label}
+      </div>
+      <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5 tabular-nums">
+        {value ?? '—'}
+      </div>
     </div>
   );
 }
 
 const inputCls =
-  'mt-1 block w-full rounded-lg border border-white/10 bg-surface-container px-2.5 py-2 text-sm text-on-surface outline-none';
+  'mt-1 block w-full rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-black/30 px-3 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all';

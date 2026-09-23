@@ -414,15 +414,33 @@ export async function migrateSchema() {
   `);
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS workspace_roles (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      owner_user_id INT UNSIGNED NOT NULL,
+      name VARCHAR(64) NOT NULL,
+      description VARCHAR(255) NULL,
+      color VARCHAR(32) DEFAULT 'blue',
+      permissions JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_workspace_roles_owner (owner_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS team_members (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       owner_user_id INT UNSIGNED NOT NULL,
       member_email VARCHAR(190) NOT NULL,
-      role ENUM('manager', 'canvasser', 'sales_rep') NOT NULL DEFAULT 'sales_rep',
-      status ENUM('pending', 'active') NOT NULL DEFAULT 'active',
+      role VARCHAR(64) NOT NULL DEFAULT 'sales_rep',
+      role_id INT UNSIGNED NULL,
+      status ENUM('pending', 'active') NOT NULL DEFAULT 'pending',
+      invite_token VARCHAR(128) NULL,
+      invite_expires DATETIME NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_team_owner (owner_user_id),
-      INDEX idx_team_email (member_email)
+      INDEX idx_team_email (member_email),
+      INDEX idx_team_invite_token (invite_token)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 

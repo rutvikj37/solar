@@ -123,6 +123,8 @@ export default function Billing() {
   const [checkoutError, setCheckoutError] = useState('');
   const [portalLoading, setPortalLoading] = useState(false);
   const [marketplaceWallet, setMarketplaceWallet] = useState({ balance: 0, ledger: [] });
+  const [entitlements, setEntitlements] = useState(null);
+  const [planDetails, setPlanDetails] = useState(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -237,6 +239,8 @@ export default function Billing() {
         if (subData.subscription) setSubscription(subData.subscription);
         if (subData.credits !== undefined) setCredits(subData.credits);
         if (subData.activePackage) setActivePackage(subData.activePackage);
+        if (subData.entitlements) setEntitlements(subData.entitlements);
+        if (subData.plan) setPlanDetails(subData.plan);
       }
       if (mktWalletRes.ok) {
         const walletData = await mktWalletRes.json();
@@ -375,9 +379,25 @@ export default function Billing() {
     );
   }
 
-  const planName = subscription?.packageName || activePackage || 'Free';
-  const isFreeTier = !subscription;
-  const planLeadLimit = subscription?.leadLimit != null ? Number(subscription.leadLimit) : null;
+  const planName =
+    subscription?.packageName ||
+    planDetails?.name ||
+    entitlements?.packageName ||
+    activePackage ||
+    'Free';
+  const isFreeTier =
+    (activePackage === 'Free' || !activePackage) &&
+    (!subscription || subscription.status === 'canceled');
+  const planLeadLimit =
+    subscription?.leadLimit != null
+      ? Number(subscription.leadLimit)
+      : planDetails?.leadLimit != null && Number(planDetails.leadLimit) > 0
+        ? Number(planDetails.leadLimit)
+        : entitlements?.limits?.leadLimit != null && Number(entitlements.limits.leadLimit) > 0
+          ? Number(entitlements.limits.leadLimit)
+          : isFreeTier
+            ? 5
+            : null;
   const hasCustomBalance = isFreeTier && Number(credits) !== 5;
   const creditsLabel = Number(credits).toLocaleString();
 
@@ -385,7 +405,7 @@ export default function Billing() {
   if (subscription) {
     planDescription = (
       <>
-        Monthly plan with{' '}
+        Active subscription ({subscription.packageName || planName}) with{' '}
         <span className="text-on-surface font-semibold">{planLeadLimit?.toLocaleString() ?? '—'}</span> credits
         per billing cycle
         {subscription.billingInterval === 'year'
@@ -395,6 +415,8 @@ export default function Billing() {
             : '.'}
       </>
     );
+  } else if (planDetails?.description) {
+    planDescription = `${planDetails.description}. ${isFreeTier ? 'Your initial free allowance includes 5 map lead scan credits.' : ''}`;
   } else if (hasCustomBalance) {
     planDescription =
       'Free plan with no monthly subscription. Your available credit balance is the source of truth and may include signup credits plus account adjustments.';
@@ -549,6 +571,223 @@ export default function Billing() {
           )}
         </div>
       </div>
+
+      {/* Comprehensive Plan Details & Entitlements Overview */}
+      <section className="mb-8 p-6 rounded-2xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 dark:border-white/[0.06] pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-[22px]">
+                verified
+              </span>
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                {planName} Plan Details & Entitlements
+              </h3>
+              <StatusPill
+                status={subscription?.status || (isFreeTier ? 'Free Tier' : 'Active')}
+                cancelAtPeriodEnd={subscription?.cancelAtPeriodEnd}
+              />
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Live breakdown of your monthly allowances, team seats, and unlocked platform capabilities.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <a
+              href="#plans"
+              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition active:scale-95 shadow-xs flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px]">upgrade</span>
+              <span>{isFreeTier ? 'Upgrade to Pro' : 'Compare All Plans'}</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Plan Specs Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.05] text-xs">
+          <div>
+            <span className="text-[10px] uppercase font-mono text-slate-500 dark:text-slate-400 block">Plan Cost</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm mt-0.5 block">
+              {subscription?.price
+                ? `$${Number(subscription.price).toLocaleString()} / ${subscription.billingInterval || 'mo'}`
+                : planDetails?.price && Number(planDetails.price) > 0
+                  ? `$${Number(planDetails.price).toLocaleString()} / ${planDetails.billingInterval || 'mo'}`
+                  : 'Free ($0 / mo)'}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-mono text-slate-500 dark:text-slate-400 block">Billing Cadence</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm mt-0.5 block">
+              {subscription?.billingInterval === 'year'
+                ? 'Annual (12 Months)'
+                : subscription?.billingInterval === '6mo'
+                  ? 'Semi-Annual (6 Months)'
+                  : subscription
+                    ? 'Monthly Plan'
+                    : 'No Auto-Renewal'}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-mono text-slate-500 dark:text-slate-400 block">Credit Refresh</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm mt-0.5 block truncate">
+              {subscription?.currentPeriodEnd
+                ? formatDate(subscription.currentPeriodEnd)
+                : 'On-demand Top-ups'}
+            </span>
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-mono text-slate-500 dark:text-slate-400 block">Team Seats</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm mt-0.5 block">
+              {entitlements?.limits?.crmUserLimit || 1} Seat{(entitlements?.limits?.crmUserLimit || 1) > 1 ? 's' : ''} Included
+            </span>
+          </div>
+        </div>
+
+        {/* Quota Progress Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Quota 1: Lead Credits */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] space-y-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-amber-500 text-[18px]">bolt</span>
+                Lead Credits
+              </span>
+              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                {credits} {planLeadLimit ? `/ ${planLeadLimit}` : 'Available'}
+              </span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-white/10 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${planLeadLimit ? Math.min(100, Math.round((credits / planLeadLimit) * 100)) : 100}%`,
+                }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {planLeadLimit ? `${credits} credits remaining in current cycle.` : 'Signup credits & balance.'}
+            </p>
+          </div>
+
+          {/* Quota 2: Team Member Seats */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] space-y-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-blue-500 text-[18px]">group</span>
+                Workspace Seats
+              </span>
+              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                {entitlements?.usage?.crmSeats || 1} / {entitlements?.limits?.crmUserLimit || 1}
+              </span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-white/10 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.round(((entitlements?.usage?.crmSeats || 1) / (entitlements?.limits?.crmUserLimit || 1)) * 100))}%`,
+                }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {(entitlements?.limits?.crmUserLimit || 1) > 1
+                ? `${(entitlements?.limits?.crmUserLimit || 1) - (entitlements?.usage?.crmSeats || 1)} seat(s) remaining for team.`
+                : '1 master owner seat included.'}
+            </p>
+          </div>
+
+          {/* Quota 3: Automated Outreach */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] space-y-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-purple-500 text-[18px]">forward_to_inbox</span>
+                Outreach Sequences
+              </span>
+              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                {entitlements?.usage?.dripCampaigns || 0} / {entitlements?.limits?.emailAutomationLimit || 1}
+              </span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-white/10 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-purple-600 h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.round(((entitlements?.usage?.dripCampaigns || 0) / (entitlements?.limits?.emailAutomationLimit || 1)) * 100))}%`,
+                }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Active email drip cadence campaigns.
+            </p>
+          </div>
+
+          {/* Quota 4: Monthly Email Volume */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200/80 dark:border-white/[0.06] space-y-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-emerald-500 text-[18px]">mark_email_read</span>
+                Email Sends
+              </span>
+              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                {entitlements?.limits?.emailLimit ? `${entitlements.limits.emailLimit.toLocaleString()}/mo` : '100/mo'}
+              </span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-white/10 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                style={{ width: '100%' }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Transactional & cold outreach allowance.
+            </p>
+          </div>
+        </div>
+
+        {/* Feature Capabilities Matrix */}
+        <div className="pt-2 border-t border-slate-100 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+              Included Platform Features & Tools
+            </h4>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              Based on your active {planName} tier
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {[
+              { label: 'Satellite Area Scan', active: true, desc: 'High-res rooftop analysis' },
+              { label: 'Interactive Proposals', active: entitlements?.features?.proposals ?? false, desc: 'System sizing & payback' },
+              { label: 'Marketplace Bidding', active: entitlements?.features?.marketplace ?? false, desc: 'Buy & bid on fresh leads' },
+              { label: 'CSV / CRM Export', active: entitlements?.features?.csvExport ?? false, desc: 'One-click lead download' },
+              { label: 'Advanced Map Filters', active: entitlements?.features?.advancedFilters ?? false, desc: 'Property value & shading' },
+              { label: 'Drip Automations', active: entitlements?.features?.dripAutomations ?? true, desc: 'Scheduled follow-ups' },
+              { label: 'Territory Lock', active: entitlements?.features?.territoryLock ?? false, desc: 'Exclusive ZIP territory' },
+              { label: 'Early Marketplace', active: entitlements?.features?.earlyMarketplace ?? false, desc: 'Priority lead access' },
+            ].map((feat) => (
+              <div
+                key={feat.label}
+                className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                  feat.active
+                    ? 'bg-emerald-500/[0.05] border-emerald-500/20 text-slate-900 dark:text-white'
+                    : 'bg-slate-50 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/[0.06] text-slate-400 opacity-60'
+                }`}
+              >
+                <span
+                  className={`material-symbols-outlined text-[18px] shrink-0 mt-0.5 ${
+                    feat.active ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+                  }`}
+                >
+                  {feat.active ? 'check_circle' : 'lock'}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold leading-tight truncate">{feat.label}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5 truncate">{feat.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Invoice history */}
       <section className="glass-card rounded-2xl border border-glass-stroke overflow-hidden">

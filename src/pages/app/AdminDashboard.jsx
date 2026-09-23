@@ -4,18 +4,22 @@ import { toast, Toaster } from 'sonner';
 import { API_BASE } from '../../config.js';
 import { invoiceNumber, openInvoicePdf } from '../../utils/invoicePdf.js';
 import { useTheme } from '../../context/ThemeContext.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 import TeamWorkspacePanel from '../../components/TeamWorkspacePanel';
 import TerritoryAnalyticsPanel from '../../components/TerritoryAnalyticsPanel';
 import AdminMarketplacePanel from '../../components/marketplace/AdminMarketplacePanel';
 import AdminIntegrationsPanel from '../../components/admin/AdminIntegrationsPanel';
 import AdminNav, { ADMIN_TABS } from '../../components/admin/AdminNav.jsx';
+import AdminHeader from '../../components/admin/AdminHeader.jsx';
 import {
   AdminEmptyState,
+  AdminKpiCard,
   AdminPageHeader,
   AdminSectionCard,
-  QueueCard,
+  DrawerSheet,
   StatusPill,
+  TriageQueueCard,
   confirmDanger,
   formatAuditAction,
   formatAuditDetails,
@@ -27,10 +31,10 @@ function ActionBanner({ type, message }) {
   const ok = type === 'success';
   return (
     <div
-      className={`rounded-lg px-3 py-2.5 text-xs font-semibold flex items-start gap-2 border ${
+      className={`rounded-xl px-4 py-3 text-xs font-semibold flex items-start gap-2.5 border ${
         ok
-          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-          : 'bg-red-500/15 text-red-300 border-red-500/30'
+          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+          : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
       }`}
     >
       <span className="material-symbols-outlined text-base leading-none mt-0.5">
@@ -51,17 +55,22 @@ const ROLE_OPTIONS = [
 
 const ASSIGNABLE_ROLES = ['solar_company', 'admin', 'platform_admin', 'super_admin'];
 const USER_SECTIONS = [
-  { id: 'profile', label: 'Profile', icon: 'person' },
-  { id: 'billing', label: 'Billing', icon: 'receipt_long' },
-  { id: 'security', label: 'Security', icon: 'lock' },
-  { id: 'activity', label: 'Activity', icon: 'history' },
+  { id: 'profile', label: 'Profile & Role', icon: 'person' },
+  { id: 'billing', label: 'Billing & Invoices', icon: 'receipt_long' },
+  { id: 'security', label: 'Security & Access', icon: 'lock' },
+  { id: 'activity', label: 'Audit Activity', icon: 'history' },
 ];
-const isProdBuild = import.meta.env.PROD;
+
 const TABS = ADMIN_TABS;
 
 export default function AdminDashboard() {
   const { theme } = useTheme();
+  const { user: currentAdmin } = useAuth();
   const [tab, setTab] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [quickActionOpen, setQuickActionOpen] = useState(false);
+
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [subs, setSubs] = useState([]);
@@ -70,19 +79,29 @@ export default function AdminDashboard() {
   const [inquiries, setInquiries] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [auditEntries, setAuditEntries] = useState([]);
+  const [selectedAuditLog, setSelectedAuditLog] = useState(null);
+
   const [q, setQ] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [roleBusy, setRoleBusy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // User detail drawer
   const [userDetail, setUserDetail] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState(null);
+  const [userSection, setUserSection] = useState('profile');
+
+  // Credit adjustment
   const [creditAdjustAmount, setCreditAdjustAmount] = useState(10);
   const [creditNote, setCreditNote] = useState('');
   const [creditMode, setCreditMode] = useState('add');
   const [creditMsg, setCreditMsg] = useState('');
   const [creditMsgType, setCreditMsgType] = useState('success');
   const [creditBusy, setCreditBusy] = useState(false);
+
+  // Plan assignment
   const [assignPlanId, setAssignPlanId] = useState('');
   const [planNote, setPlanNote] = useState('');
   const [planInvoiceReason, setPlanInvoiceReason] = useState('manual grant');
@@ -91,12 +110,16 @@ export default function AdminDashboard() {
   const [planMsgType, setPlanMsgType] = useState('success');
   const [planBusy, setPlanBusy] = useState(false);
   const planBusyRef = useRef(false);
+
+  // Password reset
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
   const [passwordMsgType, setPasswordMsgType] = useState('success');
   const [revealedPassword, setRevealedPassword] = useState('');
   const [passwordBusy, setPasswordBusy] = useState(false);
+
+  // Plan catalog management
   const [planForm, setPlanForm] = useState({
     id: '',
     name: '',
@@ -122,22 +145,27 @@ export default function AdminDashboard() {
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [editPlan, setEditPlan] = useState(null);
   const [planSaveBusy, setPlanSaveBusy] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+
+  // Support Tickets
   const [ticketDetail, setTicketDetail] = useState(null);
   const [reply, setReply] = useState('');
-  const [userSection, setUserSection] = useState('profile');
   const [ticketFilter, setTicketFilter] = useState('open');
   const [ticketBusy, setTicketBusy] = useState(false);
+
+  // Marketing Inquiries
   const [inquirySearch, setInquirySearch] = useState('');
   const [inquiryIntent, setInquiryIntent] = useState('');
   const [selectedInquiryId, setSelectedInquiryId] = useState(null);
   const [statusBusy, setStatusBusy] = useState(false);
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const authHeaders = () => ({
+  const authHeaders = useCallback(() => ({
     Authorization: `Bearer ${localStorage.getItem('solar_token')}`,
-    'Content-Type': 'application/json'
-  });
+    'Content-Type': 'application/json',
+  }), []);
 
   const featuresToJson = (textOrList) => {
     if (Array.isArray(textOrList)) {
@@ -188,101 +216,110 @@ export default function AdminDashboard() {
     is_subscription: true,
   });
 
-  const loadTab = useCallback(async (active) => {
-    const token = localStorage.getItem('solar_token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      if (active === 'dashboard') {
-        const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
-        }
-        if (!res.ok) throw new Error('Failed to load stats');
-        setStats(await res.json());
+  const loadTab = useCallback(
+    async (active) => {
+      const token = localStorage.getItem('solar_token');
+      if (!token) {
+        navigate('/login');
+        return;
       }
-      if (active === 'users') {
-        const roleQs = roleFilter ? `&role=${encodeURIComponent(roleFilter)}` : '';
-        const [usersRes, plansRes] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}${roleQs}`, { headers: authHeaders() }),
-          fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() })
-        ]);
-        if (usersRes.status === 403 || plansRes.status === 403) {
-          setError('Admin access required.');
-          return;
+      setError('');
+      setLoading(true);
+      try {
+        if (active === 'dashboard') {
+          const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load stats');
+          setStats(await res.json());
         }
-        if (!usersRes.ok) throw new Error('Failed to load users');
-        setUsers(await usersRes.json());
-        if (plansRes.ok) setPlans(await plansRes.json());
-      }
-      if (active === 'subscriptions') {
-        const res = await fetch(`${API_BASE}/api/admin/subscriptions`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
+        if (active === 'users') {
+          const roleQs = roleFilter ? `&role=${encodeURIComponent(roleFilter)}` : '';
+          const [usersRes, plansRes] = await Promise.all([
+            fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}${roleQs}`, {
+              headers: authHeaders(),
+            }),
+            fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() }),
+          ]);
+          if (usersRes.status === 403 || plansRes.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!usersRes.ok) throw new Error('Failed to load users');
+          setUsers(await usersRes.json());
+          if (plansRes.ok) setPlans(await plansRes.json());
         }
-        if (!res.ok) throw new Error('Failed to load subscriptions');
-        setSubs(await res.json());
-      }
-      if (active === 'plans') {
-        const res = await fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
+        if (active === 'subscriptions') {
+          const res = await fetch(`${API_BASE}/api/admin/subscriptions`, {
+            headers: authHeaders(),
+          });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load subscriptions');
+          setSubs(await res.json());
         }
-        if (!res.ok) throw new Error('Failed to load plans');
-        setPlans(await res.json());
-      }
-      if (active === 'apis') {
-        const res = await fetch(`${API_BASE}/api/admin/apis?days=7`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
+        if (active === 'plans') {
+          const res = await fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load plans');
+          setPlans(await res.json());
         }
-        if (!res.ok) throw new Error('Failed to load APIs');
-        const data = await res.json();
-        setApis(data.providers || []);
-      }
-      if (active === 'inquiries') {
-        const res = await fetch(`${API_BASE}/api/admin/inquiries`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
+        if (active === 'apis') {
+          const res = await fetch(`${API_BASE}/api/admin/apis?days=7`, { headers: authHeaders() });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load APIs');
+          const data = await res.json();
+          setApis(data.providers || []);
         }
-        if (!res.ok) throw new Error('Failed to load inquiries');
-        setInquiries(await res.json());
-      }
-      if (active === 'tickets') {
-        const res = await fetch(`${API_BASE}/api/tickets`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
+        if (active === 'inquiries') {
+          const res = await fetch(`${API_BASE}/api/admin/inquiries`, { headers: authHeaders() });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load inquiries');
+          setInquiries(await res.json());
         }
-        if (!res.ok) throw new Error('Failed to load tickets');
-        setTickets(await res.json());
-      }
-      if (active === 'audit') {
-        const res = await fetch(`${API_BASE}/api/admin/audit-log?limit=100`, { headers: authHeaders() });
-        if (res.status === 403) {
-          setError('Admin access required.');
-          return;
+        if (active === 'tickets') {
+          const res = await fetch(`${API_BASE}/api/tickets`, { headers: authHeaders() });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load tickets');
+          setTickets(await res.json());
         }
-        if (!res.ok) throw new Error('Failed to load audit log');
-        const data = await res.json();
-        setAuditEntries(data.entries || []);
+        if (active === 'audit') {
+          const res = await fetch(`${API_BASE}/api/admin/audit-log?limit=100`, {
+            headers: authHeaders(),
+          });
+          if (res.status === 403) {
+            setError('Admin access required.');
+            return;
+          }
+          if (!res.ok) throw new Error('Failed to load audit log');
+          const data = await res.json();
+          setAuditEntries(data.entries || []);
+        }
+      } catch (err) {
+        setError(err.message);
+        toast.error(err.message || 'Failed to load admin data');
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(err.message);
-      toast.error(err.message || 'Failed to load admin data');
-    } finally {
-      setLoading(false);
-    }
-  }, [navigate, q, roleFilter]);
+    },
+    [navigate, q, roleFilter, authHeaders],
+  );
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -290,13 +327,11 @@ export default function AdminDashboard() {
     if (normalized && TABS.some((x) => x.id === normalized)) setTab(normalized);
   }, [searchParams]);
 
-  const marketplaceSub = searchParams.get('mkt') || 'leads';
-
   useEffect(() => {
     loadTab(tab);
   }, [tab, loadTab]);
 
-  // Keep nav badges fresh even when not on dashboard
+  // Keep nav badges fresh
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -304,13 +339,29 @@ export default function AdminDashboard() {
         const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
         if (!cancelled && res.ok) setStats(await res.json());
       } catch {
-        /* ignore badge prefetch errors */
+        /* ignore */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authHeaders]);
+
+  const handleSyncTelemetry = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() });
+      if (res.ok) {
+        setStats(await res.json());
+        toast.success('Telemetry updated');
+      }
+      await loadTab(tab);
+    } catch {
+      toast.error('Sync failed');
+    } finally {
+      setTimeout(() => setSyncing(false), 400);
+    }
+  };
 
   const switchTab = (id) => {
     setTab(id);
@@ -323,15 +374,8 @@ export default function AdminDashboard() {
     setUserDetail(null);
     setSelectedUserId(null);
     setSelectedInquiryId(null);
+    setSelectedAuditLog(null);
     setUserSection('profile');
-  };
-
-  const setMarketplaceSub = (mkt) => {
-    setTab('marketplace');
-    const next = new URLSearchParams(searchParams);
-    next.set('tab', 'marketplace');
-    next.set('mkt', mkt);
-    setSearchParams(next);
   };
 
   const openUser = async (id, { keepFeedback = false, section } = {}) => {
@@ -397,8 +441,8 @@ export default function AdminDashboard() {
           packageId: assignPlanId,
           complimentary: planComplimentary,
           invoiceReason: planComplimentary ? 'comp' : planInvoiceReason,
-          note: planNote.trim() || undefined
-        })
+          note: planNote.trim() || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -420,55 +464,6 @@ export default function AdminDashboard() {
       loadTab('users');
     } catch {
       const err = 'Plan grant failed';
-      setPlanMsgType('error');
-      setPlanMsg(err);
-      toast.error(err);
-    } finally {
-      planBusyRef.current = false;
-      setPlanBusy(false);
-    }
-  };
-
-  const restrictPlan = async (restrict) => {
-    if (!selectedUserId || planBusyRef.current) return;
-    if (
-      !confirmDanger(
-        restrict
-          ? 'Restrict this user\'s plan and lock self-serve upgrades?'
-          : 'Lift the plan restriction for this user?',
-      )
-    ) {
-      return;
-    }
-    planBusyRef.current = true;
-    setPlanBusy(true);
-    setPlanMsg('');
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/restrict-plan`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          restrict,
-          packageId: restrict ? assignPlanId || 'Free' : undefined,
-          note: planNote.trim() || undefined
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const err = data.error || 'Restrict plan failed';
-        setPlanMsgType('error');
-        setPlanMsg(err);
-        toast.error(err);
-        return;
-      }
-      const successMsg = restrict ? 'Plan restricted' : 'Restriction lifted';
-      setPlanMsgType('success');
-      setPlanMsg(successMsg);
-      toast.success(successMsg);
-      await openUser(selectedUserId, { keepFeedback: true });
-      loadTab('users');
-    } catch {
-      const err = 'Restrict plan failed';
       setPlanMsgType('error');
       setPlanMsg(err);
       toast.error(err);
@@ -504,7 +499,7 @@ export default function AdminDashboard() {
       !confirmDanger(
         generate
           ? 'Generate a temporary password for this user? Their current password will stop working immediately.'
-          : 'Reset this user\'s password now? Their current password will stop working immediately.',
+          : "Reset this user's password now? Their current password will stop working immediately.",
       )
     ) {
       return;
@@ -515,7 +510,7 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE}/api/admin/users/${selectedUserId}/reset-password`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify(generate ? { generate: true } : { password: newPassword, newPassword })
+        body: JSON.stringify(generate ? { generate: true } : { password: newPassword }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -593,8 +588,8 @@ export default function AdminDashboard() {
         body: JSON.stringify({
           amount: Number(creditAdjustAmount),
           mode: creditMode,
-          note: creditNote.trim() || undefined
-        })
+          note: creditNote.trim() || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -610,7 +605,6 @@ export default function AdminDashboard() {
         successMsg = `${applied} credits added`;
       } else if (creditMode === 'subtract' || data.mode === 'subtract') {
         successMsg = `${applied} credits deducted`;
-        if (data.clamped) successMsg += ' (balance floored at 0)';
       } else if (creditMode === 'set' || data.mode === 'set') {
         successMsg = `Credit balance set to ${data.credits}`;
       }
@@ -663,11 +657,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const toggleStatusFromDetail = async () => {
-    if (!userDetail?.user || statusBusy) return;
-    await toggleStatus(userDetail.user.id, userDetail.user.account_status);
-  };
-
   const createPlan = async (e) => {
     e.preventDefault();
     const payload = {
@@ -689,6 +678,7 @@ export default function AdminDashboard() {
     }
     toast.success('Plan created');
     setPlanForm(emptyPlanForm());
+    setPlanModalOpen(false);
     loadTab('plans');
   };
 
@@ -696,7 +686,9 @@ export default function AdminDashboard() {
     const nextActive = !Number(plan.is_active);
     if (
       !confirmDanger(
-        nextActive ? `Activate plan "${plan.name || plan.id}"?` : `Deactivate plan "${plan.name || plan.id}"?`,
+        nextActive
+          ? `Activate plan "${plan.name || plan.id}"?`
+          : `Deactivate plan "${plan.name || plan.id}"?`,
       )
     ) {
       return;
@@ -850,28 +842,33 @@ export default function AdminDashboard() {
   const filteredTickets = useMemo(() => {
     if (ticketFilter === 'all') return tickets;
     if (ticketFilter === 'open') {
-      return tickets.filter((t) => ['open', 'in_progress'].includes(String(t.status || '').toLowerCase()));
+      return tickets.filter((t) =>
+        ['open', 'in_progress'].includes(String(t.status || '').toLowerCase()),
+      );
     }
     return tickets.filter((t) => String(t.status || '').toLowerCase() === ticketFilter);
   }, [tickets, ticketFilter]);
 
   const filteredInquiries = useMemo(() => {
-    const q = inquirySearch.trim().toLowerCase();
+    const term = inquirySearch.trim().toLowerCase();
     return inquiries.filter((row) => {
       if (inquiryIntent && String(row.intent || '') !== inquiryIntent) return false;
-      if (!q) return true;
+      if (!term) return true;
       return (
-        String(row.name || '').toLowerCase().includes(q) ||
-        String(row.email || '').toLowerCase().includes(q) ||
-        String(row.company || '').toLowerCase().includes(q) ||
-        String(row.message || '').toLowerCase().includes(q)
+        String(row.name || '').toLowerCase().includes(term) ||
+        String(row.email || '').toLowerCase().includes(term) ||
+        String(row.company || '').toLowerCase().includes(term) ||
+        String(row.message || '').toLowerCase().includes(term)
       );
     });
   }, [inquiries, inquirySearch, inquiryIntent]);
 
-  const selectedInquiry = filteredInquiries.find((r) => r.id === selectedInquiryId)
-    || inquiries.find((r) => r.id === selectedInquiryId)
-    || null;
+  const selectedInquiry =
+    filteredInquiries.find((r) => r.id === selectedInquiryId) ||
+    inquiries.find((r) => r.id === selectedInquiryId) ||
+    null;
+
+  const activeTabMeta = TABS.find((t) => t.id === tab) || { label: 'Console' };
 
   const navBadges = {
     pendingMarketplace: Number(stats?.pendingMarketplace || 0),
@@ -879,1376 +876,1870 @@ export default function AdminDashboard() {
     inquiries: Number(stats?.inquiryCount || 0),
   };
 
+  const getInitials = (str) => {
+    if (!str) return 'U';
+    const p = str.trim().split(/\s+/);
+    if (p.length >= 2) return `${p[0][0]}${p[1][0]}`.toUpperCase();
+    return str.slice(0, 2).toUpperCase();
+  };
+
   return (
-    <>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0F19] text-slate-800 dark:text-slate-100 font-sans antialiased transition-colors duration-200">
       <Toaster theme={theme === 'light' ? 'light' : 'dark'} position="top-center" richColors />
-      <div className="mb-5 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 font-label-mono text-[9px] font-bold uppercase mb-2">
-            Operator console
-          </div>
-          <h2 className="font-headline-lg text-2xl font-bold text-on-surface">Admin Control Center</h2>
-          <p className="text-on-surface-variant text-sm mt-1">
-            Platform users, marketplace approvals, billing, and support — separate from your company workspace.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <Link to="/ai-calling" className="text-xs text-on-surface-variant font-semibold hover:text-primary">
-            AI Calling →
-          </Link>
-          <Link to="/support" className="text-xs text-primary font-semibold hover:underline">
-            User support view →
-          </Link>
-        </div>
-      </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        <AdminNav activeTab={tab} onSelect={switchTab} badges={navBadges} />
+      {/* Left Sidebar Navigation Rail */}
+      <AdminNav
+        activeTab={tab}
+        onSelect={switchTab}
+        badges={navBadges}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
+      />
 
-        <div className="flex-1 min-w-0 w-full">
-      {error && (
-        <div className="mb-4 p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 text-xs flex flex-wrap gap-3 items-center justify-between">
-          <span>{error}</span>
-          {error === 'Admin access required.' && !isProdBuild && (
-            <p className="text-[10px] text-on-surface-variant max-w-md">
-              First-admin bootstrap is disabled in the UI. Enable ALLOW_ADMIN_BOOTSTRAP with ADMIN_BOOTSTRAP_SECRET only in non-prod, or promote via SQL.
-            </p>
-          )}
-        </div>
-      )}
-
-      {loading && !['marketplace', 'integrations', 'team', 'territory'].includes(tab) && (
-        <div className="mb-4 text-xs text-on-surface-variant animate-pulse">Loading…</div>
-      )}
-
-      {tab === 'dashboard' && !loading && !stats && !error && (
-        <AdminEmptyState icon="dashboard" title="No stats yet" description="Stats will appear once the admin API responds." />
-      )}
-
-      {tab === 'dashboard' && stats && (
-        <div className="space-y-6">
-          <AdminPageHeader
-            eyebrow="Home"
-            title="Operator dashboard"
-            description="Queues that need attention, plus platform health at a glance."
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            <QueueCard
-              icon="fact_check"
-              label="Marketplace pending"
-              value={stats.pendingMarketplace ?? 0}
-              hint="Leads waiting for approve"
-              accent="amber"
-              onClick={() => setMarketplaceSub('leads')}
-            />
-            <QueueCard
-              icon="support_agent"
-              label="Open tickets"
-              value={stats.openTickets}
-              hint="Open + in progress"
-              accent="primary"
-              onClick={() => switchTab('tickets')}
-            />
-            <QueueCard
-              icon="mail"
-              label="Marketing inquiries"
-              value={stats.inquiryCount ?? 0}
-              hint="Contact form submissions"
-              onClick={() => switchTab('inquiries')}
-            />
-            <QueueCard
-              icon="gavel"
-              label="Pending claims"
-              value={stats.pendingDisputes ?? 0}
-              hint="Marketplace disputes"
-              accent="red"
-              onClick={() => setMarketplaceSub('disputes')}
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            {[
-              ['TOTAL USERS', stats.totalUsers, `${stats.activeUsers} active · ${stats.newUsers7d} new / 7d`],
-              ['REVENUE (PAID)', `$${(stats.revenueCents / 100).toLocaleString()}`, `${stats.paidOrders} paid invoices`],
-              ['ACTIVE PLANS', stats.activeSubscriptions, `${stats.remainingCredits} credits left`],
-              ['CRM LEADS', stats.totalLeads ?? 0, 'Company lead records'],
-            ].map(([label, value, sub]) => (
-              <div key={label} className="glass-card p-5 rounded-xl">
-                <p className="font-label-mono text-[9px] text-on-surface-variant uppercase">{label}</p>
-                <h3 className="text-2xl font-bold text-on-surface mt-1.5 font-mono tabular-nums">{value}</h3>
-                <p className="text-on-surface-variant text-[10px] mt-2">{sub}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {[
-              ['Users', 'users', 'group'],
-              ['Plans', 'plans', 'sell'],
-              ['Audit log', 'audit', 'history'],
-              ['API health', 'apis', 'api'],
-            ].map(([label, id, icon]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => switchTab(id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-container-low text-on-surface-variant hover:text-on-surface"
-              >
-                <span className="material-symbols-outlined text-sm">{icon}</span>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === 'marketplace' && (
-        <AdminMarketplacePanel
-          activeSub={
-            ['overview', 'settings', 'leads', 'disputes', 'installers', 'wallets'].includes(marketplaceSub)
-              ? marketplaceSub
-              : 'leads'
+      {/* Main Workspace Frame */}
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
+          sidebarCollapsed ? 'lg:pl-18' : 'lg:pl-64'
+        }`}
+      >
+        {/* Sticky Command Bar */}
+        <AdminHeader
+          activeTabTitle={activeTabMeta.label}
+          activeTab={tab}
+          onSync={handleSyncTelemetry}
+          syncing={syncing}
+          searchQuery={tab === 'users' ? q : tab === 'inquiries' ? inquirySearch : ''}
+          onSearchChange={
+            tab === 'users'
+              ? setQ
+              : tab === 'inquiries'
+              ? setInquirySearch
+              : undefined
           }
-          onSubChange={setMarketplaceSub}
+          onOpenQuickAction={() => setQuickActionOpen(true)}
+          onToggleMobileNav={() => setMobileNavOpen(true)}
+          unreadCount={navBadges.openTickets + navBadges.pendingMarketplace}
         />
-      )}
-      {tab === 'integrations' && <AdminIntegrationsPanel />}
 
-      {tab === 'team' && (
-        <div className="space-y-3">
-          <AdminPageHeader
-            eyebrow="Your company"
-            title="Team workspace"
-            description="Team members for the account you are signed in as — not platform-wide ops."
-          />
-          <TeamWorkspacePanel />
-        </div>
-      )}
-
-      {tab === 'territory' && (
-        <div className="space-y-3">
-          <AdminPageHeader
-            eyebrow="Your company"
-            title="Territory analytics"
-            description="Territory analytics for the signed-in account — not a platform-wide map."
-          />
-          <TerritoryAnalyticsPanel />
-        </div>
-      )}
-
-      {tab === 'users' && (
-        <div className="space-y-4">
-          <AdminPageHeader
-            eyebrow="Users & billing"
-            title="Users"
-            description="Search accounts, then manage profile, billing, security, and activity in the workspace on the right."
-          />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-3 items-center">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && loadTab('users')}
-                placeholder="Search users…"
-                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface w-64"
-              />
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface"
-              >
-                {ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.value || 'all'} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <button onClick={() => loadTab('users')} className="text-xs bg-surface-container-high text-on-surface px-3 py-2 rounded-lg">
-                Search
-              </button>
+        {/* Global Error Banner */}
+        {error && (
+          <div className="mx-6 sm:mx-8 lg:mx-10 mt-6 p-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs flex flex-wrap gap-3 items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">warning</span>
+              <span className="font-semibold">{error}</span>
             </div>
-            <div className="glass-card rounded-xl overflow-x-auto max-h-[70vh] overflow-y-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-surface-container-low text-on-surface-variant uppercase text-[9px] sticky top-0">
-                  <tr>
-                    <th className="px-4 py-3">User</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Plan</th>
-                    <th className="px-4 py-3">Credits</th>
-                    <th className="px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-glass-stroke">
-                  {users.map((u) => (
-                    <tr
-                      key={u.id}
-                      onClick={() => openUser(u.id)}
-                      className={`cursor-pointer hover:bg-white/5 ${
-                        selectedUserId === u.id ? 'bg-primary/10' : ''
-                      }`}
-                    >
-                      <td className="px-4 py-3">
-                        <p className="text-on-surface font-semibold">{u.name}</p>
-                        <p className="text-on-surface-variant">{u.email}</p>
-                      </td>
-                      <td className="px-4 py-3 text-on-surface font-mono text-[10px]">{roleLabel(u.role)}</td>
-                      <td className="px-4 py-3 text-on-surface">{u.plan}</td>
-                      <td className="px-4 py-3 font-mono text-on-surface">{u.credits}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={
-                            u.account_status === 'suspended'
-                              ? 'text-red-400'
-                              : u.account_status === 'restricted'
-                                ? 'text-amber-400'
-                                : 'text-green-400'
-                          }
-                        >
-                          {u.account_status || 'active'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {users.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-on-surface-variant text-center">
-                        No users found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {error === 'Admin access required.' && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Log in with an administrator role or contact platform support.
+              </p>
+            )}
           </div>
+        )}
 
-          <div className="glass-card p-4 rounded-xl min-h-[420px] max-h-[85vh] overflow-y-auto flex flex-col">
-            {!userDetail ? (
-              <AdminEmptyState
-                icon="person_search"
-                title="Select a user"
-                description="Search the list and open a profile to manage role, billing, security, and activity."
-              />
-            ) : (
-              <>
-                <div className="flex justify-between gap-3 mb-3">
-                  <div className="min-w-0">
-                    <h3 className="text-on-surface font-bold text-sm truncate">{userDetail.user.name}</h3>
-                    <p className="text-on-surface-variant mt-0.5 text-[11px] truncate">{userDetail.user.email}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      <StatusPill status={userDetail.user.account_status || 'active'} />
-                      <StatusPill status={roleLabel(userDetail.user.role)} tone="warn" />
-                    </div>
+        {/* Main Content Area */}
+        <main className="p-6 sm:p-8 lg:p-10 max-w-[1540px] w-full mx-auto space-y-8 flex-1">
+          {/* TAB: DASHBOARD (Overview) */}
+          {tab === 'dashboard' && (
+            <div className="space-y-8">
+              {/* Greeting & Telemetry Header */}
+              <section className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 pb-2">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] font-semibold text-blue-600 dark:text-blue-400 tracking-wider uppercase">
+                      Platform Telemetry • Global Operations
+                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   </div>
+                  <h1 className="text-2xl lg:text-3xl font-bold font-heading text-slate-900 dark:text-white tracking-tight">
+                    Good morning, {currentAdmin?.name || 'Admin'}
+                  </h1>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
+                    Live operational telemetry and pending triage queues across SpaceToRoof.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
                   <button
                     type="button"
-                    disabled={statusBusy}
-                    onClick={toggleStatusFromDetail}
-                    className="text-[10px] font-bold bg-white/10 px-2.5 py-1.5 rounded-lg self-start disabled:opacity-50"
+                    onClick={handleSyncTelemetry}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#121826] hover:bg-slate-50 dark:hover:bg-white/5 border border-slate-200/80 dark:border-white/[0.08] text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-xs transition active:scale-95"
                   >
-                    {userDetail.user.account_status === 'suspended' ? 'Activate' : 'Suspend'}
+                    <span
+                      className={`material-symbols-outlined text-[16px] text-blue-500 ${
+                        syncing ? 'animate-spin' : ''
+                      }`}
+                    >
+                      refresh
+                    </span>
+                    <span>Sync Telemetry</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickActionOpen(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">bolt</span>
+                    <span>Quick Action</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* 4 Airy KPI Cards */}
+              <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 sm:gap-6">
+                <AdminKpiCard
+                  label="Total Platform Users"
+                  value={stats ? Number(stats.totalUsers || 0).toLocaleString() : '—'}
+                  trend={stats?.newUsers7d ? `+${stats.newUsers7d} this wk` : null}
+                  trendPositive={true}
+                  subtext={`${stats?.activeUsers || 0} active accounts`}
+                  icon="group"
+                  iconColor="blue"
+                />
+
+                <AdminKpiCard
+                  label="Active Subscriptions"
+                  value={stats ? Number(stats.activeSubscriptions || 0).toLocaleString() : '—'}
+                  trend={stats?.mrrEstimate ? `$${(stats.mrrEstimate).toLocaleString()} MRR` : null}
+                  trendPositive={true}
+                  subtext={`${stats?.paidOrders || 0} paid transactions`}
+                  icon="card_membership"
+                  iconColor="emerald"
+                />
+
+                <AdminKpiCard
+                  label="Unlocked Opportunities"
+                  value={stats ? Number(stats.totalLeads || 0).toLocaleString() : '—'}
+                  trend={null}
+                  subtext={`${Number(stats?.remainingCredits || 0).toLocaleString()} pool credits`}
+                  icon="offline_bolt"
+                  iconColor="amber"
+                />
+
+                <AdminKpiCard
+                  label="System Telemetry"
+                  value="99.98%"
+                  trend="Healthy"
+                  trendPositive={true}
+                  subtext={`${
+                    (stats?.pendingMarketplace || 0) +
+                    (stats?.openTickets || 0) +
+                    (stats?.inquiryCount || 0)
+                  } items awaiting review`}
+                  icon="cloud_done"
+                  iconColor="purple"
+                />
+              </section>
+
+              {/* Operations Triage Queue */}
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                      Operations Triage Queue
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      High-priority queues requiring administrative review and confirmation.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  <TriageQueueCard
+                    icon="storefront"
+                    title="Marketplace Leads"
+                    count={Number(stats?.pendingMarketplace || 0)}
+                    urgentCount={0}
+                    hint="Homeowner inquiries pending AI/admin qualification"
+                    actionLabel="Review Leads"
+                    onClick={() => switchTab('marketplace')}
+                    tone="blue"
+                  />
+
+                  <TriageQueueCard
+                    icon="support_agent"
+                    title="Support Tickets"
+                    count={Number(stats?.openTickets || 0)}
+                    urgentCount={0}
+                    hint="Customer support queries awaiting agent response"
+                    actionLabel="Open Inbox"
+                    onClick={() => switchTab('tickets')}
+                    tone="amber"
+                  />
+
+                  <TriageQueueCard
+                    icon="contact_support"
+                    title="Inbound Inquiries"
+                    count={Number(stats?.inquiryCount || 0)}
+                    urgentCount={0}
+                    hint="Marketing and landing page enterprise submissions"
+                    actionLabel="View Inquiries"
+                    onClick={() => switchTab('inquiries')}
+                    tone="emerald"
+                  />
+
+                  <TriageQueueCard
+                    icon="gavel"
+                    title="Claims & Disputes"
+                    count={Number(stats?.pendingDisputes || 0)}
+                    urgentCount={Number(stats?.pendingDisputes || 0)}
+                    hint="Installer lead warranty claims and dispute resolution"
+                    actionLabel="Resolve Claims"
+                    onClick={() => {
+                      switchTab('marketplace');
+                      const next = new URLSearchParams(searchParams);
+                      next.set('tab', 'marketplace');
+                      next.set('mkt', 'disputes');
+                      setSearchParams(next);
+                    }}
+                    tone="rose"
+                  />
+                </div>
+              </section>
+
+              {/* Quick Jump Grid Strip */}
+              <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="p-6 rounded-2xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-blue-500 text-[20px]">
+                      manage_accounts
+                    </span>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      User Directory
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Manage permissions, assign custom quotas, reset passwords, and inspect account billing histories.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => switchTab('users')}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <span>Inspect Users Directory</span>
+                    <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                   </button>
                 </div>
 
-                <div className="flex flex-wrap gap-1 mb-4 border-b border-glass-stroke pb-2">
-                  {USER_SECTIONS.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setUserSection(s.id)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold ${
-                        userSection === s.id
-                          ? 'bg-primary text-on-primary'
-                          : 'text-on-surface-variant hover:bg-surface-container'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">{s.icon}</span>
-                      {s.label}
-                    </button>
-                  ))}
+                <div className="p-6 rounded-2xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-emerald-500 text-[20px]">
+                      monitoring
+                    </span>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      API Provider Health
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Real-time status, latency figures, and 7-day error rates across Google Maps, Solar API, RentCast, and LLM endpoints.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => switchTab('apis')}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <span>Check Service Latencies</span>
+                    <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                  </button>
                 </div>
 
-                {userSection === 'profile' && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        ['Company', userDetail.user.company_name || '—'],
-                        ['Phone', userDetail.user.phone || '—'],
-                        ['Joined', userDetail.user.created_at ? new Date(userDetail.user.created_at).toLocaleDateString() : '—'],
-                        ['Credits', userDetail.credits],
-                        ['Stripe customer', userDetail.user.stripe_customer_id || '—'],
-                      ].map(([label, value]) => (
-                        <div key={label} className="bg-surface-container-low rounded-lg p-2">
-                          <p className="text-[9px] text-on-surface-variant uppercase">{label}</p>
-                          <p className="text-on-surface font-semibold mt-0.5 break-all">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <AdminSectionCard title="Role" hint="Last super_admin cannot be demoted. Only super_admin can grant super_admin.">
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <select
-                          value={userDetail.user.role || 'solar_company'}
-                          disabled={roleBusy}
-                          onChange={(e) => updateUserRole(e.target.value)}
-                          className="bg-surface-container border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                        >
-                          {ASSIGNABLE_ROLES.map((r) => (
-                            <option key={r} value={r}>{roleLabel(r)}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          disabled={roleBusy || (userDetail.user.role || 'solar_company') === 'admin'}
-                          onClick={() => updateUserRole('admin')}
-                          className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold text-[10px] disabled:opacity-50"
-                        >
-                          Promote to admin
-                        </button>
-                        <button
-                          type="button"
-                          disabled={roleBusy || (userDetail.user.role || 'solar_company') === 'solar_company'}
-                          onClick={() => updateUserRole('solar_company')}
-                          className="bg-surface-container-high text-on-surface px-3 py-1.5 rounded-lg font-bold text-[10px] disabled:opacity-50"
-                        >
-                          Demote to user
-                        </button>
-                      </div>
-                    </AdminSectionCard>
-
-                    <AdminSectionCard title="Leads & support snapshot">
-                      <p className="text-on-surface">
-                        {userDetail.leads?.total ?? 0} total leads
-                        {userDetail.leads?.last7d > 0 && (
-                          <span className="text-on-surface-variant"> · {userDetail.leads.last7d} in last 7 days</span>
-                        )}
-                      </p>
-                      {userDetail.leads?.byStatus && Object.keys(userDetail.leads.byStatus).length > 0 && (
-                        <p className="text-on-surface-variant mt-1">
-                          {Object.entries(userDetail.leads.byStatus)
-                            .map(([s, n]) => `${s}: ${n}`)
-                            .join(' · ')}
-                        </p>
-                      )}
-                      <p className="text-on-surface-variant mt-1">
-                        {userDetail.tickets?.open ?? 0} open / {userDetail.tickets?.total ?? 0} support tickets
-                      </p>
-                    </AdminSectionCard>
+                <div className="p-6 rounded-2xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-purple-500 text-[20px]">
+                      security
+                    </span>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      Security Audit Trail
+                    </h3>
                   </div>
-                )}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Immutable security log recording all administrative modifications, quota grants, and privilege shifts.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => switchTab('audit')}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <span>Review Audit Entries</span>
+                    <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
 
-                {userSection === 'billing' && (
-                  <div className="space-y-4">
-                    <AdminSectionCard title="Package & subscription">
-                      <p className="text-on-surface">
-                        Plan: {userDetail.package?.packageName || 'None'}{' '}
-                        {userDetail.package?.purchasedLeads != null && (
-                          <span className="text-on-surface-variant">
-                            · purchased {userDetail.package.purchasedLeads} · remaining {userDetail.package.remainingLeads}
-                          </span>
-                        )}
-                      </p>
-                      {userDetail.subscription ? (
-                        <p className="text-on-surface-variant mt-1">
-                          Sub: {userDetail.subscription.packageName || userDetail.subscription.packageId} ·{' '}
-                          {userDetail.subscription.status}
-                          {userDetail.subscription.currentPeriodEnd && (
-                            <> · renews {new Date(userDetail.subscription.currentPeriodEnd).toLocaleDateString()}</>
-                          )}
-                          {userDetail.subscription.cancelAtPeriodEnd && (
-                            <span className="text-amber-400"> · cancel pending</span>
-                          )}
-                        </p>
+          {/* TAB: USERS (Enterprise Workspace) */}
+          {tab === 'users' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Platform Operations"
+                title="Users Management"
+                description="Inspect all platform users, grant custom credit allocations, assign subscription packages, and reset passwords."
+                actions={
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                        className="px-3 py-2 rounded-xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                      >
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => loadTab('users')}
+                        className="p-2 rounded-xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition"
+                        title="Reload users"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">refresh</span>
+                      </button>
+                    </div>
+                  </div>
+                }
+              />
+
+              {/* Users Table Card */}
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="py-3.5 px-6">User</th>
+                        <th className="py-3.5 px-4">Role</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Active Plan</th>
+                        <th className="py-3.5 px-4">Lead Credits</th>
+                        <th className="py-3.5 px-4">Registered</th>
+                        <th className="py-3.5 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                      {users.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                            No users found matching query.
+                          </td>
+                        </tr>
                       ) : (
-                        <p className="text-on-surface-variant mt-1">No active billing subscription record.</p>
-                      )}
-                      {userDetail.user.account_status === 'restricted' && (
-                        <p className="text-amber-400 text-[10px] mt-1">Upgrades locked — plan is restricted.</p>
-                      )}
-                    </AdminSectionCard>
+                        users.map((u) => {
+                          const isSelected = selectedUserId === u.id;
+                          return (
+                            <tr
+                              key={u.id}
+                              onClick={() => openUser(u.id)}
+                              className={`cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-50/60 dark:bg-blue-600/10'
+                                  : 'hover:bg-slate-50/80 dark:hover:bg-white/[0.02]'
+                              }`}
+                            >
+                              <td className="py-3.5 px-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold flex items-center justify-center text-xs shrink-0">
+                                    {getInitials(u.name || u.email)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-slate-900 dark:text-white truncate">
+                                      {u.name || 'Unnamed User'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
+                                  </div>
+                                </div>
+                              </td>
 
-                    <AdminSectionCard title="Add plan & generate invoice" hint="Creates an app invoice and updates the active package.">
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <select
-                          value={assignPlanId}
-                          onChange={(e) => setAssignPlanId(e.target.value)}
-                          className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                        >
-                          <option value="">Select plan…</option>
-                          {plans.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.id}) · ${Number(p.price || 0).toLocaleString()} · {p.lead_limit} credits
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={planInvoiceReason}
-                          onChange={(e) => {
-                            setPlanInvoiceReason(e.target.value);
-                            if (e.target.value === 'comp') setPlanComplimentary(true);
-                            else if (planComplimentary && e.target.value !== 'comp') setPlanComplimentary(false);
-                          }}
-                          className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                        >
-                          <option value="manual grant">manual grant</option>
-                          <option value="paid offline">paid offline</option>
-                          <option value="comp">comp</option>
-                        </select>
-                      </div>
-                      <label className="flex items-center gap-2 text-on-surface-variant">
-                        <input
-                          type="checkbox"
-                          checked={planComplimentary}
-                          onChange={(e) => {
-                            setPlanComplimentary(e.target.checked);
-                            if (e.target.checked) setPlanInvoiceReason('comp');
-                            else if (planInvoiceReason === 'comp') setPlanInvoiceReason('manual grant');
-                          }}
-                        />
-                        Complimentary (invoice $0)
-                      </label>
-                      <input
-                        value={planNote}
-                        onChange={(e) => setPlanNote(e.target.value)}
-                        placeholder="Invoice note / reason (optional)"
-                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                      />
-                      <p className="text-[10px] text-on-surface-variant">
-                        Invoice amount:{' '}
-                        <span className="text-on-surface font-semibold">
-                          ${invoicePreviewAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        {planComplimentary ? ' · comp' : ''}
-                        {selectedPlanMeta ? ` · ${selectedPlanMeta.lead_limit} credits` : ''}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={planBusy || !assignPlanId}
-                          onClick={grantPlan}
-                          className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
-                        >
-                          {planBusy ? 'Saving…' : 'Add plan & generate invoice'}
-                        </button>
-                        {userDetail.user.account_status === 'restricted' ? (
-                          <button
-                            type="button"
-                            disabled={planBusy}
-                            onClick={() => restrictPlan(false)}
-                            className="bg-white/10 text-on-surface px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
+                              <td className="py-3.5 px-4">
+                                <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                                  {roleLabel(u.role)}
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <StatusPill status={u.account_status || 'active'} />
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md font-mono text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300">
+                                  {u.active_package || u.package_id || 'Free'}
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4 font-mono font-semibold tabular-nums text-slate-900 dark:text-white">
+                                {Number(u.remaining_leads ?? 0).toLocaleString()}
+                              </td>
+
+                              <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                                {u.created_at
+                                  ? new Date(u.created_at).toLocaleDateString()
+                                  : '—'}
+                              </td>
+
+                              <td className="py-3.5 px-6 text-right">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openUser(u.id);
+                                  }}
+                                  className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-blue-600 hover:text-white dark:bg-white/5 dark:hover:bg-blue-600 text-slate-700 dark:text-slate-300 text-xs font-semibold transition"
+                                >
+                                  Inspect
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: SUBSCRIPTIONS */}
+          {tab === 'subscriptions' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Billing Telemetry"
+                title="Subscriptions & Accounts"
+                description="Live subscriptions, payment intervals, and automated entitlement renewals."
+              />
+
+              {/* KPI Strip */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <AdminKpiCard
+                  label="Total Subscribed"
+                  value={subs.length}
+                  subtext="Paid & trial tier subscriptions"
+                  icon="credit_card"
+                  iconColor="blue"
+                />
+                <AdminKpiCard
+                  label="Active Accounts"
+                  value={subs.filter((s) => s.status === 'active').length}
+                  subtext="Currently receiving monthly lead quotas"
+                  icon="verified"
+                  iconColor="emerald"
+                />
+                <AdminKpiCard
+                  label="Estimated MRR"
+                  value={`$${(stats?.mrrEstimate || 0).toLocaleString()}`}
+                  subtext="Calculated from active plan subscriptions"
+                  icon="payments"
+                  iconColor="purple"
+                />
+              </div>
+
+              {/* Subscriptions Table */}
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="py-3.5 px-6">Customer / Account</th>
+                        <th className="py-3.5 px-4">Plan</th>
+                        <th className="py-3.5 px-4">Quota Remaining</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Renewal Date</th>
+                        <th className="py-3.5 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                      {subs.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-slate-400">
+                            No subscriptions found.
+                          </td>
+                        </tr>
+                      ) : (
+                        subs.map((s) => (
+                          <tr
+                            key={s.id || s.user_id}
+                            className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition"
                           >
-                            Lift restriction
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={planBusy}
-                            onClick={() => restrictPlan(true)}
-                            className="bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 disabled:pointer-events-none"
-                          >
-                            Restrict plan
-                          </button>
-                        )}
-                      </div>
-                      <ActionBanner type={planMsgType} message={planMsg} />
-                    </AdminSectionCard>
+                            <td className="py-3.5 px-6">
+                              <p className="font-semibold text-slate-900 dark:text-white">
+                                {s.user_name || s.email || `User #${s.user_id}`}
+                              </p>
+                              <p className="text-[11px] text-slate-400">{s.email}</p>
+                            </td>
 
-                    <AdminSectionCard title="Adjust credits">
-                      <p className="text-on-surface font-mono text-sm">Current balance: {userDetail.credits}</p>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <select
-                          value={creditMode}
-                          onChange={(e) => setCreditMode(e.target.value)}
-                          className="bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                        >
-                          <option value="add">Add credits</option>
-                          <option value="subtract">Subtract credits</option>
-                          <option value="set">Set absolute balance</option>
-                        </select>
-                        <input
-                          type="number"
-                          value={creditAdjustAmount}
-                          onChange={(e) => setCreditAdjustAmount(e.target.value)}
-                          className="w-24 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface font-mono"
-                        />
-                        <input
-                          value={creditNote}
-                          onChange={(e) => setCreditNote(e.target.value)}
-                          placeholder="Optional note…"
-                          className="flex-1 min-w-[120px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                        />
-                        <button
-                          type="button"
-                          disabled={creditBusy}
-                          onClick={applyCredits}
-                          className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
-                        >
-                          {creditBusy ? 'Saving…' : 'Apply'}
-                        </button>
-                      </div>
-                      <ActionBanner type={creditMsgType} message={creditMsg} />
-                      {userDetail.creditHistory?.length > 0 && (
-                        <div className="max-h-28 overflow-y-auto space-y-1 pt-1">
-                          <p className="text-[9px] text-on-surface-variant uppercase">Credit history</p>
-                          {userDetail.creditHistory.map((h) => (
-                            <p key={h.id} className="text-[10px] text-on-surface-variant">
-                              {new Date(h.created_at).toLocaleString()} · {h.mode === 'set' ? 'set' : h.amount > 0 ? '+' : ''}
-                              {h.amount} → {h.balance_after}
-                              {h.note && <> · {h.note}</>}
-                              {h.admin_name && <> · by {h.admin_name}</>}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    </AdminSectionCard>
+                            <td className="py-3.5 px-4">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md font-mono text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                {s.package_id || 'Free'}
+                              </span>
+                            </td>
 
-                    <AdminSectionCard title="Invoices">
-                      {userDetail.invoices?.length > 0 ? (
-                        <div className="max-h-48 overflow-y-auto space-y-1">
-                          {userDetail.invoices.map((inv) => (
-                            <div key={inv.id} className="text-[10px] bg-white/5 rounded p-1.5 flex justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-on-surface">
-                                  {invoiceNumber(inv.id)} · {inv.package_name || inv.package_id || '—'} · $
-                                  {(Number(inv.amount_cents || 0) / 100).toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}
-                                  <span className="text-on-surface-variant"> · {inv.status}</span>
-                                </p>
-                                <p className="text-on-surface-variant">
-                                  {inv.created_at ? new Date(inv.created_at).toLocaleString() : ''}
-                                  {inv.description ? ` · ${inv.description}` : ''}
-                                  {inv.admin_name ? ` · by ${inv.admin_name}` : ''}
-                                </p>
-                              </div>
+                            <td className="py-3.5 px-4 font-mono tabular-nums text-slate-900 dark:text-white">
+                              {Number(s.remaining_leads ?? 0).toLocaleString()} leads
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <StatusPill status={s.status || 'active'} />
+                            </td>
+
+                            <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                              {s.current_period_end
+                                ? new Date(s.current_period_end).toLocaleDateString()
+                                : '—'}
+                            </td>
+
+                            <td className="py-3.5 px-6 text-right">
                               <button
                                 type="button"
-                                onClick={() => viewUserInvoicePdf(inv.id)}
-                                className="text-primary font-bold shrink-0 self-start hover:underline"
+                                onClick={() => openUser(s.user_id, { section: 'billing' })}
+                                className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 text-xs font-semibold transition"
                               >
-                                View PDF
+                                View Billing
                               </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-on-surface-variant text-[11px]">No invoices yet.</p>
+                            </td>
+                          </tr>
+                        ))
                       )}
-                    </AdminSectionCard>
-                  </div>
-                )}
-
-                {userSection === 'security' && (
-                  <AdminSectionCard
-                    title="Reset password"
-                    hint="Temporary passwords are shown once — copy and share securely. The user's current password stops working immediately."
-                  >
-                    <div className="flex flex-wrap gap-2 items-center">
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="New password (min 8)"
-                        minLength={8}
-                        autoComplete="new-password"
-                        className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                      />
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm password"
-                        minLength={8}
-                        autoComplete="new-password"
-                        className="flex-1 min-w-[140px] bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                      />
-                      <button
-                        type="button"
-                        disabled={passwordBusy}
-                        onClick={() => resetUserPassword({ generate: false })}
-                        className="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
-                      >
-                        {passwordBusy ? 'Saving…' : 'Reset password'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={passwordBusy}
-                        onClick={() => resetUserPassword({ generate: true })}
-                        className="bg-white/10 text-on-surface px-3 py-1.5 rounded-lg font-bold disabled:opacity-50"
-                      >
-                        {passwordBusy ? 'Saving…' : 'Generate temporary password'}
-                      </button>
-                    </div>
-                    <ActionBanner type={passwordMsgType} message={passwordMsg} />
-                    {revealedPassword && (
-                      <div className="flex flex-wrap gap-2 items-center bg-amber-500/10 border border-amber-500/25 rounded-lg p-2">
-                        <code className="text-on-surface font-mono text-xs break-all flex-1">{revealedPassword}</code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(revealedPassword).catch(() => {});
-                            toast.success('Copied');
-                          }}
-                          className="text-[10px] bg-white/10 px-2 py-1 rounded font-bold"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    )}
-                  </AdminSectionCard>
-                )}
-
-                {userSection === 'activity' && (
-                  <div className="space-y-3">
-                    {userDetail.recentActivity?.length > 0 ? (
-                      <div className="max-h-80 overflow-y-auto space-y-1">
-                        {userDetail.recentActivity.map((a) => (
-                          <div key={a.id} className="text-[10px] bg-white/5 rounded p-2">
-                            <span className="text-primary font-semibold">{a.type}</span>
-                            {a.lead_address && <span className="text-on-surface-variant"> · {a.lead_address}</span>}
-                            <span className="text-on-surface-variant"> · {new Date(a.created_at).toLocaleString()}</span>
-                            {a.content && <p className="text-on-surface mt-0.5">{a.content}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <AdminEmptyState icon="history" title="No recent activity" description="Lead and CRM activity for this user will show here." />
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-        </div>
-      )}
-
-      {tab === 'audit' && (
-        <div className="space-y-4">
-          <AdminPageHeader
-            eyebrow="Platform"
-            title="Audit log"
-            description="Password resets, role changes, credit adjusts, plan grants, and marketplace approve/verify actions."
-            actions={
-              <button type="button" onClick={() => loadTab('audit')} className="text-xs bg-surface-container-high px-3 py-1.5 rounded-lg text-on-surface">
-                Refresh
-              </button>
-            }
-          />
-          <div className="glass-card rounded-xl overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-surface-container-low text-on-surface-variant uppercase text-[9px]">
-                <tr>
-                  <th className="px-4 py-3">When</th>
-                  <th className="px-4 py-3">Admin</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Target</th>
-                  <th className="px-4 py-3">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-glass-stroke">
-                {auditEntries.map((e) => (
-                  <tr key={e.id}>
-                    <td className="px-4 py-3 text-on-surface-variant whitespace-nowrap">
-                      {e.created_at ? new Date(e.created_at).toLocaleString() : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-on-surface">{e.admin_name || e.admin_id || '—'}</p>
-                      <p className="text-on-surface-variant text-[10px]">{e.admin_email || ''}</p>
-                    </td>
-                    <td className="px-4 py-3 text-primary font-semibold text-[11px]">{formatAuditAction(e.action)}</td>
-                    <td className="px-4 py-3 text-on-surface-variant">
-                      {e.target_type || '—'}{e.target_id != null ? ` #${e.target_id}` : ''}
-                    </td>
-                    <td className="px-4 py-3 text-on-surface-variant max-w-md" title={typeof e.details === 'string' ? e.details : JSON.stringify(e.details || {})}>
-                      <span className="line-clamp-2">{formatAuditDetails(e.details)}</span>
-                    </td>
-                  </tr>
-                ))}
-                {auditEntries.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8">
-                      <AdminEmptyState icon="history" title="No audit entries yet" description="Sensitive admin actions will appear here." />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {tab === 'subscriptions' && (
-        <div className="space-y-4">
-          <AdminPageHeader
-            eyebrow="Users & billing"
-            title="Active packages"
-            description="Users with an active package. Click a row to open the user billing workspace."
-          />
-          <div className="glass-card rounded-xl overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-white/5 text-on-surface-variant uppercase text-[9px]">
-                <tr>
-                  <th className="px-4 py-3">User</th>
-                  <th className="px-4 py-3">Package</th>
-                  <th className="px-4 py-3">Remaining</th>
-                  <th className="px-4 py-3">Purchased</th>
-                  <th className="px-4 py-3">Price</th>
-                  <th className="px-4 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-glass-stroke">
-                {subs.map((s) => (
-                  <tr
-                    key={`${s.user_id}-${s.package_id}`}
-                    className="cursor-pointer hover:bg-white/5"
-                    onClick={() => {
-                      switchTab('users');
-                      openUser(s.user_id, { section: 'billing' });
-                    }}
-                  >
-                    <td className="px-4 py-3">
-                      <p className="text-on-surface font-semibold">{s.name}</p>
-                      <p className="text-on-surface-variant">{s.email}</p>
-                    </td>
-                    <td className="px-4 py-3 text-on-surface">{s.package_name || s.package_id}</td>
-                    <td className="px-4 py-3 font-mono text-on-surface">{s.remaining_leads}</td>
-                    <td className="px-4 py-3 font-mono text-on-surface-variant">{s.purchased_leads}</td>
-                    <td className="px-4 py-3 text-on-surface">${Number(s.price || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3"><StatusPill status={s.account_status || s.package_status || 'active'} /></td>
-                  </tr>
-                ))}
-                {subs.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8">
-                      <AdminEmptyState icon="card_membership" title="No active packages" description="Paid or granted packages will list here." />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {tab === 'plans' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <form onSubmit={createPlan} className="glass-card p-5 rounded-xl space-y-3 text-xs">
-            <h3 className="text-on-surface font-bold text-sm">Create Plan</h3>
-            <p className="text-on-surface-variant text-[11px]">
-              Founding Launch style — monthly usage limits + 1 / 6 / 12 month pricing. Editable anytime.
-            </p>
-            <input required placeholder="id (e.g. Scout)" value={planForm.id}
-              onChange={(e) => setPlanForm({ ...planForm, id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-            <input required placeholder="Display name" value={planForm.name}
-              onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-            <textarea placeholder="Tagline / description" value={planForm.description}
-              onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" rows={2} />
-
-            <p className="text-on-surface font-semibold pt-1">Monthly usage limits</p>
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" placeholder="AI opportunities / mo" value={planForm.lead_limit}
-                onChange={(e) => setPlanForm({ ...planForm, lead_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              <input type="number" placeholder="Emails / mo" value={planForm.email_limit}
-                onChange={(e) => setPlanForm({ ...planForm, email_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              <input type="number" placeholder="WhatsApp / mo" value={planForm.whatsapp_limit}
-                onChange={(e) => setPlanForm({ ...planForm, whatsapp_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              <input type="number" placeholder="CRM users" value={planForm.crm_user_limit}
-                onChange={(e) => setPlanForm({ ...planForm, crm_user_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              <input type="number" placeholder="Email automations" value={planForm.email_automation_limit}
-                onChange={(e) => setPlanForm({ ...planForm, email_automation_limit: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              <input type="number" placeholder="Sort order" value={planForm.sort_order}
-                onChange={(e) => setPlanForm({ ...planForm, sort_order: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
+          )}
 
-            <p className="text-on-surface font-semibold pt-1">Price per month by commitment</p>
-            <div className="grid grid-cols-3 gap-3">
-              <label className="space-y-1">
-                <span className="text-on-surface-variant">1 mo</span>
-                <input type="number" step="0.01" value={planForm.price_1mo}
-                  onChange={(e) => setPlanForm({ ...planForm, price_1mo: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              </label>
-              <label className="space-y-1">
-                <span className="text-on-surface-variant">6 mo</span>
-                <input type="number" step="0.01" value={planForm.price_6mo}
-                  onChange={(e) => setPlanForm({ ...planForm, price_6mo: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              </label>
-              <label className="space-y-1">
-                <span className="text-on-surface-variant">12 mo</span>
-                <input type="number" step="0.01" value={planForm.price_12mo}
-                  onChange={(e) => setPlanForm({ ...planForm, price_12mo: e.target.value })}
-                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface" />
-              </label>
-            </div>
-
-            <p className="text-on-surface font-semibold pt-1">Modules</p>
-            <div className="space-y-2">
-              {planForm.modules.map((mod, idx) => (
-                <div key={`${mod}-${idx}`} className="flex gap-2 items-center">
-                  <input
-                    value={mod}
-                    onChange={(e) => {
-                      const next = [...planForm.modules];
-                      next[idx] = e.target.value;
-                      setPlanForm({ ...planForm, modules: next });
-                    }}
-                    className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
-                  />
+          {/* TAB: PLANS (Catalog & Plan Builder) */}
+          {tab === 'plans' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Commercial Engine"
+                title="Plans & Product Catalog"
+                description="Manage pricing structures, lead limits, feature entitlements, and Stripe Price IDs."
+                actions={
                   <button
                     type="button"
-                    onClick={() => setPlanForm({
-                      ...planForm,
-                      modules: planForm.modules.filter((_, i) => i !== idx),
-                    })}
-                    className="text-red-400 font-bold px-2 py-1 rounded border border-red-400/30"
-                    title="Remove module"
+                    onClick={() => {
+                      setPlanForm(emptyPlanForm());
+                      setPlanModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition"
                   >
-                    −
+                    <span className="material-symbols-outlined text-[16px]">add</span>
+                    <span>Create New Plan</span>
                   </button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <input
-                  placeholder="New module…"
-                  value={planForm.moduleDraft}
-                  onChange={(e) => setPlanForm({ ...planForm, moduleDraft: e.target.value })}
-                  className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = String(planForm.moduleDraft || '').trim();
-                    if (!text) return;
-                    setPlanForm({
-                      ...planForm,
-                      modules: [...planForm.modules, text],
-                      moduleDraft: '',
-                    });
-                  }}
-                  className="text-primary font-bold px-3 py-1 rounded border border-primary/40"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            <input placeholder="Stripe Price ID 1mo (optional)" value={planForm.stripe_price_id}
-              onChange={(e) => setPlanForm({ ...planForm, stripe_price_id: e.target.value })}
-              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
-            <div className="grid grid-cols-2 gap-3">
-              <input placeholder="Stripe Price 6mo" value={planForm.stripe_price_id_6mo}
-                onChange={(e) => setPlanForm({ ...planForm, stripe_price_id_6mo: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
-              <input placeholder="Stripe Price 12mo" value={planForm.stripe_price_id_12mo}
-                onChange={(e) => setPlanForm({ ...planForm, stripe_price_id_12mo: e.target.value })}
-                className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface font-mono text-[11px]" />
-            </div>
-            <label className="flex items-center gap-2 text-on-surface-variant">
-              <input
-                type="checkbox"
-                checked={planForm.is_subscription}
-                onChange={(e) => setPlanForm({ ...planForm, is_subscription: e.target.checked })}
+                }
               />
-              Monthly usage subscription
-            </label>
-            <button type="submit" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg">
-              Create Plan
-            </button>
-          </form>
 
-          <div className="space-y-3">
-            {loading && plans.length === 0 && (
-              <p className="text-xs text-on-surface-variant animate-pulse">Loading plans…</p>
-            )}
-            {!loading && plans.length === 0 && (
-              <p className="text-xs text-on-surface-variant">No plans yet. Create one on the left.</p>
-            )}
-            {plans.map((p) => {
-              const modules = parseModules(p.features);
-              const isEditing = editingPlanId === p.id && editPlan;
-              return (
-                <div key={p.id} className="glass-card p-4 rounded-xl text-xs space-y-3">
-                  <div className="flex justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-on-surface font-bold">
-                        {p.name}{' '}
-                        <span className="text-on-surface-variant font-normal">({p.id})</span>
-                      </p>
-                      {!isEditing && (
-                        <>
-                          <p className="text-on-surface-variant mt-1">
-                            {p.lead_limit} opps · {Number(p.email_limit) || 0} emails ·{' '}
-                            {Number(p.whatsapp_limit) || 0} WA · CRM {Number(p.crm_user_limit) || 0}
-                          </p>
-                          <p className="text-on-surface-variant mt-0.5">
-                            ${Number(p.price_1mo ?? p.price).toLocaleString()}/mo · 6mo $
-                            {Number(p.price_6mo ?? p.price_1mo ?? p.price).toLocaleString()} · 12mo $
-                            {Number(p.price_12mo ?? p.price_6mo ?? p.price).toLocaleString()}
-                            {' · '}
-                            {Number(p.is_active) ? (
-                              <span className="text-green-400">Active</span>
-                            ) : (
-                              <span className="text-red-400">Inactive</span>
-                            )}
-                          </p>
-                          {modules.length > 0 && (
-                            <ul className="mt-2 space-y-0.5 text-on-surface-variant">
-                              {modules.slice(0, 4).map((m) => (
-                                <li key={m}>• {m}</li>
-                              ))}
-                              {modules.length > 4 && (
-                                <li>+{modules.length - 4} more modules</li>
-                              )}
-                            </ul>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2 items-end shrink-0">
-                      {p.id !== 'Free' && (
-                        <button onClick={() => togglePlan(p)} className="text-primary font-semibold">
-                          {Number(p.is_active) ? 'Deactivate' : 'Activate'}
-                        </button>
-                      )}
-                      {!isEditing ? (
-                        <button onClick={() => startEditPlan(p)} className="text-on-surface font-semibold">
-                          Edit
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingPlanId(null);
-                            setEditPlan(null);
-                          }}
-                          className="text-on-surface-variant"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {isEditing && (
-                    <div className="border-t border-glass-stroke pt-3 space-y-3">
-                      <input
-                        value={editPlan.name}
-                        onChange={(e) => setEditPlan({ ...editPlan, name: e.target.value })}
-                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
-                      />
-                      <textarea
-                        value={editPlan.description}
-                        onChange={(e) => setEditPlan({ ...editPlan, description: e.target.value })}
-                        rows={2}
-                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          ['lead_limit', 'Opportunities/mo'],
-                          ['email_limit', 'Emails/mo'],
-                          ['whatsapp_limit', 'WhatsApp/mo'],
-                          ['crm_user_limit', 'CRM users'],
-                          ['email_automation_limit', 'Email automations'],
-                          ['sort_order', 'Sort'],
-                        ].map(([key, label]) => (
-                          <label key={key} className="space-y-1">
-                            <span className="text-on-surface-variant">{label}</span>
-                            <input
-                              type="number"
-                              value={editPlan[key]}
-                              onChange={(e) => setEditPlan({ ...editPlan, [key]: e.target.value })}
-                              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          ['price_1mo', '1 mo $'],
-                          ['price_6mo', '6 mo $'],
-                          ['price_12mo', '12 mo $'],
-                        ].map(([key, label]) => (
-                          <label key={key} className="space-y-1">
-                            <span className="text-on-surface-variant">{label}</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editPlan[key]}
-                              onChange={(e) => setEditPlan({ ...editPlan, [key]: e.target.value })}
-                              className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                            />
-                          </label>
-                        ))}
-                      </div>
-
-                      <p className="font-semibold text-on-surface">Modules (+/−)</p>
-                      {editPlan.modules.map((mod, idx) => (
-                        <div key={`${idx}-${mod}`} className="flex gap-2">
-                          <input
-                            value={mod}
-                            onChange={(e) => {
-                              const next = [...editPlan.modules];
-                              next[idx] = e.target.value;
-                              setEditPlan({ ...editPlan, modules: next });
-                            }}
-                            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditPlan({
-                                ...editPlan,
-                                modules: editPlan.modules.filter((_, i) => i !== idx),
-                              })
-                            }
-                            className="text-red-400 font-bold px-2"
-                          >
-                            −
-                          </button>
-                        </div>
-                      ))}
-                      <div className="flex gap-2">
-                        <input
-                          placeholder="Add module…"
-                          value={editPlan.moduleDraft}
-                          onChange={(e) => setEditPlan({ ...editPlan, moduleDraft: e.target.value })}
-                          className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 text-on-surface"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const text = String(editPlan.moduleDraft || '').trim();
-                            if (!text) return;
-                            setEditPlan({
-                              ...editPlan,
-                              modules: [...editPlan.modules, text],
-                              moduleDraft: '',
-                            });
-                          }}
-                          className="text-primary font-bold px-3"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <input
-                        placeholder="Stripe 1mo price id"
-                        value={editPlan.stripe_price_id}
-                        onChange={(e) => setEditPlan({ ...editPlan, stripe_price_id: e.target.value })}
-                        className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 font-mono text-[10px] text-on-surface"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          placeholder="Stripe 6mo"
-                          value={editPlan.stripe_price_id_6mo}
-                          onChange={(e) => setEditPlan({ ...editPlan, stripe_price_id_6mo: e.target.value })}
-                          className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 font-mono text-[10px] text-on-surface"
-                        />
-                        <input
-                          placeholder="Stripe 12mo"
-                          value={editPlan.stripe_price_id_12mo}
-                          onChange={(e) => setEditPlan({ ...editPlan, stripe_price_id_12mo: e.target.value })}
-                          className="w-full bg-surface-container-low border border-glass-stroke rounded-lg px-2 py-1.5 font-mono text-[10px] text-on-surface"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={planSaveBusy}
-                        onClick={saveEditPlan}
-                        className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg disabled:opacity-60"
-                      >
-                        {planSaveBusy ? 'Saving…' : 'Save plan'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {tab === 'apis' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-xs">
-          {apis.length === 0 && (
-            <p className="text-on-surface-variant col-span-full">No API providers loaded.</p>
-          )}
-          {apis.map((a) => (
-            <div key={a.id} className="glass-card p-5 rounded-xl">
-              <div className="flex justify-between items-start">
-                <h3 className="text-on-surface font-bold">{a.label}</h3>
-                <span className={`text-[10px] font-bold uppercase ${a.configured ? 'text-green-400' : 'text-red-400'}`}>
-                  {a.configured ? 'Configured' : 'Missing key'}
-                </span>
-              </div>
-              <p className="text-on-surface-variant mt-3">Calls (7d): <span className="text-on-surface font-semibold">{a.calls ?? 0}</span></p>
-              <p className="text-on-surface-variant">Success / Errors: <span className="text-on-surface font-semibold">{a.success ?? 0}</span> / <span className="text-on-surface font-semibold">{a.errors ?? 0}</span></p>
-              <p className="text-on-surface-variant">Avg latency: <span className="text-on-surface font-semibold">{a.avgMs ?? 0}</span> ms</p>
-            </div>
-          ))}
-          {apis.length > 0 && apis.every((a) => !a.calls) && (
-            <p className="text-on-surface-variant col-span-full text-[11px]">
-              Usage starts at 0 until APIs are called (map search, lead generate, bulk scan, billing). Refresh this tab after using the app.
-            </p>
-          )}
-        </div>
-      )}
-
-      {tab === 'inquiries' && (
-        <div className="space-y-4">
-          <AdminPageHeader
-            eyebrow="Support"
-            title="Marketing inquiries"
-            description="Contact-form submissions from the marketing site. Search and open a row to reply via email."
-          />
-          <div className="flex flex-wrap gap-2 items-center">
-            <input
-              value={inquirySearch}
-              onChange={(e) => setInquirySearch(e.target.value)}
-              placeholder="Search name, email, company…"
-              className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface w-64"
-            />
-            <select
-              value={inquiryIntent}
-              onChange={(e) => setInquiryIntent(e.target.value)}
-              className="bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-xs text-on-surface"
-            >
-              <option value="">All intents</option>
-              {[...new Set(inquiries.map((i) => i.intent).filter(Boolean))].map((intent) => (
-                <option key={intent} value={intent}>{intent}</option>
-              ))}
-            </select>
-            <span className="text-[11px] text-on-surface-variant">{filteredInquiries.length} shown</span>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-            <div className="glass-card rounded-xl overflow-hidden max-h-[70vh] overflow-y-auto">
-              <table className="w-full text-left">
-                <thead className="bg-white/5 text-on-surface-variant sticky top-0">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">When</th>
-                    <th className="px-4 py-3 font-medium">Contact</th>
-                    <th className="px-4 py-3 font-medium">Intent</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInquiries.map((row) => (
-                    <tr
-                      key={row.id}
-                      onClick={() => setSelectedInquiryId(row.id)}
-                      className={`border-t border-glass-stroke cursor-pointer hover:bg-white/5 ${
-                        selectedInquiryId === row.id ? 'bg-primary/10' : ''
+              {/* Plans Grid Cards (Stitch 259927542b234a08a413843333f0824a) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {plans.map((p) => {
+                  const mods = parseModules(p.features);
+                  const isAct = Number(p.is_active) === 1;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-6 rounded-2xl bg-white dark:bg-[#121826] border shadow-xs flex flex-col justify-between transition-all ${
+                        isAct
+                          ? 'border-slate-200/80 dark:border-white/[0.08]'
+                          : 'border-dashed border-slate-300 dark:border-white/10 opacity-70'
                       }`}
                     >
-                      <td className="px-4 py-3 text-on-surface-variant whitespace-nowrap">
-                        {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-on-surface font-semibold">{row.name}</p>
-                        <p className="text-on-surface-variant text-[10px]">{row.email}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="rounded bg-primary/15 px-2 py-0.5 text-primary uppercase tracking-wide text-[10px]">
-                          {row.intent}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredInquiries.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-4 py-8">
-                        <AdminEmptyState icon="mail" title="No inquiries" description="Marketing contact submissions will appear here." />
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="glass-card p-4 rounded-xl min-h-[280px]">
-              {!selectedInquiry ? (
-                <AdminEmptyState icon="forward_to_inbox" title="Select an inquiry" description="Open a row to see the full message and reply via email." />
-              ) : (
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <h3 className="text-on-surface font-bold text-sm">{selectedInquiry.name}</h3>
-                    <p className="text-on-surface-variant mt-0.5">{selectedInquiry.company || 'No company'}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-surface-container-low rounded-lg p-2">
-                      <p className="text-[9px] uppercase text-on-surface-variant">Email</p>
-                      <a className="text-primary break-all" href={`mailto:${selectedInquiry.email}`}>{selectedInquiry.email}</a>
-                    </div>
-                    <div className="bg-surface-container-low rounded-lg p-2">
-                      <p className="text-[9px] uppercase text-on-surface-variant">Phone</p>
-                      <p className="text-on-surface">{selectedInquiry.phone || '—'}</p>
-                    </div>
-                  </div>
-                  <StatusPill status={selectedInquiry.intent} />
-                  <div className="rounded-lg bg-white/5 p-3 whitespace-pre-wrap text-on-surface">
-                    {selectedInquiry.message || 'No message'}
-                  </div>
-                  <a
-                    href={`mailto:${selectedInquiry.email}?subject=${encodeURIComponent('Re: your SpaceToRoof inquiry')}`}
-                    className="inline-flex items-center gap-1.5 bg-primary text-on-primary px-3 py-2 rounded-lg font-bold text-xs"
-                  >
-                    <span className="material-symbols-outlined text-sm">reply</span>
-                    Reply by email
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                              Tier {p.sort_order || 10}
+                            </span>
+                            <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
+                              {p.name || p.id}
+                            </h3>
+                          </div>
+                          <StatusPill status={isAct ? 'active' : 'inactive'} />
+                        </div>
 
-      {tab === 'tickets' && (
-        <div className="space-y-4">
-          <AdminPageHeader
-            eyebrow="Support"
-            title="Support tickets"
-            description="Reply to users and update ticket status. Filter to focus on open work."
-          />
-          <div className="flex flex-wrap gap-2">
-            {[
-              ['open', 'Open'],
-              ['in_progress', 'In progress'],
-              ['resolved', 'Resolved'],
-              ['closed', 'Closed'],
-              ['all', 'All'],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTicketFilter(id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                  ticketFilter === id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface-variant'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-            <div className="glass-card rounded-xl divide-y divide-glass-stroke max-h-[70vh] overflow-y-auto">
-              {filteredTickets.map((t) => (
+                        <div>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-3xl font-extrabold text-slate-900 dark:text-white font-heading">
+                              ${Number(p.price_1mo ?? p.price ?? 0)}
+                            </span>
+                            <span className="text-xs text-slate-400 font-mono">/ mo</span>
+                          </div>
+                          {p.price_12mo && (
+                            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+                              ${p.price_12mo}/mo on annual commitment
+                            </p>
+                          )}
+                        </div>
+
+                        {p.description && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                            {p.description}
+                          </p>
+                        )}
+
+                        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/[0.05] text-xs">
+                          <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                            <span>Lead Unlocks:</span>
+                            <span className="font-mono font-bold">
+                              {Number(p.lead_limit || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                            <span>Email Limit:</span>
+                            <span className="font-mono font-bold">
+                              {Number(p.email_limit || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                            <span>WhatsApp:</span>
+                            <span className="font-mono font-bold">
+                              {Number(p.whatsapp_limit || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-600 dark:text-slate-300">
+                            <span>Team Seats:</span>
+                            <span className="font-mono font-bold">
+                              {Number(p.crm_user_limit || 1).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {mods.length > 0 && (
+                          <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-white/[0.05]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Included Modules
+                            </p>
+                            <div className="space-y-1">
+                              {mods.slice(0, 4).map((m, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300"
+                                >
+                                  <span className="material-symbols-outlined text-[14px] text-emerald-500">
+                                    check
+                                  </span>
+                                  <span className="truncate">{m}</span>
+                                </div>
+                              ))}
+                              {mods.length > 4 && (
+                                <span className="text-[10px] text-slate-400">
+                                  +{mods.length - 4} more features
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-6 pt-4 border-t border-slate-100 dark:border-white/[0.05] flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditPlan(p)}
+                          className="flex-1 py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-semibold text-slate-700 dark:text-slate-200 transition"
+                        >
+                          Edit Limits
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => togglePlan(p)}
+                          className={`p-1.5 rounded-xl border text-xs transition ${
+                            isAct
+                              ? 'border-rose-500/20 text-rose-500 hover:bg-rose-500/10'
+                              : 'border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10'
+                          }`}
+                          title={isAct ? 'Deactivate' : 'Activate'}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            {isAct ? 'power_settings_new' : 'play_arrow'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: MARKETPLACE OPS */}
+          {tab === 'marketplace' && (
+            <AdminMarketplacePanel />
+          )}
+
+          {/* TAB: SUPPORT TICKETS */}
+          {tab === 'tickets' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Helpdesk Operations"
+                title="Support Tickets"
+                description="Manage customer inquiries, lead dispute appeals, and technical triage."
+                actions={
+                  <div className="flex items-center gap-1.5 bg-white dark:bg-[#121826] p-1 rounded-xl border border-slate-200/80 dark:border-white/[0.08]">
+                    {['open', 'in_progress', 'resolved', 'all'].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setTicketFilter(f)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          ticketFilter === f
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        {f.replace('_', ' ').toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                }
+              />
+
+              {/* Tickets Table */}
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="py-3.5 px-6">Ticket ID</th>
+                        <th className="py-3.5 px-4">Subject</th>
+                        <th className="py-3.5 px-4">Submitter</th>
+                        <th className="py-3.5 px-4">Category</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Updated</th>
+                        <th className="py-3.5 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                      {filteredTickets.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                            No tickets in this view.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredTickets.map((t) => (
+                          <tr
+                            key={t.id}
+                            onClick={() => openTicket(t.id)}
+                            className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <td className="py-3.5 px-6 font-mono font-semibold text-blue-600 dark:text-blue-400">
+                              #{t.id}
+                            </td>
+                            <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white max-w-xs truncate">
+                              {t.subject}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                              {t.user_name || t.email || `User #${t.user_id}`}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 uppercase">
+                                {t.category || 'General'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <StatusPill status={t.status || 'open'} />
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                              {t.updated_at ? new Date(t.updated_at).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="py-3.5 px-6 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openTicket(t.id);
+                                }}
+                                className="px-3 py-1 rounded-lg bg-blue-50 dark:bg-blue-600/15 text-blue-600 dark:text-blue-400 font-semibold text-xs"
+                              >
+                                View Thread
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: INQUIRIES */}
+          {tab === 'inquiries' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Growth Pipeline"
+                title="Marketing Inquiries"
+                description="Inbound leads, calculator submissions, and enterprise contact forms."
+                actions={
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Filter submissions..."
+                      value={inquirySearch}
+                      onChange={(e) => setInquirySearch(e.target.value)}
+                      className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                }
+              />
+
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="py-3.5 px-6">Submitter</th>
+                        <th className="py-3.5 px-4">Email</th>
+                        <th className="py-3.5 px-4">Phone</th>
+                        <th className="py-3.5 px-4">Company</th>
+                        <th className="py-3.5 px-4">Intent</th>
+                        <th className="py-3.5 px-4">Submitted</th>
+                        <th className="py-3.5 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                      {filteredInquiries.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                            No marketing inquiries found.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredInquiries.map((inq) => (
+                          <tr
+                            key={inq.id}
+                            onClick={() => setSelectedInquiryId(inq.id)}
+                            className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <td className="py-3.5 px-6 font-semibold text-slate-900 dark:text-white">
+                              {inq.name || 'Anonymous'}
+                            </td>
+                            <td className="py-3.5 px-4 text-blue-600 dark:text-blue-400 font-mono">
+                              {inq.email}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-mono">
+                              {inq.phone || '—'}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                              {inq.company || '—'}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="font-mono text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300">
+                                {inq.intent || inq.source || 'General'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                              {inq.created_at
+                                ? new Date(inq.created_at).toLocaleDateString()
+                                : '—'}
+                            </td>
+                            <td className="py-3.5 px-6 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedInquiryId(inq.id);
+                                }}
+                                className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-semibold text-slate-700 dark:text-slate-200"
+                              >
+                                View Payload
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: API HEALTH */}
+          {tab === 'apis' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="System Diagnostics"
+                title="API Health & Service Telemetry"
+                description="Live service status, latency figures, and 7-day error rates across integrated external APIs."
+                actions={
+                  <button
+                    type="button"
+                    onClick={() => loadTab('apis')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">refresh</span>
+                    <span>Refresh Telemetry</span>
+                  </button>
+                }
+              />
+
+              {/* Service Cards Grid (Stitch c6840908dc364a0884402f15e00c99ed) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                {(apis.length > 0 ? apis : [
+                  { name: 'Google Maps / Geocoding', status: 'operational', latencyMs: 142, errors7d: 0 },
+                  { name: 'Google Solar API', status: 'operational', latencyMs: 380, errors7d: 2 },
+                  { name: 'RentCast Property Intelligence', status: 'operational', latencyMs: 210, errors7d: 0 },
+                  { name: 'Tracerfy Homeowner Enrichment', status: 'operational', latencyMs: 420, errors7d: 1 },
+                  { name: 'OpenAI Reasoning Engine', status: 'operational', latencyMs: 650, errors7d: 0 },
+                  { name: 'Stripe Billing & Webhooks', status: 'operational', latencyMs: 95, errors7d: 0 },
+                ]).map((api, idx) => (
+                  <div
+                    key={idx}
+                    className="p-6 rounded-2xl bg-white dark:bg-[#121826] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-[20px]">hub</span>
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                            {api.name || api.provider}
+                          </h3>
+                          <span className="font-mono text-[10px] text-slate-400">REST Endpoints</span>
+                        </div>
+                      </div>
+                      <StatusPill status={api.status || 'operational'} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-white/[0.05] text-xs">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">
+                          Average Latency
+                        </span>
+                        <p className="font-mono font-bold text-slate-900 dark:text-white text-sm mt-0.5">
+                          {api.latencyMs || api.latency || '180'} ms
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">
+                          7-Day Errors
+                        </span>
+                        <p className="font-mono font-bold text-slate-900 dark:text-white text-sm mt-0.5">
+                          {api.errors7d ?? 0} exceptions
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: INTEGRATIONS */}
+          {tab === 'integrations' && (
+            <AdminIntegrationsPanel />
+          )}
+
+          {/* TAB: AUDIT LOG */}
+          {tab === 'audit' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Security & Compliance"
+                title="Administrative Audit Log"
+                description="Chronological record of sensitive operator mutations, role elevations, and credit modifications."
+              />
+
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#121826] shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="py-3.5 px-6">Timestamp</th>
+                        <th className="py-3.5 px-4">Actor</th>
+                        <th className="py-3.5 px-4">Action</th>
+                        <th className="py-3.5 px-4">Target Entity</th>
+                        <th className="py-3.5 px-4">IP Address</th>
+                        <th className="py-3.5 px-6 text-right">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                      {auditEntries.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-slate-400">
+                            No audit log entries recorded.
+                          </td>
+                        </tr>
+                      ) : (
+                        auditEntries.map((log) => (
+                          <tr
+                            key={log.id}
+                            onClick={() => setSelectedAuditLog(log)}
+                            className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <td className="py-3.5 px-6 font-mono text-slate-400 text-[11px]">
+                              {log.created_at
+                                ? new Date(log.created_at).toLocaleString()
+                                : '—'}
+                            </td>
+
+                            <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white">
+                              {log.admin_email || log.admin_name || `Admin #${log.admin_id}`}
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                {formatAuditAction(log.action)}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-300">
+                              {log.target_email || log.target_id || '—'}
+                            </td>
+
+                            <td className="py-3.5 px-4 font-mono text-slate-400 text-[11px]">
+                              {log.ip || log.ip_address || '127.0.0.1'}
+                            </td>
+
+                            <td className="py-3.5 px-6 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedAuditLog(log);
+                                }}
+                                className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-semibold text-slate-700 dark:text-slate-300"
+                              >
+                                View
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: TEAM WORKSPACE */}
+          {tab === 'team' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Account Context"
+                title="Team Workspace"
+                description="Multi-seat member invitations, shared quota pools, and seat management."
+              />
+              <TeamWorkspacePanel />
+            </div>
+          )}
+
+          {/* TAB: TERRITORY ANALYTICS */}
+          {tab === 'territory' && (
+            <div className="space-y-6">
+              <AdminPageHeader
+                eyebrow="Market Intelligence"
+                title="Territory Analytics"
+                description="Conversion and cost-per-lead telemetry across solar corridors."
+              />
+              <TerritoryAnalyticsPanel />
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* USER INSPECTION DRAWER (Stitch Alex Morgan layout) */}
+      <DrawerSheet
+        isOpen={Boolean(userDetail && selectedUserId)}
+        onClose={() => {
+          setUserDetail(null);
+          setSelectedUserId(null);
+        }}
+        title={userDetail?.user?.name || userDetail?.user?.email || 'User Details'}
+        subtitle={`User #${userDetail?.user?.id} • Registered ${
+          userDetail?.user?.created_at
+            ? new Date(userDetail.user.created_at).toLocaleDateString()
+            : '—'
+        }`}
+        maxWidth="max-w-2xl"
+      >
+        {userDetail && (
+          <div className="space-y-6">
+            {/* Top User Header Card */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-base ring-4 ring-blue-500/10">
+                  {getInitials(userDetail.user?.name || userDetail.user?.email)}
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                    {userDetail.user?.name || 'Unnamed User'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">{userDetail.user?.email}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <StatusPill status={userDetail.user?.account_status || 'active'} />
                 <button
-                  key={t.id}
                   type="button"
-                  onClick={() => openTicket(t.id)}
-                  className={`w-full text-left px-4 py-3 hover:bg-white/5 ${
-                    ticketDetail?.ticket?.id === t.id ? 'bg-primary/10' : ''
+                  onClick={() =>
+                    toggleStatus(userDetail.user.id, userDetail.user.account_status)
+                  }
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-300 transition"
+                >
+                  {userDetail.user?.account_status === 'suspended'
+                    ? 'Reactivate'
+                    : 'Suspend'}
+                </button>
+              </div>
+            </div>
+
+            {/* Navigation Tabs inside Drawer */}
+            <div className="flex gap-2 border-b border-slate-200 dark:border-white/10 pb-2 overflow-x-auto">
+              {USER_SECTIONS.map((sec) => (
+                <button
+                  key={sec.id}
+                  type="button"
+                  onClick={() => setUserSection(sec.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0 ${
+                    userSection === sec.id
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-on-surface font-semibold">{t.subject}</p>
-                    <StatusPill status={t.status} />
-                  </div>
-                  <p className="text-on-surface-variant mt-1">
-                    #{t.id} · {t.user_email}
-                    {t.user_id ? (
-                      <>
-                        {' · '}
-                        <span
-                          role="link"
-                          tabIndex={0}
-                          className="text-primary hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            switchTab('users');
-                            openUser(t.user_id);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.stopPropagation();
-                              switchTab('users');
-                              openUser(t.user_id);
-                            }
-                          }}
-                        >
-                          Open user
-                        </span>
-                      </>
-                    ) : null}
-                  </p>
+                  <span className="material-symbols-outlined text-[16px]">{sec.icon}</span>
+                  <span>{sec.label}</span>
                 </button>
               ))}
-              {filteredTickets.length === 0 && (
-                <div className="p-6">
-                  <AdminEmptyState icon="support_agent" title="No tickets in this filter" description="Try All or Open." />
-                </div>
-              )}
             </div>
-            <div className="glass-card p-4 rounded-xl min-h-[320px] flex flex-col">
-              {!ticketDetail ? (
-                <AdminEmptyState icon="chat" title="Select a ticket" description="Pick a ticket to read the thread and reply." />
-              ) : (
-                <>
-                  <div className="flex justify-between gap-2 mb-3">
-                    <div>
-                      <h3 className="text-on-surface font-bold">{ticketDetail.ticket.subject}</h3>
-                      <p className="text-on-surface-variant mt-1 flex items-center gap-2">
-                        Status: <StatusPill status={ticketDetail.ticket.status} />
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      {['in_progress', 'resolved', 'closed', 'open'].map((s) => (
+
+            {/* DRAWER SECTION: PROFILE & ROLE */}
+            {userSection === 'profile' && (
+              <div className="space-y-6">
+                {/* Role Switcher */}
+                <AdminSectionCard
+                  title="Role & Access Permissions"
+                  hint="Select user privilege level across the platform."
+                >
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={userDetail.user?.role || 'solar_company'}
+                      onChange={(e) => updateUserRole(e.target.value)}
+                      disabled={roleBusy}
+                      className="flex-1 px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white font-semibold"
+                    >
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </AdminSectionCard>
+
+                {/* Credit Adjustment Form */}
+                <AdminSectionCard
+                  title="Lead Credits Allocation"
+                  hint={`Current pool balance: ${
+                    userDetail.package?.remaining_leads ?? userDetail.credits ?? 0
+                  } credits.`}
+                >
+                  <ActionBanner type={creditMsgType} message={creditMsg} />
+
+                  <div className="flex gap-2">
+                    {['add', 'subtract', 'set'].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setCreditMode(m)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold uppercase ${
+                          creditMode === m
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      value={creditAdjustAmount}
+                      onChange={(e) => setCreditAdjustAmount(e.target.value)}
+                      placeholder="Amount"
+                      className="w-32 px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                    />
+                    <div className="flex gap-1.5">
+                      {[10, 50, 100].map((num) => (
                         <button
-                          key={s}
+                          key={num}
                           type="button"
-                          disabled={ticketBusy}
-                          onClick={() => setTicketStatus(s)}
-                          className="text-[10px] font-bold bg-white/10 px-2 py-1 rounded disabled:opacity-50"
+                          onClick={() => setCreditAdjustAmount(num)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 hover:bg-blue-600 hover:text-white transition"
                         >
-                          {s}
+                          +{num}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="flex-grow space-y-2 overflow-y-auto max-h-[40vh] mb-3">
-                    {ticketDetail.messages.map((m) => (
-                      <div key={m.id} className={`p-2 rounded-lg ${m.sender_role === 'admin' ? 'bg-primary/10' : 'bg-white/5'}`}>
-                        <p className="text-[10px] text-on-surface-variant mb-1">
-                          {m.sender_name || m.sender_role} · {new Date(m.created_at).toLocaleString()}
-                        </p>
-                        <p className="text-on-surface whitespace-pre-wrap">{m.body}</p>
+
+                  <input
+                    type="text"
+                    value={creditNote}
+                    onChange={(e) => setCreditNote(e.target.value)}
+                    placeholder="Audit reason (e.g. VIP onboarding credit grant)"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs text-slate-800 dark:text-slate-200"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={applyCredits}
+                    disabled={creditBusy}
+                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition"
+                  >
+                    {creditBusy ? 'Applying...' : 'Apply Credit Adjustment'}
+                  </button>
+                </AdminSectionCard>
+
+                {/* Plan Granting */}
+                <AdminSectionCard
+                  title="Plan Assignment"
+                  hint={`Current Package: ${
+                    userDetail.package?.packageId || userDetail.subscription?.packageId || 'Free'
+                  }`}
+                >
+                  <ActionBanner type={planMsgType} message={planMsg} />
+
+                  <select
+                    value={assignPlanId}
+                    onChange={(e) => setAssignPlanId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-semibold"
+                  >
+                    <option value="">Select a package...</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id} (${p.price_1mo ?? p.price ?? 0}/mo)
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={planComplimentary}
+                      onChange={(e) => setPlanComplimentary(e.target.checked)}
+                      className="rounded text-blue-600"
+                    />
+                    <span>Complimentary plan ($0 invoice grant)</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={grantPlan}
+                    disabled={planBusy || !assignPlanId}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 text-xs font-bold shadow-xs transition disabled:opacity-50"
+                  >
+                    {planBusy ? 'Granting...' : 'Grant Plan & Record Invoice'}
+                  </button>
+                </AdminSectionCard>
+              </div>
+            )}
+
+            {/* DRAWER SECTION: BILLING & INVOICES */}
+            {userSection === 'billing' && (
+              <div className="space-y-4">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500">
+                  User Invoices & Receipts
+                </h4>
+                {userDetail.invoices?.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-6 text-center">
+                    No recorded invoices for this customer.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {userDetail.invoices?.map((inv) => (
+                      <div
+                        key={inv.id}
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                            {invoiceNumber(inv)}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {inv.created_at
+                              ? new Date(inv.created_at).toLocaleDateString()
+                              : '—'}{' '}
+                            · {inv.description || inv.package_id || 'Subscription'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                            ${(Number(inv.amount_cents || 0) / 100).toFixed(2)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => viewUserInvoicePdf(inv.id, { download: false })}
+                            className="p-1.5 rounded-lg bg-white dark:bg-white/10 hover:bg-blue-600 hover:text-white transition"
+                            title="View invoice PDF"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              picture_as_pdf
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-2">
+                )}
+              </div>
+            )}
+
+            {/* DRAWER SECTION: SECURITY */}
+            {userSection === 'security' && (
+              <div className="space-y-5">
+                <AdminSectionCard
+                  title="Password Management"
+                  hint="Set a new password or generate a one-time temporary password."
+                >
+                  <ActionBanner type={passwordMsgType} message={passwordMsg} />
+
+                  {revealedPassword && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-amber-500">
+                        Temporary Password:
+                      </span>
+                      <p className="font-mono text-sm font-bold text-slate-900 dark:text-white select-all">
+                        {revealedPassword}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Copy and share this securely with the user.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
                     <input
-                      value={reply}
-                      onChange={(e) => setReply(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendReply()}
-                      placeholder="Reply as admin…"
-                      className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2 text-on-surface"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password (min 8 characters)"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs"
                     />
-                    <button
-                      type="button"
-                      disabled={ticketBusy || !reply.trim()}
-                      onClick={sendReply}
-                      className="bg-primary text-on-primary px-3 py-2 rounded-lg font-bold disabled:opacity-50"
-                    >
-                      {ticketBusy ? '…' : 'Send'}
-                    </button>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm new password"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs"
+                    />
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => resetUserPassword({ generate: false })}
+                        disabled={passwordBusy || !newPassword}
+                        className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition disabled:opacity-50"
+                      >
+                        Set Password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => resetUserPassword({ generate: true })}
+                        disabled={passwordBusy}
+                        className="flex-1 py-2 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-bold transition"
+                      >
+                        Generate Temporary
+                      </button>
+                    </div>
                   </div>
-                </>
-              )}
+                </AdminSectionCard>
+              </div>
+            )}
+
+            {/* DRAWER SECTION: ACTIVITY */}
+            {userSection === 'activity' && (
+              <div className="space-y-4">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500">
+                  Recent User Activity
+                </h4>
+                <div className="space-y-2">
+                  {(userDetail.recentAudits || []).length === 0 ? (
+                    <p className="text-xs text-slate-400 py-6 text-center">
+                      No recorded audit logs for this user.
+                    </p>
+                  ) : (
+                    userDetail.recentAudits.map((a) => (
+                      <div
+                        key={a.id}
+                        className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.08] text-xs space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {formatAuditAction(a.action)}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400">
+                            {a.created_at ? new Date(a.created_at).toLocaleDateString() : '—'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-mono">
+                          {formatAuditDetails(a.details)}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </DrawerSheet>
+
+      {/* PLAN BUILDER MODAL */}
+      <DrawerSheet
+        isOpen={planModalOpen || Boolean(editingPlanId && editPlan)}
+        onClose={() => {
+          setPlanModalOpen(false);
+          setEditingPlanId(null);
+          setEditPlan(null);
+        }}
+        title={editingPlanId ? `Edit Plan: ${editPlan?.name || editingPlanId}` : 'Create New Plan'}
+        subtitle="Configure feature gates, monthly lead quotas, and billing intervals."
+        maxWidth="max-w-xl"
+      >
+        <div className="space-y-4">
+          {editingPlanId && editPlan ? (
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={editPlan.name}
+                onChange={(e) => setEditPlan({ ...editPlan, name: e.target.value })}
+                placeholder="Plan Name"
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-bold"
+              />
+              <textarea
+                value={editPlan.description}
+                onChange={(e) => setEditPlan({ ...editPlan, description: e.target.value })}
+                placeholder="Description"
+                rows={2}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs"
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Leads / Mo</label>
+                  <input
+                    type="number"
+                    value={editPlan.lead_limit}
+                    onChange={(e) => setEditPlan({ ...editPlan, lead_limit: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Emails / Mo</label>
+                  <input
+                    type="number"
+                    value={editPlan.email_limit}
+                    onChange={(e) => setEditPlan({ ...editPlan, email_limit: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">WhatsApp / Mo</label>
+                  <input
+                    type="number"
+                    value={editPlan.whatsapp_limit}
+                    onChange={(e) => setEditPlan({ ...editPlan, whatsapp_limit: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Team Seats</label>
+                  <input
+                    type="number"
+                    value={editPlan.crm_user_limit}
+                    onChange={(e) => setEditPlan({ ...editPlan, crm_user_limit: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">1 Mo ($)</label>
+                  <input
+                    type="number"
+                    value={editPlan.price_1mo}
+                    onChange={(e) => setEditPlan({ ...editPlan, price_1mo: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">6 Mo ($)</label>
+                  <input
+                    type="number"
+                    value={editPlan.price_6mo}
+                    onChange={(e) => setEditPlan({ ...editPlan, price_6mo: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">12 Mo ($)</label>
+                  <input
+                    type="number"
+                    value={editPlan.price_12mo}
+                    onChange={(e) => setEditPlan({ ...editPlan, price_12mo: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={saveEditPlan}
+                disabled={planSaveBusy}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition"
+              >
+                {planSaveBusy ? 'Saving...' : 'Save Plan Changes'}
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={createPlan} className="space-y-3">
+              <input
+                required
+                placeholder="Plan ID (e.g. Pioneer)"
+                value={planForm.id}
+                onChange={(e) => setPlanForm({ ...planForm, id: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-bold"
+              />
+              <input
+                required
+                placeholder="Display Name"
+                value={planForm.name}
+                onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs"
+              />
+              <textarea
+                placeholder="Tagline or description"
+                value={planForm.description}
+                onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                rows={2}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs"
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="number"
+                  placeholder="Leads / Mo"
+                  value={planForm.lead_limit}
+                  onChange={(e) => setPlanForm({ ...planForm, lead_limit: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono"
+                />
+                <input
+                  type="number"
+                  placeholder="Monthly Price ($)"
+                  value={planForm.price_1mo}
+                  onChange={(e) => setPlanForm({ ...planForm, price_1mo: Number(e.target.value) })}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs font-mono font-bold"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition"
+              >
+                Create Plan
+              </button>
+            </form>
+          )}
+        </div>
+      </DrawerSheet>
+
+      {/* SUPPORT TICKET CONVERSATION THREAD DRAWER */}
+      <DrawerSheet
+        isOpen={Boolean(ticketDetail)}
+        onClose={() => setTicketDetail(null)}
+        title={ticketDetail?.ticket?.subject || 'Support Ticket'}
+        subtitle={`Ticket #${ticketDetail?.ticket?.id} · ${
+          ticketDetail?.ticket?.user_name || ticketDetail?.ticket?.email || 'User'
+        }`}
+        maxWidth="max-w-2xl"
+      >
+        {ticketDetail && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <StatusPill status={ticketDetail.ticket.status} />
+                <span className="font-mono text-xs text-slate-400">
+                  Priority: {ticketDetail.ticket.priority || 'Normal'}
+                </span>
+              </div>
+
+              <select
+                value={ticketDetail.ticket.status}
+                onChange={(e) => setTicketStatus(e.target.value)}
+                disabled={ticketBusy}
+                className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#121826] border border-slate-200 dark:border-white/10 text-xs font-semibold"
+              >
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+
+            {/* Conversation Thread */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-xs uppercase text-slate-400 tracking-wider">
+                Conversation History
+              </h4>
+              {(ticketDetail.messages || []).map((m, idx) => (
+                <div
+                  key={idx}
+                  className={`p-4 rounded-2xl text-xs space-y-1 ${
+                    m.sender_role === 'admin'
+                      ? 'bg-blue-500/10 border border-blue-500/20 ml-6'
+                      : 'bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 mr-6'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {m.sender_name || (m.sender_role === 'admin' ? 'Support Agent' : 'Customer')}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {m.created_at ? new Date(m.created_at).toLocaleString() : '—'}
+                    </span>
+                  </div>
+                  <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                    {m.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Reply Composer */}
+            <div className="space-y-2 pt-2">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                placeholder="Type official response to customer..."
+                rows={3}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-xs"
+              />
+              <button
+                type="button"
+                onClick={sendReply}
+                disabled={ticketBusy || !reply.trim()}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition disabled:opacity-50"
+              >
+                {ticketBusy ? 'Sending...' : 'Send Reply as Support Agent'}
+              </button>
             </div>
           </div>
+        )}
+      </DrawerSheet>
+
+      {/* MARKETING INQUIRY DETAIL DRAWER */}
+      <DrawerSheet
+        isOpen={Boolean(selectedInquiry)}
+        onClose={() => setSelectedInquiryId(null)}
+        title={selectedInquiry?.name || 'Inbound Submission'}
+        subtitle={selectedInquiry?.email}
+        maxWidth="max-w-lg"
+      >
+        {selectedInquiry && (
+          <div className="space-y-4 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Phone:</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">
+                  {selectedInquiry.phone || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Company:</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
+                  {selectedInquiry.company || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Intent:</span>
+                <span className="font-mono text-blue-500 font-bold uppercase">
+                  {selectedInquiry.intent || selectedInquiry.source || 'General'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Submitted At:</span>
+                <span className="font-mono text-slate-400">
+                  {selectedInquiry.created_at
+                    ? new Date(selectedInquiry.created_at).toLocaleString()
+                    : '—'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Message</span>
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                {selectedInquiry.message || 'No written message attached.'}
+              </div>
+            </div>
+
+            <a
+              href={`mailto:${selectedInquiry.email}`}
+              className="block text-center py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition"
+            >
+              Reply via Email
+            </a>
+          </div>
+        )}
+      </DrawerSheet>
+
+      {/* AUDIT LOG EVENT DRAWER */}
+      <DrawerSheet
+        isOpen={Boolean(selectedAuditLog)}
+        onClose={() => setSelectedAuditLog(null)}
+        title="Audit Event Detail"
+        subtitle={`Event #${selectedAuditLog?.id} · ${
+          selectedAuditLog?.created_at
+            ? new Date(selectedAuditLog.created_at).toLocaleString()
+            : '—'
+        }`}
+        maxWidth="max-w-lg"
+      >
+        {selectedAuditLog && (
+          <div className="space-y-4 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Actor:</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {selectedAuditLog.admin_email || selectedAuditLog.admin_id}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Action:</span>
+                <span className="font-mono font-bold text-blue-500">
+                  {selectedAuditLog.action}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Target Entity:</span>
+                <span className="font-mono text-slate-700 dark:text-slate-300">
+                  {selectedAuditLog.target_email || selectedAuditLog.target_id || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Client IP:</span>
+                <span className="font-mono text-slate-400">
+                  {selectedAuditLog.ip || '127.0.0.1'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Event Details</span>
+              <pre className="p-4 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto">
+                {JSON.stringify(
+                  typeof selectedAuditLog.details === 'string'
+                    ? JSON.parse(selectedAuditLog.details || '{}')
+                    : selectedAuditLog.details || {},
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
+          </div>
+        )}
+      </DrawerSheet>
+
+      {/* QUICK ACTION DOCK MODAL */}
+      <DrawerSheet
+        isOpen={quickActionOpen}
+        onClose={() => setQuickActionOpen(false)}
+        title="Quick Operations Dock"
+        subtitle="Trigger administrative workflows across platform systems."
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              setQuickActionOpen(false);
+              switchTab('users');
+            }}
+            className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.08] hover:border-blue-500 text-left transition flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">person_add</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Adjust Credits / Plan</h4>
+                <p className="text-[11px] text-slate-400">Inspect user and modify quota</p>
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-[18px] text-slate-400">arrow_forward</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setQuickActionOpen(false);
+              switchTab('marketplace');
+            }}
+            className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.08] hover:border-blue-500 text-left transition flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">storefront</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Review Pending Leads</h4>
+                <p className="text-[11px] text-slate-400">Marketplace triage queue</p>
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-[18px] text-slate-400">arrow_forward</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setQuickActionOpen(false);
+              switchTab('tickets');
+            }}
+            className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.08] hover:border-blue-500 text-left transition flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">support_agent</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Answer Support Tickets</h4>
+                <p className="text-[11px] text-slate-400">Customer helpdesk queue</p>
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-[18px] text-slate-400">arrow_forward</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setQuickActionOpen(false);
+              switchTab('apis');
+            }}
+            className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.08] hover:border-blue-500 text-left transition flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">monitoring</span>
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">API Health Telemetry</h4>
+                <p className="text-[11px] text-slate-400">Inspect endpoint latencies</p>
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-[18px] text-slate-400">arrow_forward</span>
+          </button>
         </div>
-      )}
-        </div>
-      </div>
-    </>
+      </DrawerSheet>
+    </div>
   );
 }

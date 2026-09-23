@@ -1849,11 +1849,6 @@ export default function LeadDetails() {
                 >
                   All Appointments →
                 </Link>
-                {isAdmin && (
-                  <Link to="/ai-calling" className="text-primary font-bold hover:underline py-2 shrink-0">
-                    AI Voice Calling →
-                  </Link>
-                )}
               </div>
             </Card>
           </div>

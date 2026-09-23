@@ -6,6 +6,7 @@ import { resolveFrontendBaseUrl } from '../utils/frontendUrl.js';
 import {
   buildEmailVerificationEmail,
   buildPasswordResetEmail,
+  buildTeamInvitationEmail,
 } from './email/authEmailTemplates.js';
 
 /** Never use HTTP 502 for app-level email failures — browsers/proxies label it Bad Gateway. */
@@ -205,3 +206,46 @@ export async function consumePasswordResetToken(token) {
   if (!rows.length) return { ok: false, error: 'Invalid or expired reset link' };
   return { ok: true, userId: rows[0].id };
 }
+
+export async function issueTeamInvitationEmail({
+  email,
+  name,
+  inviterName,
+  companyName,
+  roleName,
+  token,
+}) {
+  const normalized = normalizeEmail(email);
+  const acceptUrl = `${frontendBase()}/accept-invite?token=${encodeURIComponent(token)}`;
+  const { subject, text, html } = buildTeamInvitationEmail({
+    name,
+    email: normalized,
+    inviterName,
+    companyName,
+    roleName,
+    acceptUrl,
+  });
+
+  try {
+    const result = await sendPlatformEmail(normalized, subject, text, html);
+    if (result.simulated) {
+      logger.info('Team invitation email simulated (ALLOW_EMAIL_SIMULATION or key missing)', {
+        email: maskEmail(normalized),
+        acceptUrl,
+      });
+    }
+    return { ok: true, acceptUrl, simulated: Boolean(result.simulated), provider: result.provider };
+  } catch (err) {
+    logger.error('Team invitation email send failed', {
+      email: maskEmail(normalized),
+      code: err.code || null,
+      message: err.message,
+    });
+    // Re-throw so caller can decide or wrap
+    throw wrapEmailSendError(
+      err,
+      'Unable to send team invitation email via Resend. Check API key or use the invitation link directly.',
+    );
+  }
+}
+

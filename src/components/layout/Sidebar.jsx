@@ -12,7 +12,7 @@ export default function Sidebar({
   collapsed = false,
   showBanner,
 }) {
-  const { user, refreshUserData, can, entitlements, unlimitedCredits } = useAuth();
+  const { user, credits, activePackage, subscription, refreshUserData, can, entitlements, unlimitedCredits } = useAuth();
   const userRole = user?.role || '';
   const leadsCount = null;
   const isAdmin = isAdminRole(userRole);
@@ -114,18 +114,6 @@ export default function Sidebar({
                 path: '/admin?tab=tickets',
                 icon: 'support_agent',
               },
-            ],
-          },
-          {
-            title: 'AI VOICE CALLING',
-            items: [
-              { name: 'Dashboard', path: '/ai-calling', icon: 'smart_toy' },
-              { name: 'Campaigns', path: '/ai-calling/campaigns', icon: 'campaign' },
-              { name: 'Live Monitor', path: '/ai-calling/live', icon: 'monitor_heart' },
-              { name: 'Knowledge Base', path: '/ai-calling/knowledge-base', icon: 'auto_stories' },
-              { name: 'Prompts & Scripts', path: '/ai-calling/prompts', icon: 'edit_note' },
-              { name: 'Analytics', path: '/ai-calling/analytics', icon: 'analytics' },
-              { name: 'Settings', path: '/ai-calling/settings', icon: 'settings' },
             ],
           },
         ]
@@ -357,6 +345,47 @@ export default function Sidebar({
             </div>
           ))}
         </nav>
+
+        {/* User Active Plan & Quotas Footer Widget */}
+        <div className={`mt-auto pt-3 border-t border-glass-stroke/60 ${collapsed ? 'px-1 py-2 text-center' : 'px-2 pb-1'}`}>
+          {!collapsed ? (
+            <div className="p-3 rounded-xl bg-surface-container-low/80 border border-glass-stroke space-y-2">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5 truncate">
+                  <span className="material-symbols-outlined text-[15px] text-primary shrink-0">verified</span>
+                  <span className="truncate">{subscription?.packageName || entitlements?.packageName || activePackage || 'Free'}</span>
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0">
+                  {isAdmin ? 'ADMIN' : subscription?.status || (activePackage === 'Free' ? 'Free Tier' : 'Active')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-on-surface-variant text-[11px]">Credit Balance</span>
+                <span className="font-mono font-bold text-on-surface">
+                  {unlimitedCredits || isAdmin ? '∞' : Number(credits || 0).toLocaleString()}
+                </span>
+              </div>
+              <NavLink
+                to="/billing"
+                onClick={handleMobileClose}
+                className="w-full py-1.5 px-2 rounded-lg bg-white/5 hover:bg-primary hover:text-on-primary text-primary text-[11px] font-semibold flex items-center justify-center gap-1 transition-all active:scale-95 group shadow-xs"
+              >
+                <span>Plan Details & Quotas</span>
+                <span className="material-symbols-outlined text-[13px] group-hover:translate-x-0.5 transition-transform">
+                  arrow_forward
+                </span>
+              </NavLink>
+            </div>
+          ) : (
+            <NavLink
+              to="/billing"
+              title={`Active Plan: ${subscription?.packageName || entitlements?.packageName || activePackage || 'Free'} (${credits} credits)`}
+              className="w-10 h-10 mx-auto rounded-xl bg-surface-container-low border border-glass-stroke hover:border-primary/50 text-primary flex items-center justify-center transition active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[18px]">verified</span>
+            </NavLink>
+          )}
+        </div>
       </aside>
     </>
   );

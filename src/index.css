@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * SpaceToRoof.com system theme — shared by app shell and marketing landing.
  * Deep navy + saturated blue primary / glow + glass surfaces.

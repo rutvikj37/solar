@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import Sidebar, { COLLAPSED_WIDTH, EXPANDED_WIDTH } from './Sidebar';
 import TopBar from './TopBar';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isAdminRole } from '../../lib/auth.js';
 import OnboardingProvider from '../onboarding/OnboardingProvider.jsx';
 
 const SIDEBAR_COLLAPSED_KEY = 'str_sidebar_collapsed';
@@ -21,7 +22,7 @@ export default function AppLayout() {
     }
   });
   const [showBanner, setShowBanner] = useState(true);
-  const { credits, subscription, refreshUserData, loading: authLoading } = useAuth();
+  const { user, credits, subscription, refreshUserData, loading: authLoading } = useAuth();
   const location = useLocation();
   const isMapPage = location.pathname === '/map';
   const isWideTablePage = location.pathname === '/my-leads';
@@ -87,6 +88,11 @@ export default function AppLayout() {
   const planName = subscription?.packageName;
   const bannerCredits = authLoading ? null : credits;
   const bodyPadding = showBanner ? 'pt-[100px]' : 'pt-16';
+
+  // Admin users are directed strictly to the admin operator console — no user functionality
+  if (!authLoading && user && isAdminRole(user.role)) {
+    return <Navigate to="/admin" replace />;
+  }
 
   return (
     <OnboardingProvider>

@@ -173,3 +173,41 @@ export function buildEmailVerificationEmail({ name, verifyUrl }) {
 
   return { subject, text, html };
 }
+
+export function buildTeamInvitationEmail({ name, email, inviterName, companyName, roleName, acceptUrl }) {
+  const who = name ? firstName(name) : 'there';
+  const orgName = companyName || (inviterName ? `${inviterName}'s Workspace` : 'our Workspace');
+  const roleDisplay = roleName ? roleName.replace(/_/g, ' ') : 'Team Member';
+  const subject = `You've been invited to join ${orgName} on ${BRAND_DISPLAY}`;
+  
+  const text = [
+    `Hi ${who},`,
+    '',
+    `${inviterName || 'An administrator'} has invited you to join ${orgName} on ${BRAND_DISPLAY} as a ${roleDisplay}.`,
+    '',
+    `To accept your invitation, activate your account, and set your password, visit:`,
+    acceptUrl,
+    '',
+    `This invitation link is valid for 7 days.`,
+    '',
+    `— The ${BRAND_DISPLAY} Team`,
+    BRAND_URL,
+  ].join('\n');
+
+  const html = wrapAuthEmail({
+    preheader: `You have been invited to join ${orgName} as ${roleDisplay} on ${BRAND_DISPLAY}.`,
+    title: `You're invited to join ${orgName}`,
+    greeting: who,
+    paragraphs: [
+      `${inviterName || 'A team administrator'} has invited you to collaborate in ${orgName} on ${BRAND_DISPLAY} with the role of ${roleDisplay}.`,
+      'Accept your invitation now to set your secure password and access live solar pipeline intelligence, maps, and proposals.',
+      'This invitation link expires in 7 days.',
+    ],
+    ctaLabel: 'Accept Invitation & Set Password',
+    ctaUrl: acceptUrl,
+    footnote: 'If you were not expecting this invitation, you can safely ignore this message.',
+  });
+
+  return { subject, text, html };
+}
+

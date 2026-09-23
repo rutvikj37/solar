@@ -109,12 +109,16 @@ export default function TopBar({
       </div>
 
       {/* Compact mobile credits chip */}
-      <div className="flex md:hidden items-center gap-1.5 px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg text-[9px] font-bold tracking-wider text-primary shrink-0 max-w-[42vw]">
+      <Link
+        to="/billing"
+        title="View plan details & quotas"
+        className="flex md:hidden items-center gap-1.5 px-2 py-1 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-lg text-[9px] font-bold tracking-wider text-primary shrink-0 max-w-[42vw] transition active:scale-95 cursor-pointer"
+      >
         <span className="uppercase truncate">{planLabel}</span>
         <span className="text-on-surface font-mono tabular-nums">
           {isAdmin ? '∞' : Number(credits).toLocaleString()}
         </span>
-      </div>
+      </Link>
 
       <div className="hidden xl:flex items-center gap-2.5">
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold tracking-wider">
@@ -131,12 +135,19 @@ export default function TopBar({
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg text-[10px] font-bold tracking-wider text-primary">
+        <Link
+          to="/billing"
+          title="Click to view active plan details & entitlements"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/25 rounded-lg text-[10px] font-bold tracking-wider text-primary transition-all active:scale-95 cursor-pointer shadow-xs group"
+        >
+          <span className="material-symbols-outlined text-[15px] text-primary group-hover:scale-110 transition-transform">
+            verified
+          </span>
           <span className="uppercase">{planLabel}</span>
           <span className="text-on-surface font-mono tabular-nums ml-0.5">
             | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} CREDITS`}
           </span>
-        </div>
+        </Link>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">

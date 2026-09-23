@@ -302,19 +302,29 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32">
+        <Link
+          to="/billing"
+          className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32 hover:translate-y-[-2px] transition-all group cursor-pointer"
+          title="View plan details & quotas"
+        >
           <div className="flex justify-between items-start">
             <p className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-wider">
-              Active Package
+              Active Plan
             </p>
-            <span className="material-symbols-outlined text-primary opacity-50">
+            <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">
               workspace_premium
             </span>
           </div>
-          <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-primary">
-            {activePackage || '—'}
-          </p>
-        </div>
+          <div>
+            <p className="font-headline-md text-xl md:text-2xl font-bold text-primary truncate">
+              {activePackage || 'Free'}
+            </p>
+            <p className="text-[10px] text-primary font-semibold mt-0.5 flex items-center gap-1 group-hover:underline">
+              <span>View plan details</span>
+              <span className="material-symbols-outlined text-xs">arrow_forward</span>
+            </p>
+          </div>
+        </Link>
 
         <div className="glass-card p-4 sm:p-6 rounded-xl flex flex-col justify-between min-h-[7rem] sm:h-32 border-l-4 border-l-primary">
           <div className="flex justify-between items-start">

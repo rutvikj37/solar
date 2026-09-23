@@ -14,6 +14,12 @@ export default function Profile() {
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [planData, setPlanData] = useState({
+    activePackage: "Free",
+    credits: 0,
+    subscription: null,
+    entitlements: null,
+  });
   const navigate = useNavigate();
 
   const authHeaders = () => ({
@@ -39,6 +45,12 @@ export default function Profile() {
           name: data.user?.name || "",
           phone: data.user?.phone || "",
           jobTitle: data.user?.jobTitle || "",
+        });
+        setPlanData({
+          activePackage: data.activePackage || "Free",
+          credits: data.credits ?? 0,
+          subscription: data.subscription || null,
+          entitlements: data.entitlements || null,
         });
         if (data.user?.hasApiKey && !apiKey) {
           setApiKey(data.user.apiKeyMasked || "");
@@ -167,11 +179,88 @@ export default function Profile() {
                 <p className="text-[10px] font-label-mono text-on-surface-variant">ACCOUNT ROLE</p>
                 <p className="text-on-surface font-semibold mt-0.5">{user?.role || "user"}</p>
               </div>
+              <div className="pt-2 border-t border-glass-stroke/50">
+                <p className="text-[10px] font-label-mono text-on-surface-variant">CURRENT PLAN</p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="font-bold text-primary text-xs">
+                    {planData.subscription?.packageName || planData.activePackage || "Free"}
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                    {planData.credits} credits
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <div className="lg:col-span-7 space-y-gutter">
+          {/* Plan & Entitlements Card */}
+          <div className="glass-card p-6 rounded-xl space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h4 className="font-label-mono text-[10px] text-primary uppercase tracking-widest font-semibold">
+                  Active Plan & Quotas
+                </h4>
+                <div className="flex items-center gap-2 mt-1">
+                  <h3 className="text-lg font-bold text-on-surface">
+                    {planData.subscription?.packageName || planData.activePackage || "Free"} Plan
+                  </h3>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+                    planData.subscription?.status === 'active'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                      : 'bg-white/5 text-on-surface-variant border-white/10'
+                  }`}>
+                    {planData.subscription?.status || (planData.activePackage === 'Free' ? 'Free Tier' : 'Active')}
+                  </span>
+                </div>
+              </div>
+              <Link
+                to="/billing"
+                className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary font-bold text-xs hover:brightness-110 active:scale-95 transition-all shadow-sm"
+              >
+                Manage & Upgrade
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1">
+              <div className="p-3 rounded-lg bg-surface-container-low border border-glass-stroke">
+                <span className="text-[10px] text-on-surface-variant font-mono uppercase block">Lead Credits</span>
+                <p className="font-bold text-on-surface text-base mt-0.5 font-mono">
+                  {planData.credits} <span className="text-[11px] font-normal text-on-surface-variant">available</span>
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-surface-container-low border border-glass-stroke">
+                <span className="text-[10px] text-on-surface-variant font-mono uppercase block">Team Seats</span>
+                <p className="font-bold text-on-surface text-base mt-0.5 font-mono">
+                  {planData.entitlements?.usage?.crmSeats || 1} / {planData.entitlements?.limits?.crmUserLimit || 1}
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-surface-container-low border border-glass-stroke col-span-2 sm:col-span-1">
+                <span className="text-[10px] text-on-surface-variant font-mono uppercase block">Billing Cycle</span>
+                <p className="font-bold text-on-surface text-xs mt-1">
+                  {planData.subscription?.billingInterval === 'year'
+                    ? 'Annual Billing'
+                    : planData.subscription?.billingInterval
+                      ? 'Monthly Plan'
+                      : 'Free (No Renewal)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-glass-stroke/50 flex flex-wrap items-center justify-between text-xs text-on-surface-variant gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base text-primary">verified</span>
+                <span>
+                  {planData.entitlements?.features?.proposals ? 'Proposals & Marketplace Unlocked' : 'Standard Lead Intelligence'}
+                </span>
+              </div>
+              <Link to="/billing#plans" className="text-primary hover:underline font-semibold text-[11px]">
+                View Plan Comparison →
+              </Link>
+            </div>
+          </div>
+
           <div className="glass-card p-6 rounded-xl space-y-4">
             <h4 className="font-label-mono text-[10px] text-on-surface-variant uppercase tracking-widest font-semibold mb-2">
               Account Details

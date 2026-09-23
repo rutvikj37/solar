@@ -63,6 +63,7 @@ const RegisterPage = lazyRoute(() => import("./pages/auth/RegisterPage"));
 const VerifyEmailPage = lazyRoute(() => import("./pages/auth/VerifyEmailPage"));
 const ForgotPasswordPage = lazyRoute(() => import("./pages/auth/ForgotPasswordPage"));
 const ResetPasswordPage = lazyRoute(() => import("./pages/auth/ResetPasswordPage"));
+const AcceptInvitePage = lazyRoute(() => import("./pages/auth/AcceptInvitePage"));
 const FirebaseAuthActionPage = lazyRoute(() => import("./pages/auth/FirebaseAuthActionPage"));
 const CompleteProfilePage = lazyRoute(() => import("./pages/auth/CompleteProfilePage"));
 const BulkAreaScan = lazyRoute(() => import("./pages/app/BulkAreaScan"));
@@ -73,30 +74,7 @@ const Support = lazyRoute(() => import("./pages/app/Support"));
 const SupportTicket = lazyRoute(() => import("./pages/app/SupportTicket"));
 const DripCampaigns = lazyRoute(() => import("./pages/app/DripCampaigns"));
 
-const AiCallingDashboard = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingDashboard"),
-);
-const AiCallingCampaigns = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingCampaigns"),
-);
-const AiCallingLiveMonitor = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingLiveMonitor"),
-);
-const AiCallingKnowledgeBase = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingKnowledgeBase"),
-);
-const AiCallingPrompts = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingPrompts"),
-);
-const AiCallingAnalytics = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingAnalytics"),
-);
-const AiCallingSettings = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingSettings"),
-);
-const AiCallingCallDetail = lazyRoute(
-  () => import("./pages/ai-calling/AiCallingCallDetail"),
-);
+
 
 const PublicProposalView = lazyRoute(() => import("./pages/app/PublicProposalView"));
 const GetSolarQuote = lazyRoute(() => import("./pages/app/GetSolarQuote"));
@@ -140,6 +118,7 @@ export default function App() {
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/accept-invite" element={<AcceptInvitePage />} />
               <Route path="/auth/action" element={<FirebaseAuthActionPage />} />
               <Route
                 path="/complete-profile"
@@ -179,41 +158,13 @@ export default function App() {
               <Route path="/support" element={<Support />} />
               <Route path="/support/:id" element={<SupportTicket />} />
 
-              <Route element={<ProtectedRoute requireAdmin />}>
-                <Route path="/ai-calling" element={<AiCallingDashboard />} />
-                <Route
-                  path="/ai-calling/campaigns"
-                  element={<AiCallingCampaigns />}
-                />
-                <Route
-                  path="/ai-calling/live"
-                  element={<AiCallingLiveMonitor />}
-                />
-                <Route
-                  path="/ai-calling/knowledge-base"
-                  element={<AiCallingKnowledgeBase />}
-                />
-                <Route
-                  path="/ai-calling/prompts"
-                  element={<AiCallingPrompts />}
-                />
-                <Route
-                  path="/ai-calling/analytics"
-                  element={<AiCallingAnalytics />}
-                />
-                <Route
-                  path="/ai-calling/settings"
-                  element={<AiCallingSettings />}
-                />
-                <Route
-                  path="/ai-calling/calls/:id"
-                  element={<AiCallingCallDetail />}
-                />
-              </Route>
+              {/* AI Calling module disabled for now */}
+              <Route path="/ai-calling/*" element={<Navigate to="/dashboard" replace />} />
 
-              <Route element={<ProtectedRoute requireAdmin />}>
-                <Route path="/admin" element={<AdminDashboard />} />
-              </Route>
+            </Route>
+
+            <Route element={<ProtectedRoute requireAdmin />}>
+              <Route path="/admin" element={<AdminDashboard />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

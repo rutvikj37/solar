@@ -20,6 +20,7 @@ import {
   LEGACY_PACKAGE_IDS,
   isLegacyPackageId,
 } from '../services/planPricing.js';
+import { getUserEntitlements } from '../services/planEntitlements.js';
 
 const router = express.Router();
 
@@ -574,7 +575,7 @@ router.get('/packages', optionalAuthenticateToken, async (req, res) => {
 router.get('/subscription', authenticateToken, async (req, res) => {
   try {
     const [subs] = await db.query(
-      `SELECT s.*, p.name AS package_name, p.lead_limit, p.price, p.billing_interval
+      `SELECT s.*, p.name AS package_name, p.lead_limit, p.price, p.billing_interval, p.description
        FROM user_subscriptions s
        LEFT JOIN packages p ON p.id = s.package_id
        WHERE s.user_id = ?
@@ -586,11 +587,21 @@ router.get('/subscription', authenticateToken, async (req, res) => {
       [req.user.id]
     );
     const sub = subs[0] || null;
+    const entitlements = await getUserEntitlements(req.user.id, req.user.role);
+
+    const activePkgId = packages[0]?.package_id ?? (sub?.package_id || 'Free');
+    const [pkgDetails] = await db.query(
+      'SELECT id, name, lead_limit, price, billing_interval, description, features, crm_user_limit, email_automation_limit, whatsapp_limit FROM packages WHERE id = ? LIMIT 1',
+      [activePkgId]
+    );
+    const currentPkg = pkgDetails[0] || null;
+
     res.json({
       subscription: sub
         ? {
             packageId: sub.package_id,
             packageName: sub.package_name,
+            description: sub.description,
             status: sub.status,
             leadLimit: sub.lead_limit,
             price: sub.price,
@@ -602,8 +613,20 @@ router.get('/subscription', authenticateToken, async (req, res) => {
             stripeSubscriptionId: sub.stripe_subscription_id,
           }
         : null,
+      plan: {
+        id: currentPkg?.id || activePkgId,
+        name: currentPkg?.name || activePkgId,
+        leadLimit: currentPkg?.lead_limit ?? (activePkgId === 'Free' ? 5 : 0),
+        price: currentPkg?.price ?? 0,
+        billingInterval: currentPkg?.billing_interval || 'month',
+        description: currentPkg?.description || '',
+        crmUserLimit: currentPkg?.crm_user_limit ?? 1,
+        emailAutomationLimit: currentPkg?.email_automation_limit ?? 1,
+        whatsappLimit: currentPkg?.whatsapp_limit ?? 0,
+      },
       credits: packages[0]?.remaining_leads ?? 0,
-      activePackage: packages[0]?.package_id ?? 'Free'
+      activePackage: activePkgId,
+      entitlements,
     });
   } catch (error) {
     console.error('Subscription fetch error:', error);

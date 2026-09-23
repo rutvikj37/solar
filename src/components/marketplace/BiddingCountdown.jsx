@@ -3,13 +3,13 @@ import { Clock } from 'lucide-react';
 import { formatCountdown, getCountdownUrgency } from '../../lib/marketplace.js';
 
 const URGENCY_STYLES = {
-  none: 'border-glass-stroke bg-surface-container text-on-surface-variant',
-  closed: 'border-glass-stroke bg-surface-container-high text-on-surface-variant',
-  normal: 'border-cyan-400/45 bg-cyan-500/12 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.12)]',
+  none: 'border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300',
+  closed: 'border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400',
+  normal: 'border-blue-400/40 bg-blue-50 text-blue-700 dark:border-cyan-400/45 dark:bg-cyan-500/12 dark:text-cyan-300 shadow-xs',
   urgent:
-    'border-amber-400/55 bg-amber-500/18 text-amber-300 shadow-[0_0_16px_rgba(251,191,36,0.15)] animate-pulse',
+    'border-amber-400/55 bg-amber-50 text-amber-800 dark:bg-amber-500/18 dark:text-amber-300 shadow-xs animate-pulse',
   critical:
-    'border-red-400/60 bg-red-500/20 text-red-300 shadow-[0_0_20px_rgba(248,113,113,0.2)] animate-pulse',
+    'border-rose-400/60 bg-rose-50 text-rose-800 dark:bg-red-500/20 dark:text-red-300 shadow-xs animate-pulse',
 };
 
 /**

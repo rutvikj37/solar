@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams, useLocation } from "react-router-do
 import { ArrowLeft } from "lucide-react";
 import { API_BASE } from "../../config.js";
 import { BRAND_NAME } from "../../config/brand.js";
-import { setToken } from "../../lib/auth.js";
+import { setToken, isAdminRole, isTokenValid, getToken } from "../../lib/auth.js";
 import SatelliteUplinkLoader from "../../components/layout/SatelliteUplinkLoader.jsx";
 import SocialLoginButtons from "../../components/SocialLoginButtons.jsx";
 
@@ -34,7 +34,28 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const backTo = resolveAuthBackTo(location);
 
-  const completeLogin = (token, { needsOnboarding = false } = {}) => {
+  // If already logged in, redirect directly: admins to /admin, others to /dashboard
+  React.useEffect(() => {
+    if (isTokenValid()) {
+      const token = getToken();
+      let role = null;
+      if (token) {
+        try {
+          const payload = JSON.parse(
+            atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+          );
+          role = payload?.role;
+        } catch {}
+      }
+      if (isAdminRole(role)) {
+        navigate("/admin", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
+    }
+  }, [navigate]);
+
+  const completeLogin = (token, { needsOnboarding = false, role = null } = {}) => {
     setShowAuthLoader(true);
     setToken(token);
     if (remember && email) {
@@ -42,6 +63,23 @@ export default function LoginPage() {
     } else {
       localStorage.removeItem("solar_remember_email");
     }
+
+    let userRole = role;
+    if (!userRole && token) {
+      try {
+        const payload = JSON.parse(
+          atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+        );
+        userRole = payload?.role;
+      } catch {}
+    }
+
+    // Direct admin login directly to /admin with no user functionality
+    if (isAdminRole(userRole)) {
+      navigate("/admin", { replace: true });
+      return;
+    }
+
     if (needsOnboarding) {
       navigate("/complete-profile", { replace: true });
       return;
@@ -77,7 +115,10 @@ export default function LoginPage() {
         throw new Error(data.error || "Invalid email or password");
       }
 
-      completeLogin(data.token, { needsOnboarding: data.needsOnboarding });
+      completeLogin(data.token, {
+        needsOnboarding: data.needsOnboarding,
+        role: data.user?.role,
+      });
     } catch (err) {
       setError(err.message);
       setLoading(false);
@@ -88,6 +129,7 @@ export default function LoginPage() {
     setError("");
     completeLogin(data.token, {
       needsOnboarding: data.needsOnboarding || data.isNewUser,
+      role: data.user?.role,
     });
   };
 

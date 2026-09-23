@@ -39,7 +39,7 @@ function setAuthNoStore(res) {
   res.setHeader("Expires", "0");
 }
 
-function signUserToken(user) {
+export function signUserToken(user) {
   return jwt.sign(
     {
       id: user.id,
