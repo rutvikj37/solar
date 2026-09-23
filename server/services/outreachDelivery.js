@@ -1,7 +1,7 @@
 /**
  * Shared SMS / email delivery for outreach and drip automation.
  * Customer sends: client's connected mailbox (Gmail / Outlook / SMTP) + plan email quota.
- * Platform auth mail: SES / Resend / SendGrid without consuming customer quota.
+ * Platform auth mail: Resend (preferred) / SendGrid / SES without consuming customer quota.
  * Never send customer outreach From the platform noreply / SES_FROM address.
  */
 import { trackedFetch } from './apiUsage.js';
@@ -23,16 +23,20 @@ export function allowEmailSimulation() {
   return v === '1' || v === 'true';
 }
 
+export function getPlatformEmailProvider() {
+  if (isKeyValid(process.env.RESEND_API_KEY)) return 'resend';
+  if (isKeyValid(process.env.SENDGRID_API_KEY)) return 'sendgrid';
+  if (isSesConfigured()) return 'ses';
+  return null;
+}
+
 export function isPlatformEmailConfigured() {
-  if (isSesConfigured()) return true;
-  return (
-    isKeyValid(process.env.RESEND_API_KEY) || isKeyValid(process.env.SENDGRID_API_KEY)
-  );
+  return getPlatformEmailProvider() != null;
 }
 
 function emailNotConfiguredError() {
   const err = new Error(
-    'Email delivery is not configured. Set Amazon SES (AWS_REGION + credentials + SES_FROM_EMAIL) or RESEND_API_KEY / SENDGRID_API_KEY.',
+    'Email delivery is not configured. Set RESEND_API_KEY (preferred) or SENDGRID_API_KEY / Amazon SES.',
   );
   err.code = 'EMAIL_NOT_CONFIGURED';
   return err;
@@ -113,12 +117,16 @@ async function sendViaResendOrSendGrid(to, subject, body) {
   };
 }
 
-/** Platform transport: SES preferred, then Resend/SendGrid, else simulate (non-prod only). */
+/** Platform transport: Resend preferred, then SendGrid, then SES; else simulate (non-prod only). */
 async function sendPlatformTransport({ to, subject, body, html, replyTo }) {
-  if (isSesConfigured()) {
+  const provider = getPlatformEmailProvider();
+  if (provider === 'resend' || provider === 'sendgrid') {
+    return sendViaResendOrSendGrid(to, subject, body);
+  }
+  if (provider === 'ses') {
     return sendViaSes({ to, subject, body, html, replyTo });
   }
-  if (!isPlatformEmailConfigured() && !allowEmailSimulation()) {
+  if (!allowEmailSimulation()) {
     throw emailNotConfiguredError();
   }
   return sendViaResendOrSendGrid(to, subject, body);

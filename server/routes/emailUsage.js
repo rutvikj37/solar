@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { getEmailQuota } from '../services/email/emailQuota.js';
-import { isSesConfigured } from '../services/email/sesClient.js';
+import { getPlatformEmailProvider } from '../services/outreachDelivery.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = express.Router();
@@ -20,7 +20,7 @@ router.get(
       remaining: quota.unlimited ? null : quota.remaining,
       periodKey: quota.periodKey,
       periodEnd: quota.periodEnd,
-      provider: isSesConfigured() ? 'ses' : 'fallback',
+      provider: getPlatformEmailProvider() || 'none',
     });
   }),
 );

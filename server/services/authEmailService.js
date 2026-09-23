@@ -42,7 +42,7 @@ function wrapEmailSendError(err, fallbackMessage) {
   const wrapped = new Error(
     notConfigured
       ? err.message ||
-        'Email delivery is not configured. Set Amazon SES or RESEND_API_KEY / SENDGRID_API_KEY.'
+        'Email delivery is not configured. Set RESEND_API_KEY (preferred) or SENDGRID_API_KEY / Amazon SES.'
       : fallbackMessage,
   );
   wrapped.code = notConfigured ? 'EMAIL_NOT_CONFIGURED' : err?.code || 'EMAIL_SEND_FAILED';
@@ -62,7 +62,7 @@ export async function issueEmailVerification(userId, email, name) {
   try {
     const result = await sendPlatformEmail(email, `Verify your ${BRAND_DISPLAY} account`, body);
     if (result.simulated) {
-      logger.info('Email verification link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)', {
+      logger.info('Email verification link simulated (ALLOW_EMAIL_SIMULATION; configure RESEND_API_KEY)', {
         userId,
         email: maskEmail(email),
         link,
@@ -137,7 +137,7 @@ export async function issuePasswordReset(email) {
       );
       if (result.simulated) {
         logger.info(
-          'Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure SES/Resend/SendGrid)',
+          'Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure RESEND_API_KEY)',
           {
             userId: user.id,
             email: maskEmail(toAddress),
