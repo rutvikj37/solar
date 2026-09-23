@@ -69,7 +69,7 @@ export async function sendTwilioSms(to, body) {
   return { ok: true, sid: data.sid, simulated: false };
 }
 
-async function sendViaResendOrSendGrid(to, subject, body) {
+async function sendViaResendOrSendGrid(to, subject, body, html) {
   const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
   const from = process.env.OUTREACH_FROM_EMAIL || BRAND_NOREPLY;
 
@@ -79,19 +79,23 @@ async function sendViaResendOrSendGrid(to, subject, body) {
   }
 
   if (process.env.RESEND_API_KEY && isKeyValid(process.env.RESEND_API_KEY)) {
+    const payload = { from, to: [to], subject, text: body };
+    if (html) payload.html = html;
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from, to: [to], subject, text: body }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Email send failed');
     return { ok: true, id: data.id, simulated: false, provider: 'resend' };
   }
 
+  const content = [{ type: 'text/plain', value: body }];
+  if (html) content.push({ type: 'text/html', value: html });
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -102,7 +106,7 @@ async function sendViaResendOrSendGrid(to, subject, body) {
       personalizations: [{ to: [{ email: to }] }],
       from: { email: from },
       subject,
-      content: [{ type: 'text/plain', value: body }],
+      content,
     }),
   });
   if (!response.ok) {
@@ -121,7 +125,7 @@ async function sendViaResendOrSendGrid(to, subject, body) {
 async function sendPlatformTransport({ to, subject, body, html, replyTo }) {
   const provider = getPlatformEmailProvider();
   if (provider === 'resend' || provider === 'sendgrid') {
-    return sendViaResendOrSendGrid(to, subject, body);
+    return sendViaResendOrSendGrid(to, subject, body, html);
   }
   if (provider === 'ses') {
     return sendViaSes({ to, subject, body, html, replyTo });
@@ -129,12 +133,12 @@ async function sendPlatformTransport({ to, subject, body, html, replyTo }) {
   if (!allowEmailSimulation()) {
     throw emailNotConfiguredError();
   }
-  return sendViaResendOrSendGrid(to, subject, body);
+  return sendViaResendOrSendGrid(to, subject, body, html);
 }
 
 /** Platform transactional mail (auth verify, password reset) — no customer quota. */
-export async function sendPlatformEmail(to, subject, body) {
-  return sendPlatformTransport({ to, subject, body });
+export async function sendPlatformEmail(to, subject, body, html) {
+  return sendPlatformTransport({ to, subject, body, html });
 }
 
 /**

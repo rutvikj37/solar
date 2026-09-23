@@ -236,7 +236,18 @@ router.post(
       return res.status(400).json({ error: "Valid email required" });
     }
     try {
-      await issuePasswordReset(email);
+      const result = await issuePasswordReset(email);
+      if (!result?.sent) {
+        return res.status(404).json({
+          found: false,
+          code: "ACCOUNT_NOT_FOUND",
+          error: "Sorry, no account exists for that email.",
+        });
+      }
+      return res.json({
+        found: true,
+        message: "A password reset link has been sent to your email.",
+      });
     } catch (err) {
       const code = err.code || "EMAIL_SEND_FAILED";
       const userFacing =
@@ -253,7 +264,6 @@ router.post(
         code,
       });
     }
-    res.json({ message: "If an account exists for that email, a reset link was sent." });
   }),
 );
 

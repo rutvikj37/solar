@@ -2,8 +2,11 @@ import crypto from 'crypto';
 import db from '../db.js';
 import { sendPlatformEmail } from './outreachDelivery.js';
 import { logger } from '../utils/logger.js';
-import { BRAND_DISPLAY } from '../config/brand.js';
 import { resolveFrontendBaseUrl } from '../utils/frontendUrl.js';
+import {
+  buildEmailVerificationEmail,
+  buildPasswordResetEmail,
+} from './email/authEmailTemplates.js';
 
 /** Never use HTTP 502 for app-level email failures — browsers/proxies label it Bad Gateway. */
 const EMAIL_FAIL_STATUS = 503;
@@ -58,9 +61,9 @@ export async function issueEmailVerification(userId, email, name) {
     [token, expires, userId],
   );
   const link = `${frontendBase()}/verify-email?token=${encodeURIComponent(token)}`;
-  const body = `Hi ${name || 'there'},\n\nVerify your ${BRAND_DISPLAY} account:\n${link}\n\nThis link expires in 48 hours.`;
+  const { subject, text, html } = buildEmailVerificationEmail({ name, verifyUrl: link });
   try {
-    const result = await sendPlatformEmail(email, `Verify your ${BRAND_DISPLAY} account`, body);
+    const result = await sendPlatformEmail(email, subject, text, html);
     if (result.simulated) {
       logger.info('Email verification link simulated (ALLOW_EMAIL_SIMULATION; configure RESEND_API_KEY)', {
         userId,
@@ -116,7 +119,7 @@ export async function issuePasswordReset(email) {
       'SELECT id, name, email FROM users WHERE LOWER(email) = ? LIMIT 1',
       [normalized],
     );
-    if (!users.length) return { ok: true, sent: false };
+    if (!users.length) return { ok: true, sent: false, found: false };
 
     const user = users[0];
     userIdForCleanup = user.id;
@@ -128,13 +131,12 @@ export async function issuePasswordReset(email) {
       [token, expires, user.id],
     );
     const link = `${frontendBase()}/reset-password?token=${encodeURIComponent(token)}`;
-    const body = `Hi ${user.name || 'there'},\n\nReset your ${BRAND_DISPLAY} password:\n${link}\n\nThis link expires in 2 hours. If you did not request this, ignore this email.`;
+    const { subject, text, html } = buildPasswordResetEmail({
+      name: user.name,
+      resetUrl: link,
+    });
     try {
-      const result = await sendPlatformEmail(
-        toAddress,
-        `Reset your ${BRAND_DISPLAY} password`,
-        body,
-      );
+      const result = await sendPlatformEmail(toAddress, subject, text, html);
       if (result.simulated) {
         logger.info(
           'Password reset link simulated (ALLOW_EMAIL_SIMULATION; configure RESEND_API_KEY)',
