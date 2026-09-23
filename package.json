@@ -12,6 +12,7 @@
   "dependencies": {
     "@googlemaps/markerclusterer": "^2.6.2",
     "clsx": "^2.1.1",
+    "driver.js": "^1.8.0",
     "firebase": "^12.18.0",
     "framer-motion": "^13.1.1",
     "lucide-react": "^1.28.0",

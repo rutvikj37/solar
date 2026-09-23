@@ -5,7 +5,8 @@ import { clearToken } from "../../lib/auth.js";
 import { formatLeadGeneratedAt } from "../../lib/formatDate.js";
 import { placeAdvancedLeadMarker } from "../../lib/mapMarkers.js";
 import FullPageLoader from "../../components/layout/FullPageLoader.jsx";
-import DashboardTour, { DashboardTourButton } from "../../components/DashboardTour.jsx";
+import { DashboardTourButton, StartTutorialButton } from "../../components/DashboardTour.jsx";
+import { shouldAutoStartTour } from "../../lib/productTour.js";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -32,6 +33,12 @@ export default function Dashboard() {
       );
       searchParams.delete("welcome");
       setSearchParams(searchParams, { replace: true });
+      // If spotlight already finished, open checklist; otherwise tour handoff opens it
+      if (!shouldAutoStartTour()) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("str:open-getting-started"));
+        }, 800);
+      }
     }
   }, [searchParams, setSearchParams]);
 
@@ -194,8 +201,9 @@ export default function Dashboard() {
             growing.
           </p>
         </div>
-        <div className="flex gap-stack-sm text-xs flex-wrap items-center">
+        <div className="flex gap-stack-sm text-xs flex-wrap items-center" data-tour="tour-dashboard-welcome">
           <DashboardTourButton />
+          <StartTutorialButton />
           <Link
             to="/map"
             className="flex items-center gap-2 px-4 py-2 bg-surface-elevated border border-glass-stroke rounded-lg text-on-surface hover:bg-white/5 transition-all font-button"
@@ -212,8 +220,6 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
-
-      <DashboardTour />
 
       {/* Summary Cards Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-stack-md mb-stack-lg text-xs">

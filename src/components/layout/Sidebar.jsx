@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { isAdminRole } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -48,13 +48,13 @@ export default function Sidebar({
   const menuCategories = [
     {
       title: 'OVERVIEW',
-      items: [{ name: 'Overview', path: '/dashboard', icon: 'dashboard' }],
+      items: [{ name: 'Overview', path: '/dashboard', icon: 'dashboard', tourId: 'tour-nav-overview' }],
     },
     {
       title: 'DISCOVER',
       items: [
-        { name: 'Targeting', path: '/map', icon: 'radar' },
-        { name: 'Bulk Scan', path: '/bulk-scan', icon: 'layers' },
+        { name: 'Targeting', path: '/map', icon: 'radar', tourId: 'tour-nav-map' },
+        { name: 'Bulk Scan', path: '/bulk-scan', icon: 'layers', tourId: 'tour-nav-bulk-scan' },
       ],
     },
     {
@@ -66,8 +66,9 @@ export default function Sidebar({
           icon: 'storefront',
           locked: !can('marketplace'),
           lockHint: 'Pioneer+',
+          tourId: 'tour-nav-marketplace',
         },
-        { name: 'Leads CRM', path: '/my-leads', icon: 'assignment' },
+        { name: 'Leads CRM', path: '/my-leads', icon: 'assignment', tourId: 'tour-nav-leads' },
         { name: 'Reports', path: '/reports', icon: 'analytics' },
         {
           name: 'Integrations',
@@ -87,6 +88,7 @@ export default function Sidebar({
           icon: 'calendar_today',
           locked: !can('appointments'),
           lockHint: 'Mission Control',
+          tourId: 'tour-nav-appointments',
         },
       ],
     },
@@ -121,9 +123,15 @@ export default function Sidebar({
     {
       title: 'ACCOUNT',
       items: [
-        { name: 'Billing', path: '/billing', icon: 'receipt_long' },
+        { name: 'Billing', path: '/billing', icon: 'receipt_long', tourId: 'tour-nav-billing' },
         { name: 'Support', path: '/support', icon: 'support_agent' },
-        ...(isAdmin ? [] : []),
+        {
+          name: 'Getting Started',
+          action: 'help',
+          icon: 'school',
+          tourId: 'tour-nav-help',
+          hint: 'Tutorial & checklist',
+        },
         {
           name: 'Export CSV',
           action: 'export',
@@ -137,6 +145,10 @@ export default function Sidebar({
 
   const handleAction = (actionName) => {
     handleMobileClose();
+    if (actionName === 'help') {
+      window.dispatchEvent(new CustomEvent('str:open-getting-started'));
+      return;
+    }
     if (actionName === 'export') {
       if (!can('csvExport')) {
         window.location.href = '/billing#plans';
@@ -216,12 +228,14 @@ export default function Sidebar({
                         : undefined;
 
                   if (item.path) {
+                    const tourAttr = item.tourId ? { 'data-tour': item.tourId } : {};
                     return (
                       <NavLink
                         key={item.name}
                         to={item.locked ? '/billing#plans' : item.path}
                         title={tooltip}
                         onClick={handleMobileClose}
+                        {...tourAttr}
                         className={({ isActive }) =>
                           `relative group flex items-center rounded-lg text-xs font-semibold transition-all active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary ${
                             collapsed
@@ -303,6 +317,7 @@ export default function Sidebar({
                       key={item.name}
                       type="button"
                       title={tooltip}
+                      data-tour={item.tourId || undefined}
                       onClick={() => handleAction(item.action)}
                       className={`w-full flex items-center rounded-lg text-xs font-semibold transition-all active:scale-[0.98] text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
                         item.locked
@@ -317,7 +332,14 @@ export default function Sidebar({
                       <span className="material-symbols-outlined text-base text-slate-400 shrink-0">
                         {item.locked ? 'lock' : item.icon}
                       </span>
-                      <span className={collapsed ? 'lg:hidden' : ''}>{item.name}</span>
+                      <span className={`min-w-0 ${collapsed ? 'lg:hidden' : ''}`}>
+                        <span className="block truncate">{item.name}</span>
+                        {item.hint && (
+                          <span className={`block text-[9px] font-medium text-slate-500 truncate mt-0.5 ${collapsed ? 'lg:hidden' : ''}`}>
+                            {item.hint}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}
