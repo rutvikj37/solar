@@ -444,6 +444,20 @@ export async function migrateSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
+  // Existing installs created team_members before custom roles / invites.
+  // CREATE TABLE IF NOT EXISTS will not add these columns — migrate them explicitly.
+  await ensureColumn('team_members', 'role_id', 'INT UNSIGNED NULL');
+  await ensureColumn('team_members', 'invite_token', 'VARCHAR(128) NULL');
+  await ensureColumn('team_members', 'invite_expires', 'DATETIME NULL');
+  try {
+    // Widen legacy ENUM('manager','canvasser','sales_rep') so custom role names fit.
+    await db.query(
+      "ALTER TABLE team_members MODIFY COLUMN role VARCHAR(64) NOT NULL DEFAULT 'sales_rep'",
+    );
+  } catch (err) {
+    console.error('[Schema] team_members.role widen migration:', err.message);
+  }
+
   // Ensure techx admin role if account exists — gated (never auto-promote in production unless explicitly allowed)
   const allowBootstrapSuperAdmin =
     process.env.ALLOW_BOOTSTRAP_SUPER_ADMIN === '1' ||
@@ -487,6 +501,8 @@ export async function migrateSchema() {
     "idx_user_packages_user_status",
     "user_id, status",
   );
+  await ensureIndex("team_members", "idx_team_invite_token", "invite_token");
+  await ensureIndex("workspace_roles", "idx_workspace_roles_owner", "owner_user_id");
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS admin_credit_adjustments (

@@ -82,12 +82,16 @@ function parsePermissions(raw) {
 
 async function resolveMemberPermissions(ownerUserId, roleKey, roleId) {
   if (roleId != null && Number.isFinite(Number(roleId))) {
-    const [custom] = await db.query(
-      'SELECT permissions FROM workspace_roles WHERE id = ? AND owner_user_id = ? LIMIT 1',
-      [Number(roleId), ownerUserId],
-    );
-    if (custom.length > 0) {
-      return parsePermissions(custom[0].permissions);
+    try {
+      const [custom] = await db.query(
+        'SELECT permissions FROM workspace_roles WHERE id = ? AND owner_user_id = ? LIMIT 1',
+        [Number(roleId), ownerUserId],
+      );
+      if (custom.length > 0) {
+        return parsePermissions(custom[0].permissions);
+      }
+    } catch (err) {
+      if (err?.code !== 'ER_NO_SUCH_TABLE') throw err;
     }
   }
 
@@ -109,18 +113,49 @@ export async function resolveWorkspaceContext(userId) {
     throw new Error('Invalid user id for workspace context');
   }
 
-  const [memberRows] = await db.query(
-    `SELECT tm.owner_user_id, tm.role, tm.role_id
-     FROM users u
-     JOIN team_members tm
-       ON LOWER(tm.member_email) = LOWER(u.email)
-      AND tm.status = 'active'
-     WHERE u.id = ?
-       AND tm.owner_user_id <> u.id
-     ORDER BY tm.id ASC
-     LIMIT 1`,
-    [actorId],
-  );
+  let memberRows = [];
+  try {
+    const [rows] = await db.query(
+      `SELECT tm.owner_user_id, tm.role, tm.role_id
+       FROM users u
+       JOIN team_members tm
+         ON LOWER(tm.member_email) = LOWER(u.email)
+        AND tm.status = 'active'
+       WHERE u.id = ?
+         AND tm.owner_user_id <> u.id
+       ORDER BY tm.id ASC
+       LIMIT 1`,
+      [actorId],
+    );
+    memberRows = rows;
+  } catch (err) {
+    // Legacy DBs may lack team_members.role_id until migrateSchema() runs.
+    if (err?.code === 'ER_BAD_FIELD_ERROR' || err?.code === 'ER_NO_SUCH_TABLE') {
+      try {
+        const [rows] = await db.query(
+          `SELECT tm.owner_user_id, tm.role, NULL AS role_id
+           FROM users u
+           JOIN team_members tm
+             ON LOWER(tm.member_email) = LOWER(u.email)
+            AND tm.status = 'active'
+           WHERE u.id = ?
+             AND tm.owner_user_id <> u.id
+           ORDER BY tm.id ASC
+           LIMIT 1`,
+          [actorId],
+        );
+        memberRows = rows;
+      } catch (fallbackErr) {
+        if (fallbackErr?.code === 'ER_NO_SUCH_TABLE') {
+          memberRows = [];
+        } else {
+          throw fallbackErr;
+        }
+      }
+    } else {
+      throw err;
+    }
+  }
 
   if (memberRows.length === 0) {
     return {

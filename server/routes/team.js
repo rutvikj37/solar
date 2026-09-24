@@ -25,10 +25,17 @@ const router = express.Router();
 router.get('/roles', authenticateToken, asyncHandler(async (req, res) => {
   const workspace = await resolveWorkspaceContext(req.user.id);
   const ownerUserId = workspace.ownerUserId;
-  const [customRoles] = await db.query(
-    'SELECT id, name, description, color, permissions, created_at, updated_at FROM workspace_roles WHERE owner_user_id = ? ORDER BY id ASC',
-    [ownerUserId]
-  );
+  let customRoles = [];
+  try {
+    const [rows] = await db.query(
+      'SELECT id, name, description, color, permissions, created_at, updated_at FROM workspace_roles WHERE owner_user_id = ? ORDER BY id ASC',
+      [ownerUserId]
+    );
+    customRoles = rows;
+  } catch (err) {
+    if (err?.code !== 'ER_NO_SUCH_TABLE') throw err;
+    customRoles = [];
+  }
   const formattedCustom = customRoles.map((r) => ({
     id: r.id,
     name: r.name,
@@ -126,17 +133,41 @@ router.delete('/roles/:id', authenticateToken, requireWorkspacePermission('team_
 router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
   const workspace = await resolveWorkspaceContext(req.user.id);
   const ownerUserId = workspace.ownerUserId;
-  const [members] = await db.query(
-    `SELECT tm.id, tm.member_email, tm.role, tm.role_id, tm.status, tm.invite_token, tm.invite_expires, tm.created_at,
-            u.name, u.account_status,
-            wr.name as custom_role_name, wr.color as custom_role_color
-     FROM team_members tm
-     LEFT JOIN users u ON LOWER(u.email) = LOWER(tm.member_email)
-     LEFT JOIN workspace_roles wr ON wr.id = tm.role_id
-     WHERE tm.owner_user_id = ?
-     ORDER BY tm.created_at DESC`,
-    [ownerUserId]
-  );
+  let members;
+  try {
+    const [rows] = await db.query(
+      `SELECT tm.id, tm.member_email, tm.role, tm.role_id, tm.status, tm.invite_token, tm.invite_expires, tm.created_at,
+              u.name, u.account_status,
+              wr.name as custom_role_name, wr.color as custom_role_color
+       FROM team_members tm
+       LEFT JOIN users u ON LOWER(u.email) = LOWER(tm.member_email)
+       LEFT JOIN workspace_roles wr ON wr.id = tm.role_id
+       WHERE tm.owner_user_id = ?
+       ORDER BY tm.created_at DESC`,
+      [ownerUserId]
+    );
+    members = rows;
+  } catch (err) {
+    // Pre-migration schema: role_id / invite_* / workspace_roles may be missing.
+    if (err?.code !== 'ER_BAD_FIELD_ERROR' && err?.code !== 'ER_NO_SUCH_TABLE') throw err;
+    const [rows] = await db.query(
+      `SELECT tm.id, tm.member_email, tm.role, tm.status, tm.created_at,
+              u.name, u.account_status
+       FROM team_members tm
+       LEFT JOIN users u ON LOWER(u.email) = LOWER(tm.member_email)
+       WHERE tm.owner_user_id = ?
+       ORDER BY tm.created_at DESC`,
+      [ownerUserId]
+    );
+    members = rows.map((m) => ({
+      ...m,
+      role_id: null,
+      invite_token: null,
+      invite_expires: null,
+      custom_role_name: null,
+      custom_role_color: null,
+    }));
+  }
   const entitlements = await getUserEntitlements(req.user.id, req.user.role);
   const frontendBaseUrl = resolveFrontendBaseUrl();
 
