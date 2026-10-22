@@ -97,17 +97,19 @@ export async function issueEmailVerification(userId, email, name) {
 
 export async function verifyEmailToken(token) {
   if (!token) return { ok: false, error: 'Token required' };
-  const [rows] = await db.query(
-    `SELECT id, email FROM users
-     WHERE email_verification_token = ? AND email_verification_expires > UTC_TIMESTAMP() LIMIT 1`,
+  const [result] = await db.query(
+    `UPDATE users
+     SET email_verified = 1, email_verification_token = NULL, email_verification_expires = NULL,
+         id = LAST_INSERT_ID(id)
+     WHERE email_verification_token = ? AND email_verification_expires > UTC_TIMESTAMP()
+     LIMIT 1`,
     [token],
   );
-  if (!rows.length) return { ok: false, error: 'Invalid or expired verification link' };
-  await db.query(
-    `UPDATE users SET email_verified = 1, email_verification_token = NULL, email_verification_expires = NULL WHERE id = ?`,
-    [rows[0].id],
-  );
-  return { ok: true, userId: rows[0].id, email: rows[0].email };
+  if (result.affectedRows !== 1 || !result.insertId) {
+    return { ok: false, error: 'Invalid or expired verification link' };
+  }
+  const [rows] = await db.query('SELECT id, email FROM users WHERE id = ?', [result.insertId]);
+  return { ok: true, userId: result.insertId, email: rows[0]?.email || null };
 }
 
 export async function issuePasswordReset(email) {
@@ -199,12 +201,20 @@ export async function issuePasswordReset(email) {
 }
 
 export async function consumePasswordResetToken(token) {
-  const [rows] = await db.query(
-    `SELECT id FROM users WHERE password_reset_token = ? AND password_reset_expires > UTC_TIMESTAMP() LIMIT 1`,
+  if (!token) return { ok: false, error: 'Invalid or expired reset link' };
+  // Single conditional UPDATE so concurrent requests cannot both consume the token;
+  // LAST_INSERT_ID(id) exposes the matched user id via insertId on this statement.
+  const [result] = await db.query(
+    `UPDATE users
+     SET password_reset_token = NULL, password_reset_expires = NULL, id = LAST_INSERT_ID(id)
+     WHERE password_reset_token = ? AND password_reset_expires > UTC_TIMESTAMP()
+     LIMIT 1`,
     [token],
   );
-  if (!rows.length) return { ok: false, error: 'Invalid or expired reset link' };
-  return { ok: true, userId: rows[0].id };
+  if (result.affectedRows !== 1 || !result.insertId) {
+    return { ok: false, error: 'Invalid or expired reset link' };
+  }
+  return { ok: true, userId: result.insertId };
 }
 
 export async function issueTeamInvitationEmail({

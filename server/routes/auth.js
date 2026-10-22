@@ -46,6 +46,7 @@ export function signUserToken(user) {
       email: user.email,
       name: user.name,
       role: user.role || "solar_company",
+      tv: Number(user.token_version) || 0,
     },
     JWT_SECRET,
     { algorithm: "HS256", expiresIn: "24h" },
@@ -73,6 +74,7 @@ function publicUser(user) {
     jobTitle: user.job_title || null,
     leadVolume: user.lead_volume || null,
     phone: user.phone || null,
+    companyPostalAddress: user.company_postal_address || null,
     apiKeyMasked: maskApiKey(user.developer_api_key),
     hasApiKey: Boolean(user.developer_api_key),
   };
@@ -235,35 +237,15 @@ router.post(
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: "Valid email required" });
     }
+    const genericMessage =
+      "If an account exists for that email, a password reset link has been sent.";
     try {
-      const result = await issuePasswordReset(email);
-      if (!result?.sent) {
-        return res.status(404).json({
-          found: false,
-          code: "ACCOUNT_NOT_FOUND",
-          error: "Sorry, no account exists for that email.",
-        });
-      }
-      return res.json({
-        found: true,
-        message: "A password reset link has been sent to your email.",
-      });
+      await issuePasswordReset(email);
     } catch (err) {
-      const code = err.code || "EMAIL_SEND_FAILED";
-      const userFacing =
-        code === "EMAIL_NOT_CONFIGURED"
-          ? "Password reset email is temporarily unavailable. Please try again later or contact support."
-          : err.message || "Unable to send password reset email";
-      // Never return 502 — nginx/browsers surface it as Bad Gateway even with a JSON body.
-      let status = Number(err.status) || 503;
-      if (!Number.isFinite(status) || status < 400 || status > 599 || status === 502) {
-        status = 503;
-      }
-      return res.status(status).json({
-        error: userFacing,
-        code,
-      });
+      // Same response whether or not the account exists, so the endpoint cannot be used to enumerate users.
+      console.error("[auth/forgot-password] reset email failed:", err.code || "", err.message || err);
     }
+    return res.json({ message: genericMessage });
   }),
 );
 
@@ -293,7 +275,8 @@ router.post(
       const salt = await bcrypt.genSalt(12);
       const passwordHash = await bcrypt.hash(password, salt);
       await db.query(
-        `UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL, email_verified = 1 WHERE id = ?`,
+        `UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL, email_verified = 1,
+           token_version = token_version + 1 WHERE id = ?`,
         [passwordHash, consumed.userId],
       );
     } catch {
@@ -518,18 +501,21 @@ router.get(
   asyncHandler(async (req, res) => {
     const [users] = await db.query(
       `SELECT id, name, email, company_name as company, phone, role, account_status,
-            job_title, lead_volume, developer_api_key
+            job_title, lead_volume, developer_api_key, company_postal_address
      FROM users WHERE id = ?`,
       [req.user.id],
     );
     if (users.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
-    const row = users[0];
+    const { developer_api_key: rawApiKey, ...row } = users[0];
     const user = {
       ...row,
+      apiKeyMasked: maskApiKey(rawApiKey),
+      hasApiKey: Boolean(rawApiKey),
       jobTitle: row.job_title || null,
       leadVolume: row.lead_volume || null,
+      companyPostalAddress: row.company_postal_address || null,
     };
 
     const [packages] = await db.query(
@@ -610,9 +596,18 @@ router.patch(
   "/profile",
   authenticateToken,
   asyncHandler(async (req, res) => {
-    const { name, phone, jobTitle } = req.body || {};
+    const { name, phone, jobTitle, company, companyPostalAddress } = req.body || {};
     const updates = [];
     const params = [];
+
+    if (company != null && String(company).trim()) {
+      updates.push("company_name = ?");
+      params.push(String(company).trim().slice(0, 255));
+    }
+    if (companyPostalAddress != null) {
+      updates.push("company_postal_address = ?");
+      params.push(String(companyPostalAddress).trim().slice(0, 500) || null);
+    }
 
     if (name != null && String(name).trim()) {
       updates.push("name = ?");
@@ -635,7 +630,8 @@ router.patch(
     await db.query(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, params);
 
     const [users] = await db.query(
-      `SELECT id, name, email, company_name as company, phone, role, job_title, lead_volume, developer_api_key
+      `SELECT id, name, email, company_name as company, phone, role, job_title, lead_volume, developer_api_key,
+              company_postal_address
        FROM users WHERE id = ?`,
       [req.user.id],
     );

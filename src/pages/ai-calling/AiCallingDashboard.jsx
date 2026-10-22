@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import KpiCard from '../../components/ai-calling/KpiCard';
 import DispositionBadge from '../../components/ai-calling/DispositionBadge';
 import { API_BASE } from '../../config.js';
+import { BRAND_NAME } from '../../config/brand.js';
 
 const API = API_BASE;
 
@@ -14,7 +15,7 @@ export default function AiCallingDashboard() {
   const [showTestModal, setShowTestModal] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [testCallerName, setTestCallerName] = useState('Emily');
-  const [testBusinessName, setTestBusinessName] = useState('Solar Velocity');
+  const [testBusinessName, setTestBusinessName] = useState(BRAND_NAME);
   const [callingTest, setCallingTest] = useState(false);
   const [testStatusMsg, setTestStatusMsg] = useState(null);
 

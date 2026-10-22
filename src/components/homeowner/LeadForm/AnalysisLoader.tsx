@@ -45,7 +45,7 @@ export function AnalysisLoader({ onComplete }: { onComplete: () => void }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#060B17] flex flex-col items-center justify-center overflow-hidden">
+    <div className="theme-dark-canvas fixed inset-0 z-[100] bg-[#060B17] flex flex-col items-center justify-center overflow-hidden">
       {/* Background Visuals */}
       <div className="absolute inset-0 z-0">
          {/* Zooming Images Layer */}

@@ -17,6 +17,7 @@ import {
 } from '../services/planEntitlements.js';
 import { trackedFetch } from '../services/apiUsage.js';
 import { cacheRentcastRecords, getCachedRentcastRecord, normalizeAddress } from '../services/rentcastCache.js';
+import { leadAddressHash } from '../utils/leadAddressHash.js';
 import { getZipFromCoords } from '../services/leadService.js';
 import {
   normalizeDetailsCoordinates,
@@ -48,6 +49,9 @@ import {
 } from '../services/propertyService.js';
 import { isMissingField, isPlaceholderOwnerName, hasUsableEnrichedContacts } from '../services/contactEnrichmentService.js';
 import { getCachedEnrichment } from '../services/enrichmentCache.js';
+import { isWithinEnrichmentCooldown } from '../utils/enrichmentCooldown.js';
+import { getAllowedStatusKeys } from './pipeline.js';
+import { PIPELINE_STATUSES } from './crm.js';
 import { enrollLeadInActiveCampaigns } from '../services/drip/dripEngine.js';
 import {
   renderLeadSharePdf,
@@ -77,6 +81,27 @@ async function refundReservedCredits(packageRecord, reservedCredits) {
   );
 }
 
+/** Refund the unused part of a bulk-scan credit reservation when the handler throws midway. */
+function withBulkScanRefund(handler) {
+  return async (req, res, next) => {
+    try {
+      return await handler(req, res, next);
+    } catch (err) {
+      const reservation = req.bulkScanReservation;
+      if (reservation && !reservation.settled) {
+        reservation.settled = true;
+        const unused = reservation.reserved - reservation.used;
+        if (unused > 0) {
+          await db
+            .query('UPDATE user_packages SET remaining_leads = remaining_leads + ? WHERE id = ?', [unused, reservation.packageId])
+            .catch((refundErr) => console.error('[Bulk Scan] credit refund failed:', refundErr.message));
+        }
+      }
+      throw err;
+    }
+  };
+}
+
 function isMockEnrichment(details) {
   if (!details) return true;
   if (details.enrichmentMeta?.usedMockPropertyFallback) return true;
@@ -86,7 +111,7 @@ function isMockEnrichment(details) {
 }
 
 // Generate Lead & Deduct Credits
-router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/generate', authenticateToken, requireWorkspacePermission('leads_create'), asyncHandler(async (req, res) => {
   const { propertyId, detail } = req.body;
   if (!propertyId) return res.status(400).json({ error: 'Missing property data' });
 
@@ -192,7 +217,11 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  const [existing] = await db.query('SELECT * FROM leads WHERE user_id = ? AND address = ?', [ownerUserId, full.address]);
+  const addressHash = leadAddressHash(full.address);
+  const [existing] = await db.query(
+    'SELECT * FROM leads WHERE user_id = ? AND (address = ? OR (address_hash IS NOT NULL AND address_hash = ?)) ORDER BY id ASC LIMIT 1',
+    [ownerUserId, full.address, addressHash],
+  );
   if (existing.length > 0) {
     const row = existing[0];
     const sparse =
@@ -270,15 +299,33 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
 
   const conn = await db.getConnection();
   let leadResult;
+  let duplicateLeadId = null;
   try {
     await conn.beginTransaction();
+    // Serialize concurrent unlocks for this credit pool; a racing duplicate then hits UNIQUE(user_id, address_hash).
+    if (!adminBypass && packageRecord) {
+      const [locked] = await conn.query(
+        'SELECT remaining_leads FROM user_packages WHERE id = ? FOR UPDATE',
+        [packageRecord.id],
+      );
+      if (!locked.length || Number(locked[0].remaining_leads) < 1) {
+        await conn.rollback();
+        return res.status(402).json({
+          error: 'Insufficient lead credits',
+          credits: 0,
+          upgradeRequired: true,
+          reason: 'no_credits',
+        });
+      }
+    }
     const [ins] = await conn.query(
-      `INSERT INTO leads (user_id, assigned_to, address, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO leads (user_id, assigned_to, address, address_hash, latitude, longitude, owner_name, phone, phone_type, email, email_status, linkedin, mailing_address, property_value, owner_occupied, parcel_id, roof_size, solar_potential, estimated_savings, lead_score, status, solar_json, property_json, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         ownerUserId,
         assignedTo,
         full.address,
+        addressHash,
         parseFloat(full.lat) || null,
         parseFloat(full.lng) || null,
         full.propertyData?.ownerName,
@@ -335,9 +382,27 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     } catch {
       /* ignore */
     }
-    throw err;
+    if (err?.code === 'ER_DUP_ENTRY' && addressHash) {
+      const [dupe] = await db.query(
+        'SELECT id FROM leads WHERE user_id = ? AND address_hash = ? LIMIT 1',
+        [ownerUserId, addressHash],
+      );
+      duplicateLeadId = dupe[0]?.id || null;
+    }
+    if (!duplicateLeadId) throw err;
   } finally {
     conn.release();
+  }
+
+  if (duplicateLeadId) {
+    return res.status(200).json({
+      message: 'Lead already generated',
+      leadId: duplicateLeadId,
+      detail: { ...full, unlocked: true, leadId: duplicateLeadId },
+      unlocked: true,
+      creditsRemaining: await getRemainingCredits(ownerUserId, adminBypass),
+      creditDeducted: false,
+    });
   }
 
   // Auto-enroll lead into active drip campaigns (owner's campaigns)
@@ -352,6 +417,13 @@ router.post('/generate', authenticateToken, asyncHandler(async (req, res) => {
     creditsRemaining: await getRemainingCredits(ownerUserId, adminBypass),
     creditDeducted: !adminBypass && !!packageRecord,
   });
+}));
+
+// Lightweight lead count for header badges
+router.get('/count', authenticateToken, asyncHandler(async (req, res) => {
+  const workspace = await resolveWorkspaceContext(req.user.id);
+  const [[row]] = await db.query('SELECT COUNT(*) AS cnt FROM leads WHERE user_id = ?', [workspace.ownerUserId]);
+  res.json({ count: Number(row?.cnt) || 0 });
 }));
 
 // Pipeline summary counts
@@ -408,10 +480,16 @@ router.get('/export-csv', authenticateToken, requirePlanFeature('csvExport'), re
     'Created At'
   ];
   
+  const csvCell = (value) => {
+    let s = value == null ? '' : value instanceof Date ? value.toISOString() : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+
   const rows = leads.map(lead => [
     lead.id,
     lead.owner_name || 'N/A',
-    `"${(lead.address || '').replace(/"/g, '""')}"`,
+    lead.address || '',
     lead.lead_score || 0,
     lead.phone || 'N/A',
     lead.email || 'N/A',
@@ -421,17 +499,17 @@ router.get('/export-csv', authenticateToken, requirePlanFeature('csvExport'), re
   ]);
 
   const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.join(','))
-  ].join('\n');
+    headers.map(csvCell).join(','),
+    ...rows.map(row => row.map(csvCell).join(','))
+  ].join('\r\n');
 
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename=solar_velocity_leads.csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=spacetoroof_leads.csv');
   res.status(200).send(csvContent);
 }));
 
 // Bulk Delete Leads
-router.post('/bulk-delete', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/bulk-delete', authenticateToken, requireWorkspacePermission('leads_edit'), asyncHandler(async (req, res) => {
   const { leadIds } = req.body;
   if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
     return res.status(400).json({ error: 'leadIds array is required' });
@@ -442,7 +520,7 @@ router.post('/bulk-delete', authenticateToken, asyncHandler(async (req, res) => 
 }));
 
 // Bulk Area Scan
-router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
+router.post('/bulk-scan', authenticateToken, requireWorkspacePermission('leads_create'), asyncHandler(withBulkScanRefund(async (req, res) => {
   let {
     zip,
     lat,
@@ -466,6 +544,9 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   if (!zip) return res.status(400).json({ error: 'ZIP code required or coordinates not resolvable' });
+  const zipMatch = /^(\d{5})(?:-\d{4})?$/.exec(String(zip).trim());
+  if (!zipMatch) return res.status(400).json({ error: 'ZIP code must be 5 digits' });
+  zip = zipMatch[1];
 
   const workspace = await resolveWorkspaceContext(req.user.id);
   const ownerUserId = workspace.ownerUserId;
@@ -539,6 +620,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
       });
     }
     reservedCredits = requestedQuota;
+    req.bulkScanReservation = { packageId: packageRecord.id, reserved: requestedQuota, used: 0, settled: false };
   }
 
   const queryLimit = requestedQuota;
@@ -597,7 +679,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     rentcastStatus = 'no_key';
   } else {
     const rentcastLimit = Math.min(500, Math.max(80, queryLimit * 5));
-    let rentcastSearchUrl = `https://api.rentcast.io/v1/properties?zipCode=${zip}&limit=${rentcastLimit}`;
+    let rentcastSearchUrl = `https://api.rentcast.io/v1/properties?zipCode=${encodeURIComponent(zip)}&limit=${rentcastLimit}`;
     if (Number.isFinite(centerLat) && Number.isFinite(centerLng) && radiusMiles > 0) {
       rentcastSearchUrl = `https://api.rentcast.io/v1/properties?latitude=${centerLat}&longitude=${centerLng}&radius=${radiusMiles.toFixed(2)}&limit=${rentcastLimit}`;
     }
@@ -660,6 +742,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
   if (propertiesList.length === 0) {
     if (!allowMockProperties()) {
       await refundReservedCredits(packageRecord, reservedCredits);
+      if (req.bulkScanReservation) req.bulkScanReservation.settled = true;
       const providerDown = rentcastStatus === 'no_key' || rentcastStatus === 'error';
       if (providerDown) {
         void notifyAdminApiFailure({
@@ -773,51 +856,61 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
 
     await normalizeDetailsCoordinates(details);
 
-    const [insertResult] = await db.query(
-      `INSERT INTO leads (
-        user_id, assigned_to, address, latitude, longitude, owner_name, lead_score,
-        phone, phone_type, email, email_status, linkedin, status,
-        property_value, roof_size, estimated_savings, parcel_id,
-        owner_occupied, solar_potential, mailing_address, notes,
-        solar_json, property_json, image_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        ownerUserId,
-        assignedTo,
-        details.address,
-        parseFloat(details.lat) || null,
-        parseFloat(details.lng) || null,
-        details.propertyData.ownerName,
-        details.aiLeadScore.overall,
-        details.contact.phone,
-        details.contact.phoneType || 'Not Available',
-        details.contact.email,
-        details.contact.emailStatus || 'Not Available',
-        details.contact.linkedIn || 'Not Available',
-        leadStatus,
-        propValueNum,
-        roofAreaNum,
-        savingsNum,
-        details.propertyData.parcelNumber,
-        details.propertyData.ownerOccupied === 'Yes' ? 1 : 0,
-        details.solar.potential || 'NOT AVAILABLE',
-        details.propertyData.mailingAddress,
-        incompleteNote || null,
-        JSON.stringify(details.solar || {}),
-        JSON.stringify({
-          ...(details.propertyData || {}),
-          latitude: parseFloat(details.lat) || null,
-          longitude: parseFloat(details.lng) || null,
-          livingArea: details.livingArea,
-          lotSize: details.lotSize,
-          stories: details.stories,
-          propertyType: details.propertyType,
-          yearBuilt: details.yearBuilt,
-          aiLeadScore: details.aiLeadScore || null
-        }),
-        details.imageUrl || null
-      ]
-    );
+    let insertResult;
+    try {
+      [insertResult] = await db.query(
+        `INSERT INTO leads (
+          user_id, assigned_to, address, address_hash, latitude, longitude, owner_name, lead_score,
+          phone, phone_type, email, email_status, linkedin, status,
+          property_value, roof_size, estimated_savings, parcel_id,
+          owner_occupied, solar_potential, mailing_address, notes,
+          solar_json, property_json, image_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          ownerUserId,
+          assignedTo,
+          details.address,
+          leadAddressHash(details.address),
+          parseFloat(details.lat) || null,
+          parseFloat(details.lng) || null,
+          details.propertyData.ownerName,
+          details.aiLeadScore.overall,
+          details.contact.phone,
+          details.contact.phoneType || 'Not Available',
+          details.contact.email,
+          details.contact.emailStatus || 'Not Available',
+          details.contact.linkedIn || 'Not Available',
+          leadStatus,
+          propValueNum,
+          roofAreaNum,
+          savingsNum,
+          details.propertyData.parcelNumber,
+          details.propertyData.ownerOccupied === 'Yes' ? 1 : 0,
+          details.solar.potential || 'NOT AVAILABLE',
+          details.propertyData.mailingAddress,
+          incompleteNote || null,
+          JSON.stringify(details.solar || {}),
+          JSON.stringify({
+            ...(details.propertyData || {}),
+            latitude: parseFloat(details.lat) || null,
+            longitude: parseFloat(details.lng) || null,
+            livingArea: details.livingArea,
+            lotSize: details.lotSize,
+            stories: details.stories,
+            propertyType: details.propertyType,
+            yearBuilt: details.yearBuilt,
+            aiLeadScore: details.aiLeadScore || null
+          }),
+          details.imageUrl || null
+        ]
+      );
+    } catch (insertErr) {
+      if (insertErr?.code !== 'ER_DUP_ENTRY') throw insertErr;
+      summary.skipped++;
+      summary.skippedReasons.duplicate++;
+      markLeadAddressSaved(details.address);
+      return;
+    }
 
     if (insertResult?.insertId) {
       createdLeadIds.push(insertResult.insertId);
@@ -832,6 +925,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
     }
 
     summary.leadsCount++;
+    if (req.bulkScanReservation) req.bulkScanReservation.used++;
     if (hasContact) summary.withContact++;
     else summary.withoutContact++;
   };
@@ -994,6 +1088,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
       [reservedCredits - creditsUsed, packageRecord.id],
     );
   }
+  if (req.bulkScanReservation) req.bulkScanReservation.settled = true;
 
   const [refreshedPackages] = await db.query('SELECT remaining_leads FROM user_packages WHERE user_id = ? AND status = "active"', [ownerUserId]);
   const currentCredits = adminBypass ? 9999 : (refreshedPackages[0]?.remaining_leads ?? 0);
@@ -1020,7 +1115,7 @@ router.post('/bulk-scan', authenticateToken, asyncHandler(async (req, res) => {
         ? entitlements.limits.territoryLockDays
         : 0,
   });
-}));
+})));
 
 // Refresh lead map coordinates (Google Solar rooftop center preferred)
 router.post('/:id/refresh-coordinates', authenticateToken, asyncHandler(async (req, res) => {
@@ -1110,11 +1205,15 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
     !solar.totalRoofArea ||
     solar.totalRoofArea === 'Not Available';
 
+  const enrichmentCoolingDown = isWithinEnrichmentCooldown(lead.last_enriched_at);
+
   const needsPropertyBackfill =
+    !enrichmentCoolingDown &&
     isPlaceholderOwnerName(lead.owner_name) &&
     isPlaceholderOwnerName(propertyExtra?.ownerName);
 
   const needsContactBackfill =
+    !enrichmentCoolingDown &&
     isMissingField(lead.phone) && isMissingField(lead.email);
 
   const lat = parseFloat(lead.latitude);
@@ -1128,6 +1227,7 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
     lng;
 
   if (needsEnrichmentBackfill) {
+    const paidEnrichmentAttempted = needsPropertyBackfill || needsContactBackfill;
     try {
       console.log(
         `[Lead Detail] Backfilling lead #${id} @ ${lat},${lng} ` +
@@ -1196,7 +1296,8 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
            roof_size = ?, solar_potential = ?, estimated_savings = ?,
            owner_name = ?, phone = ?, phone_type = ?, email = ?, email_status = ?,
            mailing_address = ?, owner_occupied = ?, parcel_id = ?,
-           property_value = CASE WHEN ? > 10000 OR property_value IS NULL OR property_value < 10000 THEN ? ELSE property_value END
+           property_value = CASE WHEN ? > 10000 OR property_value IS NULL OR property_value < 10000 THEN ? ELSE property_value END,
+           last_enriched_at = CASE WHEN ? THEN NOW() ELSE last_enriched_at END
          WHERE id = ? AND user_id = ?`,
         [
           JSON.stringify(solar || {}),
@@ -1215,10 +1316,12 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
           parcelId,
           propVal,
           propVal,
+          paidEnrichmentAttempted ? 1 : 0,
           id,
-          req.user.id,
+          lead.user_id,
         ],
       );
+      if (paidEnrichmentAttempted) lead.last_enriched_at = new Date();
 
       lead.owner_name = ownerName;
       lead.phone = phone;
@@ -1251,6 +1354,11 @@ router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
       }
     } catch (enrichErr) {
       console.error(`[Lead Detail] Enrichment backfill failed for #${id}:`, enrichErr.message || enrichErr);
+      if (paidEnrichmentAttempted) {
+        await db
+          .query('UPDATE leads SET last_enriched_at = NOW() WHERE id = ?', [id])
+          .catch(() => {});
+      }
     }
   }
 
@@ -1374,6 +1482,19 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req, res) => {
   const updates = [];
   const params = [];
   if (status !== undefined) {
+    if (typeof status !== 'string' || !status.trim()) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    if (status !== lead.status) {
+      const allowed = new Set([
+        ...(await getAllowedStatusKeys(lead.user_id)),
+        ...PIPELINE_STATUSES,
+        'generated',
+      ]);
+      if (!allowed.has(status)) {
+        return res.status(400).json({ error: `Invalid status. Allowed: ${[...allowed].join(', ')}` });
+      }
+    }
     updates.push('status = ?');
     params.push(status);
   }

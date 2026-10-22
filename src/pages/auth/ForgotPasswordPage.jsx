@@ -5,9 +5,6 @@ import { API_BASE } from '../../config.js';
 import { BRAND_NAME } from '../../config/brand.js';
 
 function friendlyAuthError(err, data, res) {
-  if (data?.code === 'ACCOUNT_NOT_FOUND' || res?.status === 404) {
-    return data?.error || 'Sorry, no account exists for that email.';
-  }
   if (data?.code === 'EMAIL_NOT_CONFIGURED') {
     return (
       data.error ||
@@ -48,7 +45,7 @@ export default function ForgotPasswordPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw Object.assign(new Error(friendlyAuthError(null, data, res)), { data, res });
-      setMessage(data.message || 'A password reset link has been sent to your email.');
+      setMessage(data.message || 'If an account exists for that email, a password reset link has been sent.');
     } catch (err) {
       setError(friendlyAuthError(err, err.data, err.res));
     } finally {

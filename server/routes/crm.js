@@ -3,6 +3,8 @@ import db from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
 import { getAllowedStatusKeys } from './pipeline.js';
+import { requireWorkspacePermission } from '../middleware/workspacePermissions.js';
+import { workspaceHasPermission } from '../utils/workspaceContext.js';
 
 const router = express.Router();
 
@@ -45,11 +47,18 @@ router.get('/pipeline/summary', authenticateToken, async (req, res) => {
 });
 
 // Update lead status / notes / assignee
-router.patch('/:id', authenticateToken, async (req, res) => {
+router.patch('/:id', authenticateToken, requireWorkspacePermission('leads_edit'), async (req, res) => {
   const { id } = req.params;
   const { status, notes, assigned_to } = req.body;
 
   try {
+    if (assigned_to !== undefined && !workspaceHasPermission(req.workspace, 'team_manage')) {
+      return res.status(403).json({
+        error: 'Missing workspace permission: team_manage',
+        code: 'WORKSPACE_PERMISSION_DENIED',
+        permission: 'team_manage',
+      });
+    }
     const lead = await fetchLeadForUser(id, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 

@@ -7,6 +7,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { BRAND_NAME } from '../../config/brand.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,7 +129,7 @@ export function buildSystemPrompt({ callerName, businessName, knowledgeBase, qua
         .join('\n')
     : defaultObjections;
 
-  return `You are ${callerName || 'Emily'}, a warm, friendly, and natural human caller for ${businessName || 'Solar Velocity'}. This is a brief qualification call — not a sales pitch.
+  return `You are ${callerName || 'Emily'}, a warm, friendly, and natural human caller for ${businessName || BRAND_NAME}. This is a brief qualification call — not a sales pitch.
 
 CRITICAL CONVERSATIONAL RULES:
 - Speak naturally and warmly. Never rush. Ask ONE question at a time.
@@ -237,7 +238,7 @@ Return JSON: {
  */
 export function buildRealtimeSystemPrompt(leadData, campaign, previousCalls = [], knowledgeBase = []) {
   const callerName = campaign?.caller_name || 'Emily';
-  const businessName = campaign?.business_name || 'Solar Velocity';
+  const businessName = campaign?.business_name || BRAND_NAME;
   const customerName = leadData?.owner_name || 'there';
   const address = leadData?.address || '';
   const state = leadData?.state || '';

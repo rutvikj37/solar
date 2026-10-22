@@ -101,6 +101,49 @@ let authSessionInflight = null;
 export function clearAuthSessionCache() {
   authSessionCache = null;
   authSessionInflight = null;
+  meCache = null;
+  meInflight = null;
+}
+
+const ME_CACHE_MS = 5000;
+let meCache = null; // { token, at, result }
+let meInflight = null; // { token, promise }
+
+/**
+ * Shared GET /api/auth/me with in-flight dedupe and a short cache.
+ * Resolves to { status: 'ok', data } | { status: 'unauthorized' } | { status: 'error', httpStatus } | { status: 'no_token' }.
+ * Only 'unauthorized' (401/403/404 from /me) clears the stored token; 429/5xx/network errors are transient.
+ */
+export function fetchMeResult({ force = false } = {}) {
+  const token = getToken();
+  if (!token) return Promise.resolve({ status: 'no_token' });
+  if (!force && meCache?.token === token && Date.now() - meCache.at < ME_CACHE_MS) {
+    return Promise.resolve(meCache.result);
+  }
+  if (!force && meInflight?.token === token) return meInflight.promise;
+
+  const promise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      if (isAuthError(res.status) || res.status === 404) {
+        if (getToken() === token) clearToken();
+        return { status: 'unauthorized', httpStatus: res.status };
+      }
+      if (!res.ok) return { status: 'error', httpStatus: res.status };
+      const result = { status: 'ok', data: await res.json() };
+      if (getToken() === token) meCache = { token, at: Date.now(), result };
+      return result;
+    } catch {
+      return { status: 'error', httpStatus: 0 };
+    }
+  })().finally(() => {
+    if (meInflight?.promise === promise) meInflight = null;
+  });
+  meInflight = { token, promise };
+  return promise;
 }
 
 export function peekAuthSessionCache(token = getToken()) {
@@ -117,14 +160,18 @@ export async function loadAuthSession() {
   }
   if (authSessionCache?.token === token) return authSessionCache;
   if (!authSessionInflight) {
-    authSessionInflight = fetchMe()
-      .then((data) => {
-        if (!data) {
+    authSessionInflight = fetchMeResult()
+      .then((result) => {
+        if (result.status === 'ok') {
+          authSessionCache = { token, role: result.data?.user?.role };
+          return authSessionCache;
+        }
+        if (result.status === 'unauthorized' || result.status === 'no_token') {
           clearAuthSessionCache();
           return null;
         }
-        authSessionCache = { token, role: data.user?.role };
-        return authSessionCache;
+        // Server unreachable / rate-limited: keep the token, let the caller retry.
+        return { token, role: null, transient: true, httpStatus: result.httpStatus };
       })
       .finally(() => {
         authSessionInflight = null;
@@ -163,25 +210,13 @@ export function logoutToLogin() {
   window.location.replace('/login');
 }
 
-/** Returns profile payload or null when token is missing/invalid (clears stale token). */
-export async function fetchMe() {
-  const token = getToken();
-  if (!token) return null;
-
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    });
-    if (isAuthError(res.status) || res.status === 404) {
-      clearToken();
-      return null;
-    }
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
+/**
+ * Returns the profile payload, or null when unavailable. Clears the token only on 401/403/404;
+ * use fetchMeResult() to tell "logged out" apart from transient errors.
+ */
+export async function fetchMe(options) {
+  const result = await fetchMeResult(options);
+  return result.status === 'ok' ? result.data : null;
 }
 
 /**

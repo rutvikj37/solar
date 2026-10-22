@@ -10,7 +10,8 @@ const PROVIDERS = [
   { id: 'verifalia', label: 'Verifalia', envKeys: ['VERIFALIA_USERNAME'] },
   { id: 'twilio', label: 'Twilio', envKeys: ['TWILIO_ACCOUNT_SID'] },
   { id: 'nrel', label: 'NREL PVWatts / Rates', envKeys: ['NREL_API_KEY', 'NLR_API_KEY'] },
-  { id: 'stripe', label: 'Stripe', envKeys: ['STRIPE_SECRET_KEY'] }
+  { id: 'stripe', label: 'Stripe', envKeys: ['STRIPE_SECRET_KEY'] },
+  { id: 'openai', label: 'OpenAI (AI writing)', envKeys: ['OPENAI_API_KEY'] }
 ];
 
 function isKeyValid(key) {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { emailToastFromSearchParams } from '../../lib/emailIntegrations.js';
 import EmailIntegrationsSection from '../../components/EmailIntegrationsSection.jsx';
+import CalendarIntegrationsSection from '../../components/CalendarIntegrationsSection.jsx';
 
 export default function IntegrationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,6 +38,7 @@ export default function IntegrationsPage() {
       )}
 
       <EmailIntegrationsSection onToast={setToast} />
+      <CalendarIntegrationsSection onToast={setToast} />
     </div>
   );
 }

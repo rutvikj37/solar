@@ -3,7 +3,16 @@ import express from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import db from '../db.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, isAdminRole, requireAdmin } from '../middleware/auth.js';
+import {
+  OWNERSHIP_TYPES,
+  assumptionsSnapshot,
+  buildProposalEconomics,
+  listIncentives,
+  normalizeOwnership,
+  normalizeSegment,
+  normalizeStateCode,
+} from '../services/solarEconomics.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { maskLeadContactForPublic } from '../utils/leadAccess.js';
 import { requirePlanFeature } from '../services/planEntitlements.js';
@@ -13,6 +22,14 @@ const router = express.Router();
 const publicProposalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
+
+const publicRecalcLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests' },
@@ -171,55 +188,99 @@ async function recordProposalEvent(proposal, eventType, { sessionId = null, meta
   return { ok: true, proposal: fresh[0] };
 }
 
-// Utility: Calculate ROI parameters server-side
-function calculateSolarROI(params) {
-  const grossCost = Number(params.grossCost || 25500);
-  const batteryCost = Number(params.batteryCost || (params.batteryType === 'tesla_powerwall' ? 11500 * Number(params.batteryCount || 1) : params.batteryType === 'enphase_iq' ? 6500 * Number(params.batteryCount || 1) : 0));
-  const totalGross = grossCost + batteryCost;
-  
-  const itc30 = params.includeItc30 ? totalGross * 0.30 : 0;
-  const stateRebate = Number(params.stateRebate || 0);
-  const netCost = Math.max(0, totalGross - itc30 - stateRebate);
-
-  const systemSizeKw = Number(params.systemSizeKw || 8.5);
-  const annualProdKwh = systemSizeKw * 1400; // Average solar yield kWh/yr
-  const baseElecRate = 0.22; // $0.22/kWh
-  const escalation = Number(params.utilityEscalation || 4.5) / 100;
-  
-  let cumulative25yrUtilityWithoutSolar = 0;
-  let currentRate = baseElecRate;
-  for (let yr = 1; yr <= 25; yr++) {
-    cumulative25yrUtilityWithoutSolar += annualProdKwh * currentRate;
-    currentRate *= (1 + escalation);
+function parseAssumptionsJson(proposal) {
+  try {
+    return proposal?.assumptions_json ? JSON.parse(proposal.assumptions_json) : {};
+  } catch {
+    return {};
   }
+}
 
-  const est25yrSavings = Math.round(cumulative25yrUtilityWithoutSolar - netCost);
-  const year1Savings = annualProdKwh * baseElecRate;
-  const paybackYears = Number((netCost / Math.max(1, year1Savings)).toFixed(1));
-
-  let monthlyPayment = 0;
-  if (params.financingType === 'loan') {
-    const ratePerMonth = (Number(params.loanInterestRate || 5.99) / 100) / 12;
-    const numMonths = Number(params.loanTermYears || 20) * 12;
-    const principal = Math.max(0, netCost - Number(params.downPayment || 0));
-    if (ratePerMonth > 0 && numMonths > 0) {
-      monthlyPayment = Math.round((principal * ratePerMonth * Math.pow(1 + ratePerMonth, numMonths)) / (Math.pow(1 + ratePerMonth, numMonths) - 1));
-    }
-  } else if (params.financingType === 'lease') {
-    monthlyPayment = Math.round(netCost / (20 * 12) * 0.85);
-  }
-
+function proposalInputs(p) {
   return {
-    grossCost: totalGross,
-    itc30: Math.round(itc30),
-    stateRebate,
-    netCost: Math.round(netCost),
-    est25yrSavings,
-    paybackYears,
-    monthlyPayment,
-    year1Savings: Math.round(year1Savings)
+    grossCost: p.gross_cost,
+    systemSizeKw: p.system_size_kw,
+    financingType: p.financing_type,
+    segment: p.property_segment,
+    state: p.state_code,
+    loanTermYears: p.loan_term_years,
+    loanInterestRate: p.loan_interest_rate,
+    downPayment: p.down_payment,
+    stateRebate: p.state_rebate,
+    batteryType: p.battery_type,
+    batteryCount: p.battery_count,
+    batteryCost: p.battery_cost,
+    utilityEscalation: p.utility_escalation,
   };
 }
+
+async function loadLeadGeo(leadId) {
+  const [rows] = await db.query(
+    'SELECT id, address, latitude, longitude, solar_json FROM leads WHERE id = ? LIMIT 1',
+    [leadId],
+  );
+  return rows[0] || {};
+}
+
+// GET /api/proposals/incentives (Auth) — incentive data table used by the savings maths
+router.get('/incentives', authenticateToken, asyncHandler(async (req, res) => {
+  const includeDisabled = isAdminRole(req.user.role) && req.query.all === '1';
+  res.json({ incentives: await listIncentives({ includeDisabled }) });
+}));
+
+// PUT /api/proposals/incentives/:code (Admin) — update or create an incentive row
+router.put('/incentives/:code', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 64);
+  if (!code) return res.status(400).json({ error: 'Invalid code' });
+  const b = req.body || {};
+  const kind = ['percent', 'fixed', 'per_watt'].includes(b.kind) ? b.kind : 'percent';
+  const segment = ['residential', 'commercial', 'any'].includes(b.segment) ? b.segment : 'residential';
+  const ownership = String(b.ownership || 'cash,loan')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => OWNERSHIP_TYPES.includes(s))
+    .join(',');
+  const asOf = /^\d{4}-\d{2}-\d{2}$/.test(String(b.asOf || '')) ? b.asOf : new Date().toISOString().slice(0, 10);
+  const expiresOn = /^\d{4}-\d{2}-\d{2}$/.test(String(b.expiresOn || '')) ? b.expiresOn : null;
+  const amount = Number(b.amount);
+  if (!Number.isFinite(amount) || amount < 0 || (kind === 'percent' && amount > 1)) {
+    return res.status(400).json({ error: 'amount must be >= 0 (percent as a fraction, e.g. 0.3)' });
+  }
+  if (!ownership) return res.status(400).json({ error: 'ownership must include cash, loan, lease or ppa' });
+  await db.query(
+    `INSERT INTO solar_incentives
+       (code, jurisdiction, label, segment, ownership, kind, amount, cap_amount, enabled, as_of, expires_on, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE jurisdiction = VALUES(jurisdiction), label = VALUES(label), segment = VALUES(segment),
+       ownership = VALUES(ownership), kind = VALUES(kind), amount = VALUES(amount), cap_amount = VALUES(cap_amount),
+       enabled = VALUES(enabled), as_of = VALUES(as_of), expires_on = VALUES(expires_on), notes = VALUES(notes)`,
+    [
+      code,
+      normalizeStateCode(b.jurisdiction) || 'US',
+      String(b.label || code).slice(0, 255),
+      segment,
+      ownership,
+      kind,
+      amount,
+      b.cap != null && b.cap !== '' && Number.isFinite(Number(b.cap)) ? Number(b.cap) : null,
+      b.enabled === false || b.enabled === 0 ? 0 : 1,
+      asOf,
+      expiresOn,
+      b.notes != null ? String(b.notes).slice(0, 2000) : null,
+    ],
+  );
+  res.json({ ok: true, incentives: await listIncentives({ includeDisabled: true }) });
+}));
+
+// POST /api/proposals/preview (Auth) — run the savings maths without saving
+router.post('/preview', authenticateToken, requirePlanFeature('proposals'), asyncHandler(async (req, res) => {
+  const { leadId } = req.body || {};
+  if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+  const [leadRows] = await db.query('SELECT id FROM leads WHERE id = ? AND user_id = ?', [leadId, req.user.id]);
+  if (!leadRows.length) return res.status(404).json({ error: 'Lead not found' });
+  const roi = await buildProposalEconomics({ lead: await loadLeadGeo(leadId), inputs: req.body });
+  res.json({ roi });
+}));
 
 // POST /api/proposals (Auth) - Create or update proposal configuration for a lead
 router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandler(async (req, res) => {
@@ -239,7 +300,9 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
       batteryType,
       batteryCount,
       batteryCost,
-      utilityEscalation
+      utilityEscalation,
+      segment,
+      state,
     } = req.body;
 
     if (!leadId) return res.status(400).json({ error: 'leadId is required' });
@@ -248,20 +311,28 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
     const [leadRows] = await db.query('SELECT id, owner_name, address FROM leads WHERE id = ? AND user_id = ?', [leadId, userId]);
     if (leadRows.length === 0) return res.status(404).json({ error: 'Lead not found' });
 
-    const roi = calculateSolarROI({
-      grossCost,
-      systemSizeKw,
-      financingType,
-      loanTermYears,
-      loanInterestRate,
-      downPayment,
-      includeItc30,
-      stateRebate,
-      batteryType,
-      batteryCount,
-      batteryCost,
-      utilityEscalation
+    const ownership = normalizeOwnership(financingType);
+    const propertySegment = normalizeSegment(segment);
+    const roi = await buildProposalEconomics({
+      lead: await loadLeadGeo(leadId),
+      inputs: {
+        grossCost,
+        systemSizeKw,
+        financingType: ownership,
+        segment: propertySegment,
+        state,
+        loanTermYears,
+        loanInterestRate,
+        downPayment,
+        stateRebate,
+        batteryType,
+        batteryCount,
+        batteryCost,
+        utilityEscalation,
+      },
     });
+    const assumptionsJson = JSON.stringify({ ...assumptionsSnapshot(roi), assumptions: roi.assumptions, incentives: roi.incentives });
+    const solarGrossCost = grossCost != null && grossCost !== '' ? Number(grossCost) : 25500;
 
     // Check if proposal exists for lead
     const [existing] = await db.query('SELECT * FROM proposals WHERE lead_id = ? AND user_id = ? LIMIT 1', [leadId, userId]);
@@ -287,6 +358,12 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
            utility_escalation = ?,
            est_25yr_savings = ?,
            payback_years = ?,
+           property_segment = ?,
+           state_code = ?,
+           utility_rate = ?,
+           annual_production_kwh = ?,
+           incentives_total = ?,
+           assumptions_json = ?,
            sent_at = COALESCE(sent_at, NOW()),
            updated_at = NOW()
          WHERE id = ?`,
@@ -294,19 +371,25 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
           companyName || BRAND_COMPANY_DEFAULT,
           systemSizeKw || 8.50,
           panelCount || 20,
-          roi.grossCost,
-          financingType || 'cash',
+          solarGrossCost,
+          ownership,
           loanTermYears || 20,
           loanInterestRate || 5.99,
           downPayment || 0.00,
-          includeItc30 !== undefined ? (includeItc30 ? 1 : 0) : 1,
-          stateRebate || 1000.00,
+          0,
+          stateRebate || 0,
           batteryType || 'none',
           batteryCount || 0,
           batteryCost || 0.00,
-          utilityEscalation || 4.50,
+          roi.assumptions.escalationPct,
           roi.est25yrSavings,
-          roi.paybackYears,
+          roi.paybackYears ?? 0,
+          propertySegment,
+          roi.assumptions.state,
+          roi.utilityRate,
+          roi.annualProductionKwh,
+          roi.incentivesTotal,
+          assumptionsJson,
           existing[0].id
         ]
       );
@@ -317,8 +400,9 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
            slug, lead_id, user_id, company_name, system_size_kw, panel_count, gross_cost,
            financing_type, loan_term_years, loan_interest_rate, down_payment, include_itc_30,
            state_rebate, battery_type, battery_count, battery_cost, utility_escalation,
-           est_25yr_savings, payback_years, status, sent_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', NOW())`,
+           est_25yr_savings, payback_years, property_segment, state_code, utility_rate,
+           annual_production_kwh, incentives_total, assumptions_json, status, sent_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', NOW())`,
         [
           slug,
           leadId,
@@ -326,19 +410,25 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
           companyName || BRAND_COMPANY_DEFAULT,
           systemSizeKw || 8.50,
           panelCount || 20,
-          roi.grossCost,
-          financingType || 'cash',
+          solarGrossCost,
+          ownership,
           loanTermYears || 20,
           loanInterestRate || 5.99,
           downPayment || 0.00,
-          includeItc30 !== undefined ? (includeItc30 ? 1 : 0) : 1,
-          stateRebate || 1000.00,
+          0,
+          stateRebate || 0,
           batteryType || 'none',
           batteryCount || 0,
           batteryCost || 0.00,
-          utilityEscalation || 4.50,
+          roi.assumptions.escalationPct,
           roi.est25yrSavings,
-          roi.paybackYears
+          roi.paybackYears ?? 0,
+          propertySegment,
+          roi.assumptions.state,
+          roi.utilityRate,
+          roi.annualProductionKwh,
+          roi.incentivesTotal,
+          assumptionsJson,
         ]
       );
 
@@ -361,7 +451,7 @@ router.post('/', authenticateToken, requirePlanFeature('proposals'), asyncHandle
     const engagement = buildEngagement(saved[0], await loadEventCounts(saved[0].id));
     return res.json({
       success: true,
-      proposal: saved[0],
+      proposal: { ...saved[0], roi },
       slug,
       shareableUrl: `/proposal/${slug}`,
       engagement,
@@ -422,7 +512,7 @@ router.get('/public/:slug', publicProposalLimiter, async (req, res) => {
 
     const proposal = rows[0];
 
-    const [leadRows] = await db.query('SELECT id, owner_name, address, phone, email, lead_score, image_url, solar_json, property_json FROM leads WHERE id = ? LIMIT 1', [proposal.lead_id]);
+    const [leadRows] = await db.query('SELECT id, owner_name, address, latitude, longitude, phone, email, lead_score, image_url, solar_json, property_json FROM leads WHERE id = ? LIMIT 1', [proposal.lead_id]);
     const lead = leadRows.length > 0 ? leadRows[0] : null;
 
     let solar = {};
@@ -434,19 +524,10 @@ router.get('/public/:slug', publicProposalLimiter, async (req, res) => {
       try { propertyExtra = JSON.parse(lead.property_json); } catch {}
     }
 
-    const roi = calculateSolarROI({
-      grossCost: proposal.gross_cost,
-      systemSizeKw: proposal.system_size_kw,
-      financingType: proposal.financing_type,
-      loanTermYears: proposal.loan_term_years,
-      loanInterestRate: proposal.loan_interest_rate,
-      downPayment: proposal.down_payment,
-      includeItc30: Boolean(proposal.include_itc_30),
-      stateRebate: proposal.state_rebate,
-      batteryType: proposal.battery_type,
-      batteryCount: proposal.battery_count,
-      batteryCost: proposal.battery_cost,
-      utilityEscalation: proposal.utility_escalation
+    const roi = await buildProposalEconomics({
+      lead: lead || {},
+      inputs: proposalInputs(proposal),
+      cached: parseAssumptionsJson(proposal),
     });
 
     res.json({
@@ -489,29 +570,34 @@ router.post('/public/:slug/events', publicEventLimiter, async (req, res) => {
 });
 
 // POST /api/proposals/public/:slug/recalculate (Public) - Recalculate ROI in real-time
-router.post('/public/:slug/recalculate', publicProposalLimiter, async (req, res) => {
+router.post('/public/:slug/recalculate', publicRecalcLimiter, async (req, res) => {
   try {
     const { slug } = req.params;
     const [rows] = await db.query('SELECT * FROM proposals WHERE slug = ? LIMIT 1', [slug]);
     if (rows.length === 0) return res.status(404).json({ error: 'Proposal not found' });
 
     const p = rows[0];
-    const params = {
-      grossCost: req.body.grossCost !== undefined ? req.body.grossCost : p.gross_cost,
-      systemSizeKw: req.body.systemSizeKw !== undefined ? req.body.systemSizeKw : p.system_size_kw,
-      financingType: req.body.financingType || p.financing_type,
-      loanTermYears: req.body.loanTermYears || p.loan_term_years,
-      loanInterestRate: req.body.loanInterestRate || p.loan_interest_rate,
-      downPayment: req.body.downPayment !== undefined ? req.body.downPayment : p.down_payment,
-      includeItc30: req.body.includeItc30 !== undefined ? req.body.includeItc30 : Boolean(p.include_itc_30),
-      stateRebate: req.body.stateRebate !== undefined ? req.body.stateRebate : p.state_rebate,
-      batteryType: req.body.batteryType || p.battery_type,
-      batteryCount: req.body.batteryCount !== undefined ? req.body.batteryCount : p.battery_count,
-      batteryCost: req.body.batteryCost !== undefined ? req.body.batteryCost : p.battery_cost,
-      utilityEscalation: req.body.utilityEscalation !== undefined ? req.body.utilityEscalation : p.utility_escalation
+    const body = req.body || {};
+    const base = proposalInputs(p);
+    // Homeowner may explore financing / battery options; pricing, location and incentives stay as quoted.
+    const inputs = {
+      ...base,
+      financingType: body.financingType ? normalizeOwnership(body.financingType) : base.financingType,
+      loanTermYears: Number(body.loanTermYears) > 0 ? Math.min(30, Number(body.loanTermYears)) : base.loanTermYears,
+      loanInterestRate:
+        Number(body.loanInterestRate) > 0 ? Math.min(30, Number(body.loanInterestRate)) : base.loanInterestRate,
+      downPayment: body.downPayment !== undefined ? Math.max(0, Number(body.downPayment) || 0) : base.downPayment,
+      batteryType: body.batteryType || base.batteryType,
+      batteryCount: body.batteryCount !== undefined ? Math.max(0, Math.min(4, Number(body.batteryCount) || 0)) : base.batteryCount,
     };
+    if (body.batteryType !== undefined || body.batteryCount !== undefined) inputs.batteryCost = null;
 
-    const roi = calculateSolarROI(params);
+    const [leadRows] = await db.query('SELECT id, address, latitude, longitude, solar_json FROM leads WHERE id = ? LIMIT 1', [p.lead_id]);
+    const roi = await buildProposalEconomics({
+      lead: leadRows[0] || {},
+      inputs,
+      cached: parseAssumptionsJson(p),
+    });
     res.json({ success: true, roi });
   } catch (err) {
     res.status(500).json({ error: 'Recalculation error' });
@@ -544,16 +630,19 @@ router.post('/public/:slug/sign', publicSignLimiter, async (req, res) => {
     }
 
     // Record digital signature
-    await db.query(
+    const [signResult] = await db.query(
       `UPDATE proposals SET
          signed_name = ?,
          signed_email = ?,
          signed_signature_data = ?,
          signed_at = NOW(),
          status = 'signed'
-       WHERE id = ?`,
+       WHERE id = ? AND (status IS NULL OR status <> 'signed')`,
       [signedName, signedEmail || '', signatureData, proposal.id]
     );
+    if (!signResult?.affectedRows) {
+      return res.status(409).json({ error: 'Proposal has already been signed.' });
+    }
 
     await db.query(
       `INSERT INTO proposal_events (proposal_id, lead_id, user_id, event_type, meta)

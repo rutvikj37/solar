@@ -6,20 +6,34 @@
  * Docs: https://developer.nlr.gov/docs/solar/pvwatts/v8/
  */
 
+import net from 'node:net';
 import { logApiCall } from './apiUsage.js';
 
-const NREL_BASES = [
-  process.env.NREL_API_BASE || 'https://developer.nrel.gov',
-  'https://developer.nlr.gov',
-  'https://developer.nrel.gov'
-].filter((v, i, a) => a.indexOf(v) === i);
+// Node's happy-eyeballs default (250ms per address) aborts slow dual-stack connects to the NREL hosts.
+if (typeof net.setDefaultAutoSelectFamilyAttemptTimeout === 'function') {
+  const current = typeof net.getDefaultAutoSelectFamilyAttemptTimeout === 'function'
+    ? net.getDefaultAutoSelectFamilyAttemptTimeout()
+    : 250;
+  if (current < 1500) net.setDefaultAutoSelectFamilyAttemptTimeout(1500);
+}
 
-const NREL_FETCH_TIMEOUT_MS = Number(process.env.NREL_FETCH_TIMEOUT_MS) || 2500;
-const NREL_ENRICH_BUDGET_MS = Number(process.env.NREL_ENRICH_BUDGET_MS) || 4000;
+const NREL_BASES = [
+  'https://developer.nlr.gov',
+  process.env.NREL_API_BASE,
+  'https://developer.nrel.gov'
+].filter((v, i, a) => v && a.indexOf(v) === i);
+
+let lastGoodBase = null;
+
+const NREL_FETCH_TIMEOUT_MS = Number(process.env.NREL_FETCH_TIMEOUT_MS) || 5000;
+const NREL_ENRICH_BUDGET_MS = Number(process.env.NREL_ENRICH_BUDGET_MS) || 7000;
 
 async function nrelFetch(pathWithQuery) {
   let lastError = null;
-  for (const base of NREL_BASES) {
+  const bases = lastGoodBase
+    ? [lastGoodBase, ...NREL_BASES.filter((b) => b !== lastGoodBase)]
+    : NREL_BASES;
+  for (const base of bases) {
     const url = `${base}${pathWithQuery.startsWith('/') ? '' : '/'}${pathWithQuery}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), NREL_FETCH_TIMEOUT_MS);
@@ -27,7 +41,10 @@ async function nrelFetch(pathWithQuery) {
     try {
       const response = await fetch(url, { signal: controller.signal });
       await logApiCall('nrel', response.ok, Date.now() - started);
-      if (response.ok) return response;
+      if (response.ok) {
+        lastGoodBase = base;
+        return response;
+      }
       const errText = await response.text();
       lastError = new Error(`HTTP ${response.status} from ${base}: ${errText.slice(0, 200)}`);
       console.error(`[NREL] ${lastError.message}`);
@@ -131,6 +148,10 @@ export async function fetchPvWatts({
 /**
  * Residential utility rate ($/kWh) near lat/lng.
  */
+export function isNrelConfigured() {
+  return isKeyValid(getApiKey());
+}
+
 export async function fetchUtilityRate(lat, lng) {
   const apiKey = getApiKey();
   if (!isKeyValid(apiKey)) {

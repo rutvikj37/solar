@@ -1,9 +1,7 @@
-/* Homeowner marketing site — supplemental theme + utilities for SpaceToRoof landing */
+/* Homeowner marketing site — supplemental theme + utilities for SpaceToRoof landing.
+ * Color tokens (navy-dark, navy-light, cyan-glow, sun-warm) live in src/index.css @theme
+ * so Tailwind generates bg-/text-/from-navy-* utilities. */
 @theme inline {
-  --color-navy-dark: oklch(0.12 0.03 260);
-  --color-navy-light: oklch(0.18 0.04 260);
-  --color-cyan-glow: oklch(0.75 0.18 190);
-  --color-sun-warm: oklch(0.85 0.15 70);
   --font-size-clamp-h1: clamp(2.5rem, 5vw, 4rem);
   --font-size-clamp-p: clamp(0.875rem, 1.5vw, 1.125rem);
 }
@@ -214,4 +212,187 @@
     text-transform: uppercase;
     transition: color 300ms;
   }
+}
+
+/* ── Light theme (html.light) ─────────────────────────────────────────────
+ * The site is authored dark-first. In light mode flip the navy canvas to a
+ * light surface and remap dark-only utilities. Areas that sit on photos or
+ * maps opt back into dark with .theme-dark-canvas.
+ */
+html.light .homeowner-site {
+  color-scheme: light;
+  --color-navy-dark: oklch(0.975 0.008 245);
+  --color-navy-light: oklch(1 0.002 250);
+  --hs-surface: oklch(1 0.002 250);
+  --hs-surface-muted: oklch(0.955 0.01 250);
+  --hs-border: oklch(0.35 0.03 260 / 0.12);
+  --hs-border-strong: oklch(0.35 0.03 260 / 0.2);
+  --hs-accent: oklch(0.52 0.1 222);
+  --hs-accent-strong: oklch(0.45 0.09 222);
+  --hs-shadow: 0 24px 50px -30px oklch(0.35 0.04 260 / 0.35);
+  color: var(--color-on-surface);
+}
+
+html.light .homeowner-site .theme-dark-canvas {
+  --color-navy-dark: oklch(0.12 0.03 260);
+  --color-navy-light: oklch(0.18 0.04 260);
+}
+
+/* Dark label on cyan / emerald / white chips must stay dark */
+html.light .homeowner-site .text-navy-dark {
+  color: oklch(0.12 0.03 260);
+}
+
+/* Low-opacity white copy → readable muted ink */
+html.light .homeowner-site .text-white\/10,
+html.light .homeowner-site .text-white\/20,
+html.light .homeowner-site .text-white\/25,
+html.light .homeowner-site .text-white\/30 {
+  color: color-mix(in oklab, var(--color-on-surface) 52%, transparent);
+}
+html.light .homeowner-site .text-white\/35,
+html.light .homeowner-site .text-white\/40,
+html.light .homeowner-site .text-white\/45 {
+  color: color-mix(in oklab, var(--color-on-surface) 62%, transparent);
+}
+html.light .homeowner-site .text-white\/50,
+html.light .homeowner-site .text-white\/55 {
+  color: color-mix(in oklab, var(--color-on-surface) 70%, transparent);
+}
+html.light .homeowner-site .text-white\/60,
+html.light .homeowner-site .text-white\/65 {
+  color: color-mix(in oklab, var(--color-on-surface) 76%, transparent);
+}
+html.light .homeowner-site .text-white\/85 {
+  color: color-mix(in oklab, var(--color-on-surface) 88%, transparent);
+}
+
+/* Brand monogram keeps white on its blue gradient tile */
+html.light .homeowner-site .from-cyan-500.to-blue-600 .text-white {
+  color: #ffffff;
+}
+
+/* Bright cyan / emerald / amber accents → deeper tones for contrast on light */
+html.light .homeowner-site .text-cyan-400,
+html.light .homeowner-site .hover\:text-cyan-400:hover,
+html.light .homeowner-site [class*="text-cyan-400/"] {
+  color: var(--hs-accent);
+}
+html.light .homeowner-site .text-cyan-300,
+html.light .homeowner-site .hover\:text-cyan-300:hover,
+html.light .homeowner-site [class*="text-cyan-300/"] {
+  color: var(--hs-accent-strong);
+}
+html.light .homeowner-site .text-emerald-400 {
+  color: oklch(0.55 0.14 160);
+}
+html.light .homeowner-site .text-red-200,
+html.light .homeowner-site .text-red-300 {
+  color: oklch(0.5 0.19 27);
+}
+html.light .homeowner-site .text-amber-100\/90 {
+  color: oklch(0.38 0.08 60);
+}
+html.light .homeowner-site .text-amber-300\/80,
+html.light .homeowner-site .text-amber-300\/90 {
+  color: oklch(0.52 0.13 60);
+}
+html.light .homeowner-site .bg-clip-text.from-cyan-400.to-cyan-200 {
+  --tw-gradient-from: oklch(0.58 0.12 222);
+  --tw-gradient-to: oklch(0.66 0.15 237);
+}
+
+/* Hardcoded navy panels → light surfaces */
+html.light .homeowner-site .bg-\[\#060B17\]:not(.theme-dark-canvas),
+html.light .homeowner-site .bg-\[\#0B1730\],
+html.light .homeowner-site .bg-\[\#0a1020\]:not(.theme-dark-canvas),
+html.light .homeowner-site .bg-\[\#090D1F\],
+html.light .homeowner-site .bg-\[\#0D1226\] {
+  background-color: var(--hs-surface);
+}
+html.light .homeowner-site .min-h-screen.bg-\[\#060B17\] {
+  background-color: var(--color-navy-dark);
+}
+html.light .homeowner-site .bg-\[\#060B17\]\/90 {
+  background-color: oklch(1 0.002 250 / 0.9);
+}
+html.light .homeowner-site .rounded-\[32px\].bg-\[\#060B17\] {
+  box-shadow: var(--hs-shadow);
+}
+html.light .homeowner-site .border-cyan-400\/10 {
+  border-color: oklch(0.6 0.1 222 / 0.25);
+}
+
+/* Translucent white fills / strokes → light cards + hairlines */
+html.light .homeowner-site .bg-white\/\[0\.02\],
+html.light .homeowner-site .bg-white\/\[0\.03\] {
+  background-color: var(--hs-surface);
+}
+html.light .homeowner-site .bg-white\/\[0\.06\] {
+  background-color: var(--hs-surface-muted);
+}
+html.light .homeowner-site .border-white\/\[0\.06\],
+html.light .homeowner-site .border-white\/\[0\.08\] {
+  border-color: var(--hs-border);
+}
+html.light .homeowner-site .from-cyan-500\/40.to-sky-700\/40 {
+  --tw-gradient-from: oklch(0.715 0.143 215.221);
+  --tw-gradient-to: oklch(0.5 0.119 242.749);
+}
+
+/* Glass utilities defined above with hardcoded white strokes */
+html.light .homeowner-site .glass-navy {
+  background: oklch(1 0.002 250 / 0.88);
+  border-color: var(--hs-border);
+}
+html.light .homeowner-site nav.glass-navy {
+  box-shadow: 0 1px 0 0 var(--hs-border);
+}
+html.light .homeowner-site .glass-sticky-mobile {
+  background: oklch(1 0.002 250 / 0.92);
+  border-top-color: var(--hs-border);
+  box-shadow: 0 -10px 30px -12px oklch(0.35 0.04 260 / 0.25);
+}
+html.light .homeowner-site .glass-form-container {
+  background-color: var(--hs-surface);
+  border-color: var(--hs-border);
+  box-shadow: var(--hs-shadow);
+}
+html.light .homeowner-site .step-line {
+  background: var(--hs-border);
+}
+
+/* Lead form inputs + chips */
+html.light .homeowner-site .form-input-base {
+  background: var(--hs-surface);
+  border-color: var(--hs-border-strong);
+  color: var(--color-on-surface);
+}
+html.light .homeowner-site .form-input-base::placeholder {
+  color: color-mix(in oklab, var(--color-on-surface-variant) 75%, transparent);
+}
+html.light .homeowner-site .form-chip {
+  background: var(--hs-surface);
+  border-color: var(--hs-border-strong);
+  color: color-mix(in oklab, var(--color-on-surface) 80%, transparent);
+}
+html.light .homeowner-site .form-chip:hover {
+  background: var(--hs-surface-muted);
+  border-color: oklch(0.35 0.03 260 / 0.3);
+}
+html.light .homeowner-site .form-chip.form-chip-active {
+  border-color: rgb(6 182 212);
+  background: rgb(6 182 212 / 0.1);
+  color: var(--hs-accent-strong);
+}
+
+/* Dark islands keep the original bright accents */
+html.light .homeowner-site .theme-dark-canvas .text-cyan-400 {
+  color: rgb(34 211 238);
+}
+html.light .homeowner-site .theme-dark-canvas [class*="text-cyan-400/"] {
+  color: rgb(34 211 238 / 0.75);
+}
+html.light .homeowner-site .theme-dark-canvas .text-cyan-300 {
+  color: rgb(103 232 249);
 }

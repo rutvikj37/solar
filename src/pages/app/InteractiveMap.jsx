@@ -10,7 +10,17 @@ import PropertyDrawer from '../../components/map/PropertyDrawer';
 import BulkScanDialog from '../../components/map/BulkScanDialog';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../config.js';
-import { buildScoreMarkerIcon } from '../../lib/mapMarkers.js';
+import { buildScoreMarkerIcon, verifiedMarkerScore, markerTitle } from '../../lib/mapMarkers.js';
+
+function propertyMarkerIcon(google, prop, selected) {
+  const score = verifiedMarkerScore(prop);
+  return buildScoreMarkerIcon(google, {
+    score: score || 0,
+    existingSolarLikely: !!prop?.existingSolarLikely,
+    selected,
+    unscored: score == null,
+  });
+}
 import { resolveGoogleMapsApiKey } from '../../lib/mapsKey.js';
 import {
   PROPERTY_DATA_UNAVAILABLE,
@@ -119,6 +129,12 @@ export default function InteractiveMap() {
   const [zip, setZip] = useState('');
   const [properties, setProperties] = useState([]);
   const [selectedProperty, setSelectedProperty] = useState(null);
+  const selectedPropertyIdRef = useRef(null);
+  useEffect(() => {
+    selectedPropertyIdRef.current = selectedProperty?.id ?? null;
+  }, [selectedProperty?.id]);
+  const unlockAbortRef = useRef(null);
+  useEffect(() => () => unlockAbortRef.current?.abort(), []);
   const [activeTab, setActiveTab] = useState('Overview');
   const [searching, setSearching] = useState(false);
   const [searchBanner, setSearchBanner] = useState('');
@@ -572,18 +588,13 @@ export default function InteractiveMap() {
 
     const google = window.google;
     const markers = list.map((prop) => {
-      const likelyPaneled = !!prop.existingSolarLikely;
       const isSelected = selectedId ? prop.id === selectedId : !!prop.isSearchMatch;
       const marker = new google.maps.Marker({
         position: { lat: prop.lat, lng: prop.lng },
-        title: `${prop.address} · Score ${prop.solarScore}`,
+        title: markerTitle(prop),
         optimized: true,
         zIndex: isSelected ? google.maps.Marker.MAX_ZINDEX + 1 : undefined,
-        icon: buildScoreMarkerIcon(google, {
-          score: prop.solarScore || 0,
-          existingSolarLikely: likelyPaneled,
-          selected: isSelected
-        })
+        icon: propertyMarkerIcon(google, prop, isSelected)
       });
       marker.addListener('click', () => {
         handleMarkerClick(prop.id, prop);
@@ -598,6 +609,53 @@ export default function InteractiveMap() {
       map: mapInstanceRef.current,
       markers
     });
+  };
+
+  const loadVerifiedScores = async (list, signal) => {
+    const pending = list.filter(
+      (p) => p.scoreSource !== 'verified' && Number.isFinite(p.lat) && Number.isFinite(p.lng),
+    );
+    if (!pending.length) return;
+    const bounds = mapInstanceRef.current?.getBounds?.();
+    const inView = bounds ? pending.filter((p) => bounds.contains({ lat: p.lat, lng: p.lng })) : [];
+    const ordered = [...inView, ...pending.filter((p) => !inView.includes(p))].slice(0, 40);
+    try {
+      const token = localStorage.getItem('solar_token');
+      const res = await fetch(`${API_BASE}/api/properties/solar-scores`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ items: ordered.map(({ id, lat, lng }) => ({ id, lat, lng })) }),
+        signal,
+      });
+      if (!res.ok) return;
+      const { scores = {} } = await res.json();
+      const verified = new Map(
+        Object.entries(scores).filter(([, s]) => s?.status === 'verified'),
+      );
+      if (!verified.size) return;
+      setProperties((prev) =>
+        prev.map((p) => {
+          const s = verified.get(p.id);
+          if (!s) return p;
+          return {
+            ...p,
+            scoreSource: 'verified',
+            solarScore: s.solarScore,
+            systemSize: `${s.systemKw} kW`,
+            panelsCount: s.panelCount,
+            annualProductionKwh: s.annualProductionKwh,
+            totalRoofSqFt: s.totalRoofSqFt,
+            existingSolar: p.existingSolarLikely && !s.existingSolarLikely ? p.existingSolar : s.existingSolar,
+            existingSolarLikely: Boolean(p.existingSolarLikely || s.existingSolarLikely),
+          };
+        }),
+      );
+    } catch {
+      /* scores are best-effort; pins stay "not scored" */
+    }
   };
 
   const handleSearch = async (zipVal, opts = {}) => {
@@ -722,6 +780,7 @@ export default function InteractiveMap() {
 
       const props = data.properties || [];
       setProperties(props);
+      void loadVerifiedScores(props, controller.signal);
       if (data.error || data.code) {
         const msg = resolvePropertyDataMessage(data, { status: response.status });
         if (msg) setSearchBanner(msg);
@@ -791,6 +850,13 @@ export default function InteractiveMap() {
         ...data,
         isSearchMatch: Boolean(previewProp?.isSearchMatch || data.isSearchMatch),
       });
+      if (data.solarScoreSource === 'verified' && Number(data.solarScore) > 0) {
+        setProperties((prev) =>
+          prev.map((p) =>
+            p.id === propId ? { ...p, scoreSource: 'verified', solarScore: data.solarScore } : p,
+          ),
+        );
+      }
       setGeneratedLeadStatus(data.unlocked ? 'generated' : 'idle');
       const pinLat = Number(data.lat);
       const pinLng = Number(data.lng);
@@ -860,11 +926,7 @@ export default function InteractiveMap() {
       const prevMarker = markerByIdRef.current.get(prevId);
       const prevProp = properties.find((p) => p.id === prevId);
       if (prevMarker && prevProp) {
-        prevMarker.setIcon(buildScoreMarkerIcon(window.google, {
-          score: prevProp.solarScore || 0,
-          existingSolarLikely: !!prevProp.existingSolarLikely,
-          selected: false
-        }));
+        prevMarker.setIcon(propertyMarkerIcon(window.google, prevProp, false));
         prevMarker.setZIndex(undefined);
       }
     }
@@ -872,16 +934,22 @@ export default function InteractiveMap() {
       const marker = markerByIdRef.current.get(nextId);
       const prop = properties.find((p) => p.id === nextId) || selectedProperty;
       if (marker && prop) {
-        marker.setIcon(buildScoreMarkerIcon(window.google, {
-          score: prop.solarScore || 0,
-          existingSolarLikely: !!prop.existingSolarLikely,
-          selected: true
-        }));
+        marker.setIcon(propertyMarkerIcon(window.google, prop, true));
         marker.setZIndex(window.google.maps.Marker.MAX_ZINDEX + 1);
       }
     }
     selectedMarkerIdRef.current = nextId;
   }, [selectedProperty?.id, properties]);
+
+  useEffect(() => {
+    if (!window.google?.maps) return;
+    properties.forEach((p) => {
+      const marker = markerByIdRef.current.get(p.id);
+      if (!marker) return;
+      marker.setIcon(propertyMarkerIcon(window.google, p, p.id === selectedMarkerIdRef.current));
+      marker.setTitle(markerTitle(p));
+    });
+  }, [properties]);
 
   const resolveScanArea = () => {
     if (polygonPath?.length >= 3) {
@@ -954,11 +1022,18 @@ export default function InteractiveMap() {
 
   const handleGenerateLead = async () => {
     if (!selectedProperty) return;
+    const requestedId = selectedProperty.id;
+    unlockAbortRef.current?.abort();
+    const controller = new AbortController();
+    unlockAbortRef.current = controller;
+    const isStale = () =>
+      controller.signal.aborted || selectedPropertyIdRef.current !== requestedId;
     setGeneratedLeadStatus('generating');
     try {
       const token = localStorage.getItem('solar_token');
       const response = await fetch(`${API_BASE}/api/leads/generate`, {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
@@ -977,12 +1052,23 @@ export default function InteractiveMap() {
         })
       });
       const data = await response.json().catch(() => ({}));
+      if (isStale()) {
+        // User moved to another property; the unlock may still have spent a credit.
+        if (response.ok) refreshUserData();
+        return;
+      }
       if (response.ok) {
         setGeneratedLeadStatus('generated');
         if (data.detail) {
           setSelectedProperty({ ...data.detail, unlocked: true, leadId: data.leadId });
         }
         await refreshUserData();
+      } else if (response.status === 401) {
+        setUpgradeModalTitle('Session expired');
+        setShowUpgradeCta(false);
+        setUpgradeMessage('Your session has expired. Please sign in again to unlock this lead.');
+        setShowUpgradeModal(true);
+        setGeneratedLeadStatus('idle');
       } else if (response.status === 402) {
         setUpgradeModalTitle('Upgrade required');
         setShowUpgradeCta(true);
@@ -1018,11 +1104,17 @@ export default function InteractiveMap() {
         setGeneratedLeadStatus('idle');
       }
     } catch (err) {
+      if (err?.name === 'AbortError' || isStale()) {
+        refreshUserData();
+        return;
+      }
       setUpgradeModalTitle('Could not unlock lead');
       setShowUpgradeCta(false);
       setUpgradeMessage(err.message || 'Could not unlock this lead. Please try again.');
       setShowUpgradeModal(true);
       setGeneratedLeadStatus('idle');
+    } finally {
+      if (unlockAbortRef.current === controller) unlockAbortRef.current = null;
     }
   };
 
@@ -1057,7 +1149,7 @@ export default function InteractiveMap() {
 
         {searchBanner && !mapError && (
           <div className="absolute top-4 left-4 right-4 z-50 max-w-xl mx-auto pointer-events-auto">
-            <div className="rounded-xl border border-sky-400/35 bg-slate-900/85 backdrop-blur-md px-4 py-3 text-xs text-slate-50 flex flex-wrap items-start justify-between gap-2 shadow-xl">
+            <div className="theme-dark-canvas rounded-xl border border-sky-400/35 bg-slate-900/85 backdrop-blur-md px-4 py-3 text-xs text-slate-50 flex flex-wrap items-start justify-between gap-2 shadow-xl">
               <p className="leading-relaxed pr-2">{searchBanner}</p>
               <button
                 type="button"

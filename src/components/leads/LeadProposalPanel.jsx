@@ -13,6 +13,7 @@ const FINANCING_OPTIONS = [
   { id: 'loan', label: 'Loan (7.99% APR)', rate: 7.99 },
   { id: 'cash', label: 'Cash', rate: 0 },
   { id: 'lease', label: 'Lease', rate: 0 },
+  { id: 'ppa', label: 'PPA', rate: 0 },
 ];
 
 const inputCls =
@@ -196,7 +197,6 @@ export default function LeadProposalPanel({
         grossCost: parseNumber(form.systemPrice),
         financingType: form.financing,
         loanInterestRate: form.financing === 'loan' ? 7.99 : 5.99,
-        includeItc30: true,
         batteryType: 'none',
         batteryCount: 0,
       }),

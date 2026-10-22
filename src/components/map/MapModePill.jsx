@@ -5,7 +5,7 @@ const MODES = ['Satellite', 'Hybrid', 'Dark'];
 export default function MapModePill({ mapType, onChange, dimmed = false }) {
   return (
     <div
-      className={`bg-slate-900/90 backdrop-blur-xl border border-white/20 shadow-2xl rounded-full p-0.5 sm:p-1 flex items-center gap-0.5 sm:gap-1 shrink-0 transition-opacity self-end md:self-auto ${
+      className={`map-mode-pill bg-slate-900/90 backdrop-blur-xl border border-white/20 shadow-2xl rounded-full p-0.5 sm:p-1 flex items-center gap-0.5 sm:gap-1 shrink-0 transition-opacity self-end md:self-auto ${
         dimmed ? 'opacity-40 pointer-events-none' : ''
       }`}
     >

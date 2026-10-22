@@ -45,6 +45,8 @@ import {
   sqlExcludeDemoLeadsForAlias,
 } from '../services/marketplace/demoLead.js';
 import { geocodeAddressCoordinates } from '../services/coordinateService.js';
+import { getBuildingInsights } from '../services/solarInsightsCache.js';
+import { buildRoofLayout } from '../services/roofLayout.js';
 import {
   ensureLeadBiddingTimes,
   ensureLeadsBiddingTimes,
@@ -58,6 +60,7 @@ import {
 } from '../services/marketplace/contactVerify.js';
 import { getUserEntitlements } from '../services/planEntitlements.js';
 import { notifyHomeownerReportLink } from '../services/marketplace/notifications.js';
+import { buildConsentRecord } from '../services/compliance/consent.js';
 import { signReportAccess, verifyReportAccess } from '../utils/signedReportAccess.js';
 
 const router = express.Router();
@@ -204,8 +207,14 @@ router.post('/inquiries', inquiryLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Name, phone, email, and property address are required' });
     }
 
+    const consent = buildConsentRecord(req, req.body || {});
+    if (!consent.ok) {
+      return res.status(400).json({ error: consent.error, code: 'CONSENT_REQUIRED' });
+    }
+
     // Phone OTP verification removed — admin verifies contact before marketplace listing.
     const lead = await createInquiry({
+      consent: consent.record,
       name,
       phone,
       email,
@@ -339,6 +348,60 @@ router.get('/report-image/:leadCode', reportImageLimiter, async (req, res) => {
   } catch (err) {
     console.error('[Marketplace] report image failed:', err);
     return res.status(500).json({ error: 'Failed to load satellite image' });
+  }
+});
+
+/** Roof segments + panel layout for the homeowner report image (same frame as /report-image). */
+router.get('/report-roof-layout/:leadCode', reportImageLimiter, async (req, res) => {
+  try {
+    const leadCode = String(req.params.leadCode || '').trim();
+    if (!leadCode) return res.status(400).json({ error: 'Report ID required' });
+    if (!requireSignedReportAccess(req, res, leadCode)) return;
+
+    const [rows] = await db.query(
+      `SELECT latitude, longitude, enrichment_json FROM marketplace_leads WHERE lead_code = ? LIMIT 1`,
+      [leadCode],
+    );
+    const lead = rows[0];
+    if (!lead) return res.status(404).json({ error: 'Report not found' });
+
+    let enrichment = {};
+    try {
+      enrichment = lead.enrichment_json
+        ? typeof lead.enrichment_json === 'object'
+          ? lead.enrichment_json
+          : JSON.parse(lead.enrichment_json)
+        : {};
+    } catch {
+      enrichment = {};
+    }
+    let lat = Number(lead.latitude);
+    let lng = Number(lead.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      lat = Number(enrichment.lat);
+      lng = Number(enrichment.lng);
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.json({ status: 'unavailable' });
+    }
+    if (!enrichment.googleSolarHit) return res.json({ status: 'no_coverage' });
+
+    const insights = await getBuildingInsights(lat, lng, { allowFetch: true });
+    if (insights.status !== 'hit' || !insights.data) {
+      return res.json({ status: insights.status === 'miss' ? 'no_coverage' : 'unavailable' });
+    }
+    const layout = buildRoofLayout(insights.data, { panelCount: enrichment.panelCount || null });
+    if (!layout) return res.json({ status: 'no_coverage' });
+
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return res.json({
+      status: 'ok',
+      frame: { centerLat: lat, centerLng: lng, zoom: 20, width: 800, height: 400 },
+      layout,
+    });
+  } catch (err) {
+    console.error('[Marketplace] report roof layout failed:', err);
+    return res.status(500).json({ error: 'Failed to load roof layout' });
   }
 });
 

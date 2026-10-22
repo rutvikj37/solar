@@ -60,15 +60,21 @@ export function optionalAuthenticateToken(req, res, next) {
 export async function attachUserSession(req, res, next) {
   try {
     const [users] = await db.query(
-      'SELECT id, email, name, role, account_status, email_verified, firebase_uid FROM users WHERE id = ?',
+      'SELECT id, email, name, role, account_status, email_verified, firebase_uid, token_version FROM users WHERE id = ?',
       [req.user.id]
     );
     if (users.length === 0) {
       return res.status(401).json({ error: 'User not found' });
     }
     const row = users[0];
+    // Tokens issued before token_version existed carry no `tv`; they stay valid only while the version is 0.
+    const tokenTv = req.user.tv == null ? 0 : Number(req.user.tv);
+    if (tokenTv !== Number(row.token_version || 0)) {
+      return res.status(401).json({ error: 'Session expired. Please sign in again.', code: 'session_revoked' });
+    }
     const status = String(row.account_status || 'active').toLowerCase();
-    if (status && status !== 'active') {
+    // 'restricted' accounts keep app access; plan changes/purchases are gated in billing routes.
+    if (status && status !== 'active' && status !== 'restricted') {
       return res.status(403).json({ error: 'Account is not active' });
     }
     const path = String(req.originalUrl || '').split('?')[0];
@@ -95,6 +101,11 @@ export async function attachUserSession(req, res, next) {
     console.error('[Auth] attachUserSession failed:', error.message || error);
     res.status(500).json({ error: 'Failed to verify session' });
   }
+}
+
+/** Invalidate every JWT issued to this user (password reset, suspension, role change). */
+export async function bumpTokenVersion(userId, conn = db) {
+  await conn.query('UPDATE users SET token_version = token_version + 1 WHERE id = ?', [userId]);
 }
 
 /** @deprecated Use attachUserSession */

@@ -20,6 +20,7 @@ import {
   DEFAULT_VOICE_NAME,
 } from './elevenLabsService.js';
 import { enrichLeadGeo } from './leadGeo.js';
+import { BRAND_NAME } from '../../config/brand.js';
 
 const elPrewarmedSessions = new Map();
 const elActiveSessions = new Map();
@@ -29,7 +30,7 @@ function buildGreeting(campaign, leadData) {
     return String(campaign.greeting_script).trim();
   }
   const callerName = campaign?.caller_name || 'Emily';
-  const businessName = campaign?.business_name || 'Solar Velocity';
+  const businessName = campaign?.business_name || BRAND_NAME;
   const customerName = leadData?.owner_name || 'there';
   return `Hi, may I speak with ${customerName}?`;
 }
@@ -121,7 +122,7 @@ export async function prepareElevenLabsSession({ callRecordId, leadId, campaignI
   if (campaign.system_prompt && String(campaign.system_prompt).trim()) {
     systemPrompt = `${String(campaign.system_prompt).trim()}\n\n---\n${systemPrompt}`;
   }
-  systemPrompt += `\n\nCALL STYLE: Brief qualification call — not a sales pitch. Respect their time.\nTURN-TAKING: After ANY question, stop immediately and wait in silence for their answer. If silent 8+ seconds, one brief "Still with me?" then wait again.\nOPENING: If they haven't spoken, start with "Hi, may I speak with [name]?" — wait — then give the brief ${campaign?.caller_name || 'Emily'}/${campaign?.business_name || 'Solar Velocity'} intro and ask for 30 seconds.`;
+  systemPrompt += `\n\nCALL STYLE: Brief qualification call — not a sales pitch. Respect their time.\nTURN-TAKING: After ANY question, stop immediately and wait in silence for their answer. If silent 8+ seconds, one brief "Still with me?" then wait again.\nOPENING: If they haven't spoken, start with "Hi, may I speak with [name]?" — wait — then give the brief ${campaign?.caller_name || 'Emily'}/${campaign?.business_name || BRAND_NAME} intro and ask for 30 seconds.`;
 
   const greetingScript = buildGreeting(campaign, leadData);
   const voiceId =

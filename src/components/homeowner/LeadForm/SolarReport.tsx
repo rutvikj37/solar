@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Sun,
@@ -17,6 +17,28 @@ import { buildSolarReportEstimates } from '@/lib/solarReportEstimates.js';
 import { downloadSolarReportPdf } from '@/utils/solarReportPdf.js';
 import { printElement } from '@/utils/printElement.js';
 import { API_BASE } from '@/config.js';
+import RoofLayoutOverlay from '@/components/solar/RoofLayoutOverlay.jsx';
+
+type RoofLayoutResponse = { status: string; frame?: Record<string, number>; layout?: Record<string, any> };
+
+function useReportRoofLayout(leadCode: string, exp?: number, sig?: string) {
+  const [result, setResult] = useState<RoofLayoutResponse | null>(null);
+  useEffect(() => {
+    if (!leadCode || leadCode === 'Pending' || !exp || !sig) return undefined;
+    let cancelled = false;
+    const q = `exp=${encodeURIComponent(exp)}&sig=${encodeURIComponent(sig)}`;
+    fetch(`${API_BASE}/api/marketplace/report-roof-layout/${encodeURIComponent(leadCode)}?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.status === 'ok' && json.layout && json.frame) setResult(json);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [leadCode, exp, sig]);
+  return result;
+}
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -37,11 +59,68 @@ function SavingsPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+type IncentiveRow = { code: string; label: string; kind: string; rate: number; cap: number | null; asOf?: string };
+
+function incentiveValue(row: IncentiveRow) {
+  if (row.kind === 'percent') {
+    const pct = `${Math.round(row.rate * 100)}%`;
+    return row.cap != null ? `${pct} (max $${row.cap.toLocaleString()})` : pct;
+  }
+  if (row.kind === 'per_watt') return `$${row.rate}/W`;
+  return `$${Number(row.rate).toLocaleString()}`;
+}
+
+function SavingsAssumptions({ estimates }: { estimates: ReturnType<typeof buildSolarReportEstimates> }) {
+  const a = (estimates.assumptions || null) as Record<string, any> | null;
+  const rateLabel = a?.utilityRateLabel || 'Typical US residential rate (estimate)';
+  const productionLabel =
+    a?.productionLabel || (estimates.googleSolarHit ? 'Google Solar roof model' : 'Typical US solar yield (estimate)');
+  const owned: IncentiveRow[] = Array.isArray(a?.incentivesOwned) ? a!.incentivesOwned : [];
+  const thirdParty: IncentiveRow[] = Array.isArray(a?.incentivesThirdParty) ? a!.incentivesThirdParty : [];
+  const incentiveDates = [...owned, ...thirdParty].map((r) => r.asOf).filter(Boolean).sort();
+  const asOf = incentiveDates.length ? incentiveDates[incentiveDates.length - 1] : null;
+
+  return (
+    <details className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-[11px] text-white/55">
+      <summary className="cursor-pointer select-none font-bold text-white/70">How we estimated this</summary>
+      <ul className="mt-3 space-y-1.5">
+        <li>
+          Electricity rate: ~${Number(estimates.ratePerKwh).toFixed(3)}/kWh — {rateLabel}
+          {a?.utilityRateAsOf ? ` (as of ${a.utilityRateAsOf})` : ''}
+        </li>
+        <li>
+          Production: {Number(estimates.annualProduction).toLocaleString()} kWh/yr — {productionLabel}
+        </li>
+        <li>
+          Rates rise {a?.escalationPct ?? 3}%/yr; panels lose {a?.degradationPct ?? 0.5}%/yr. Savings are capped at your
+          current usage.
+        </li>
+        <li>
+          Savings exclude tax credits. The federal residential solar credit (§25D) ended after 2025.
+          {owned.filter((r) => r.rate > 0).length
+            ? ` Possible owner incentives: ${owned
+                .filter((r) => r.rate > 0)
+                .map((r) => `${r.label} ${incentiveValue(r)}`)
+                .join('; ')}.`
+            : ''}
+          {thirdParty.filter((r) => r.rate > 0).length
+            ? ' With a lease or PPA, the system owner may claim a federal credit and pass part of it through as lower pricing.'
+            : ''}
+          {asOf ? ` Incentive data as of ${asOf}.` : ''}
+        </li>
+      </ul>
+    </details>
+  );
+}
+
 export function SolarReport({ data }: { data: Record<string, unknown> }) {
   const navigate = useNavigate();
   const reportRef = useRef<HTMLDivElement>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  const [satelliteFailed, setSatelliteFailed] = useState(false);
+  const access = (data?.reportAccess || {}) as { exp?: number; sig?: string };
+  const roofLayout = useReportRoofLayout(String(data?.leadCode || ''), access.exp, access.sig);
   if (!data) return null;
 
   const estimates = buildSolarReportEstimates(data);
@@ -200,6 +279,7 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
               Based on ${estimates.bill}/mo bill · ~${estimates.ratePerKwh.toFixed(2)}/kWh ·{' '}
               {estimates.systemKw} kW system · Illustrative only.
             </p>
+            <SavingsAssumptions estimates={estimates} />
           </div>
         </motion.div>
 
@@ -325,18 +405,28 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
             <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest flex items-center gap-2">
               <Sun className="size-4" /> Property snapshot
             </h3>
-            <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-navy-dark/50">
+            <div className="theme-dark-canvas relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-navy-dark/50">
               <img
                 src={satelliteImageUrl}
                 alt="Roof satellite view"
                 className="w-full h-full object-cover brightness-[0.85]"
                 onError={(e) => {
                   const img = e.currentTarget;
+                  setSatelliteFailed(true);
                   if (img.src !== `${window.location.origin}/roof-aerial.jpg`) {
                     img.src = '/roof-aerial.jpg';
                   }
                 }}
               />
+              {roofLayout && rawSatellite && !satelliteFailed ? (
+                <RoofLayoutOverlay
+                  layout={roofLayout.layout}
+                  frame={roofLayout.frame}
+                  panelCount={roofLayout.layout?.panelCount}
+                  showSegments
+                  showPanels
+                />
+              ) : null}
               <div className="absolute bottom-2 left-2 right-2 flex justify-between text-[9px] font-black uppercase tracking-widest">
                 <span className="px-2 py-1 rounded bg-navy-dark/80 border border-white/10">
                   {roofType}
@@ -351,6 +441,12 @@ export function SolarReport({ data }: { data: Record<string, unknown> }) {
                 </span>
               ) : null}
             </div>
+            {roofLayout && rawSatellite && !satelliteFailed ? (
+              <p className="text-[10px] text-white/45">
+                Outlined: {roofLayout.layout?.panelCount} suggested panel positions on your sunniest roof faces (Google
+                Solar model). Your installer will confirm the final layout.
+              </p>
+            ) : null}
             {enriched && (estimates.orientation || estimates.pitch || estimates.shading) ? (
               <div className="grid grid-cols-1 gap-2 text-xs">
                 {estimates.orientation ? (

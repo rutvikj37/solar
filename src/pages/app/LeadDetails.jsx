@@ -3,6 +3,13 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import SolarProposalModal from '../../components/SolarProposalModal';
 import LeadProposalPanel from '../../components/leads/LeadProposalPanel.jsx';
 import LeadStatusBadge from '../../components/leads/LeadStatusBadge';
+import OptOutBadge from '../../components/leads/OptOutBadge.jsx';
+import LeadEmailThreads from '../../components/leads/LeadEmailThreads.jsx';
+import LeadTasksPanel from '../../components/tasks/LeadTasksPanel.jsx';
+import { useTaskSummary } from '../../lib/tasks.js';
+import AiWritePanel from '../../components/outreach/AiWritePanel.jsx';
+import AiReplySuggestions from '../../components/outreach/AiReplySuggestions.jsx';
+import { takeStashedEmailDraft } from '../../lib/aiOutreach.js';
 import { API_BASE } from '../../config.js';
 import { apiService } from '../../services/api.js';
 import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
@@ -190,6 +197,10 @@ export default function LeadDetails() {
   const [nextAction, setNextAction] = useState('');
   const [conversationNotes, setConversationNotes] = useState('');
   const [emailBody, setEmailBody] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [smsBody, setSmsBody] = useState('');
+  const [smsMsg, setSmsMsg] = useState('');
+  const emailDraftLeadRef = useRef(null);
   const [apptAt, setApptAt] = useState('');
   const [apptTitle, setApptTitle] = useState('Site Survey');
   const [apptDuration, setApptDuration] = useState(60);
@@ -236,6 +247,8 @@ export default function LeadDetails() {
 
   const tabParam = searchParams.get('tab') || 'overview';
   const activeTab = LEAD_TABS.some((t) => t.id === tabParam) ? tabParam : 'overview';
+  const taskSummary = useTaskSummary();
+  const overdueTaskCount = Number(taskSummary?.overdueByLead?.[id]) || 0;
 
   const setTab = (tabId) => {
     const next = new URLSearchParams(searchParams);
@@ -294,9 +307,15 @@ export default function LeadDetails() {
             : '',
           saleRepName: data.sale_rep_name || '',
         });
-        setEmailBody(
-          `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`,
-        );
+        const keepDraft = emailDraftLeadRef.current === String(data.id);
+        emailDraftLeadRef.current = String(data.id);
+        const emailTemplate = `Hi ${data.owner_name || 'there'},\n\nWe analyzed the solar potential at ${data.address} and estimate ~$${Number(data.estimated_savings || 0).toLocaleString('en-US')} in 25-year savings.\n\nWould you like to book a free site survey?\n`;
+        setEmailBody((prev) => (keepDraft && prev.trim() ? prev : emailTemplate));
+        if (!keepDraft) {
+          setEmailSubject('');
+          setSmsBody('');
+          setSmsMsg('');
+        }
         try {
           setOutreachOptOut(Number(data.outreach_opt_out) === 1);
         } catch {
@@ -393,6 +412,15 @@ export default function LeadDetails() {
     markerRef.current = null;
     load();
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!lead || String(lead.id) !== String(id)) return;
+    const stashed = takeStashedEmailDraft(id);
+    if (stashed?.body) {
+      setEmailBody(stashed.body);
+      if (stashed.subject) setEmailSubject(stashed.subject);
+    }
+  }, [lead, id]);
 
   useEffect(() => {
     if (!lead || searchParams.get('proposal') !== '1') return;
@@ -642,7 +670,11 @@ export default function LeadDetails() {
       const res = await fetch(`${API}/api/outreach/email`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ leadId: Number(id), message: emailBody }),
+        body: JSON.stringify({
+          leadId: Number(id),
+          message: emailBody,
+          ...(emailSubject.trim() ? { subject: emailSubject.trim() } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Email failed');
@@ -651,12 +683,51 @@ export default function LeadDetails() {
           ? 'Email simulated (check your connected mailbox).'
           : `Email sent from ${emailIntegration.fromEmail || 'your connected mailbox'}.`,
       );
+      setEmailBody('');
+      setEmailSubject('');
       await load();
     } catch (err) {
       setEmailMsg(err.message || 'Email failed');
     } finally {
       setBusy('');
     }
+  };
+
+  const handleSms = async () => {
+    if (outreachOptOut) {
+      setSmsMsg('This lead opted out of outreach.');
+      return;
+    }
+    if (!smsBody.trim()) {
+      setSmsMsg('Write a message before sending.');
+      return;
+    }
+    if (!window.confirm('Send this text message now?')) return;
+    setBusy('sms');
+    setSmsMsg('');
+    try {
+      const res = await fetch(`${API}/api/outreach/sms`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ leadId: Number(id), message: smsBody.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Text failed');
+      setSmsMsg(data.simulated ? 'Text simulated (SMS provider not configured).' : 'Text sent.');
+      setSmsBody('');
+      await load();
+    } catch (err) {
+      setSmsMsg(err.message || 'Text failed');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const applyReplyDraft = ({ subject, body }) => {
+    setEmailSubject(subject || '');
+    setEmailBody(body || '');
+    setEmailMsg('');
+    setTab('outreach');
   };
 
   const handleBookAppt = async () => {
@@ -998,6 +1069,7 @@ export default function LeadDetails() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-headline-lg text-2xl font-bold text-on-surface truncate">{displayName}</h2>
                   <LeadStatusBadge status={lead.status} configMap={statusConfigMap} />
+                  <OptOutBadge leadId={id} refreshKey={`${outreachOptOut}-${lead.status}`} />
                 </div>
                 <p className="text-on-surface-variant break-words text-sm">{lead.address}</p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
@@ -1242,6 +1314,14 @@ export default function LeadDetails() {
                 }`}
               >
                 {t.label}
+                {t.id === 'followups' && overdueTaskCount > 0 && (
+                  <span
+                    className="ml-1.5 rounded-full bg-red-500 px-1.5 py-px text-[9px] font-bold text-white"
+                    title={`${overdueTaskCount} overdue task${overdueTaskCount === 1 ? '' : 's'}`}
+                  >
+                    {overdueTaskCount}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -1695,6 +1775,24 @@ export default function LeadDetails() {
                 <p className="text-[11px] text-red-300">Outreach paused for this lead (opt-out).</p>
               ) : emailIntegration?.connected ? (
                 <>
+                  <div className="mb-2">
+                    <AiWritePanel
+                      leadId={id}
+                      channel="email"
+                      onDraft={(d) => {
+                        setEmailSubject(d.subject || '');
+                        setEmailBody(d.body || '');
+                        setEmailMsg('');
+                      }}
+                    />
+                  </div>
+                  <input
+                    className="mb-2 w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface text-sm"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder={`Subject (default: Solar savings estimate for ${lead.address || 'your home'})`}
+                    maxLength={200}
+                  />
                   <textarea
                     className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface min-h-[100px]"
                     value={emailBody}
@@ -1740,6 +1838,58 @@ export default function LeadDetails() {
               )}
             </Card>
 
+            <Card title="Send one-off text">
+              {outreachOptOut ? (
+                <p className="text-[11px] text-red-600 dark:text-red-300">Outreach paused for this lead (opt-out).</p>
+              ) : !phoneDisplay ? (
+                <p className="text-[11px] text-on-surface-variant">This lead has no phone number.</p>
+              ) : (
+                <>
+                  <div className="mb-2">
+                    <AiWritePanel
+                      leadId={id}
+                      channel="sms"
+                      onDraft={(d) => {
+                        setSmsBody(d.body || '');
+                        setSmsMsg('');
+                      }}
+                    />
+                  </div>
+                  <textarea
+                    className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 text-on-surface min-h-[80px] text-sm"
+                    value={smsBody}
+                    onChange={(e) => setSmsBody(e.target.value)}
+                    maxLength={480}
+                    placeholder="Short text message. Include “Reply STOP to opt out.”"
+                  />
+                  <div className="mt-1 flex justify-between text-[10px] text-on-surface-variant">
+                    <span>To: {phoneDisplay}</span>
+                    <span>
+                      {smsBody.length} chars · {Math.max(1, Math.ceil(smsBody.length / 153))} segment
+                      {smsBody.length > 160 ? 's' : ''}
+                    </span>
+                  </div>
+                  {smsMsg && (
+                    <p
+                      className={`text-[11px] mt-2 ${
+                        /sent|simulated/i.test(smsMsg) ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {smsMsg}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSms}
+                    disabled={busy === 'sms' || !smsBody.trim()}
+                    className="mt-3 w-full bg-white/10 text-on-surface py-2 rounded-lg font-bold disabled:opacity-50"
+                  >
+                    {busy === 'sms' ? 'Sending...' : 'Send Text'}
+                  </button>
+                </>
+              )}
+            </Card>
+
             <Card title="Call outcome">
               <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <label className="flex-1 text-[10px] text-slate-400 uppercase tracking-wider">
@@ -1774,6 +1924,8 @@ export default function LeadDetails() {
         )}
 
         {activeTab === 'followups' && (
+          <div className="space-y-4">
+          <LeadTasksPanel leadId={id} onChanged={() => load()} />
           <LeadFollowUpsPanel
             lead={lead}
             followUpAt={followUpAt}
@@ -1784,6 +1936,7 @@ export default function LeadDetails() {
             busy={busy === 'followup'}
             assigneeName={assigneeLabel}
           />
+          </div>
         )}
 
         {activeTab === 'appointments' && (
@@ -2043,6 +2196,22 @@ export default function LeadDetails() {
         )}
 
         {activeTab === 'activity' && (
+          <div className="space-y-4">
+          <LeadEmailThreads
+            leadId={id}
+            onSynced={() => load()}
+            renderThreadActions={(t) => {
+              const lastInbound = [...t.messages].reverse().find((m) => m.direction === 'inbound');
+              return lastInbound && !outreachOptOut ? (
+                <AiReplySuggestions
+                  leadId={id}
+                  messageId={lastInbound.id}
+                  onUse={applyReplyDraft}
+                  useLabel="Use in email composer"
+                />
+              ) : null;
+            }}
+          />
           <Card title="Activity timeline">
             <div className="space-y-3 max-h-[520px] overflow-y-auto custom-scrollbar pr-1">
               {activities.length === 0 && <p className="text-on-surface-variant">No activity yet.</p>}
@@ -2059,6 +2228,7 @@ export default function LeadDetails() {
               ))}
             </div>
           </Card>
+          </div>
         )}
 
         {activeTab === 'notes' && (

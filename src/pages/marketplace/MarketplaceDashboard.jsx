@@ -82,6 +82,8 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
   const [walletPaying, setWalletPaying] = useState(false);
   const [biddingLeadId, setBiddingLeadId] = useState(null);
   const walletCheckoutLock = useRef(false);
+  const confirmedWalletSessionRef = useRef(null);
+  const [leadActionBusy, setLeadActionBusy] = useState(false);
   const isDevBuild = import.meta.env.DEV || import.meta.env.MODE !== 'production';
   const verificationStatus = String(
     oppFilter?.verificationStatus || profile?.verification_status || 'pending',
@@ -184,24 +186,31 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
           headers: authHeaders(),
           body: JSON.stringify({ sessionId }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Stripe confirm failed');
         toast.success(`Bid wallet topped up — ${formatMoney(data.balance ?? data.walletBalance)}`);
       } catch (err) {
         toast.error(err.message);
+      } finally {
+        load('wallet');
       }
     };
 
     const sessionId = searchParams.get('session_id');
     if (sessionId) {
+      // StrictMode / param-strip re-runs must not confirm the same session twice.
+      if (confirmedWalletSessionRef.current === sessionId) return;
+      confirmedWalletSessionRef.current = sessionId;
       confirmStripe(sessionId);
-    } else if (walletReturnFlag === '1') {
-      toast.message('Returned from checkout — refreshing wallet…');
-    } else if (walletReturnFlag === 'canceled') {
-      toast.message('Wallet top-up canceled');
+    } else {
+      if (walletReturnFlag === '1') {
+        toast.message('Returned from checkout — refreshing wallet…');
+      } else if (walletReturnFlag === 'canceled') {
+        toast.message('Wallet top-up canceled');
+      }
+      load('wallet');
     }
     setTab('wallet');
-    load('wallet');
     const next = new URLSearchParams(searchParams);
     next.delete('wallet');
     next.delete('session_id');
@@ -295,35 +304,43 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
   };
 
   const updateOutcome = async (leadId, status) => {
+    if (leadActionBusy) return;
+    setLeadActionBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/won/${leadId}/outcome`, {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({ status }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Update failed');
       toast.success(`Status → ${status}`);
       load(tab);
       setSelectedLead(null);
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setLeadActionBusy(false);
     }
   };
 
   const fileDispute = async (leadId) => {
+    if (leadActionBusy) return;
+    setLeadActionBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/marketplace/won/${leadId}/disputes`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify(disputeForm),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Dispute failed');
       toast.success('Dispute submitted for review');
       setSelectedLead(null);
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setLeadActionBusy(false);
     }
   };
 
@@ -967,7 +984,8 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
                         key={s}
                         type="button"
                         onClick={() => updateOutcome(selectedLead.id, s)}
-                        className="rounded-lg border border-glass-stroke px-2.5 py-1 text-xs hover:bg-surface-container-high"
+                        disabled={leadActionBusy}
+                        className="rounded-lg border border-glass-stroke px-2.5 py-1 text-xs hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {s}
                       </button>
@@ -1000,9 +1018,10 @@ function MarketplaceDashboardInner({ isAdmin, theme }) {
                   <button
                     type="button"
                     onClick={() => fileDispute(selectedLead.id)}
-                    className="rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold px-3 py-2"
+                    disabled={leadActionBusy}
+                    className="rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs font-semibold px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Submit claim
+                    {leadActionBusy ? 'Submitting…' : 'Submit claim'}
                   </button>
                 </div>
               </>

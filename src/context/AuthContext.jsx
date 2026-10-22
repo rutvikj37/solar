@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { API_BASE } from '../config.js';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { selectPlanDisplay } from '../lib/planDisplay.js';
 import {
   AUTH_CHANGED_EVENT,
   clearToken,
+  fetchMeResult,
   getToken,
-  isAuthError,
   isTokenValid,
   logoutToLogin,
   setToken,
@@ -47,6 +47,8 @@ export function AuthProvider({ children }) {
   const [unlimitedCredits, setUnlimitedCredits] = useState(false);
   const [subscription, setSubscription] = useState(null);
   const [entitlements, setEntitlements] = useState(EMPTY_ENTITLEMENTS);
+  const [scanQuota, setScanQuota] = useState(null);
+  const [creditsUsedToday, setCreditsUsedToday] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const resetSession = useCallback(() => {
@@ -56,9 +58,11 @@ export function AuthProvider({ children }) {
     setUnlimitedCredits(false);
     setSubscription(null);
     setEntitlements(EMPTY_ENTITLEMENTS);
+    setScanQuota(null);
+    setCreditsUsedToday(0);
   }, []);
 
-  const fetchUserData = useCallback(async () => {
+  const fetchUserData = useCallback(async ({ force = false } = {}) => {
     if (!isTokenValid()) {
       if (getToken()) clearToken();
       resetSession();
@@ -67,30 +71,29 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const result = await fetchMeResult({ force });
+      if (result.status === 'ok') {
+        const data = result.data;
         setUser(data.user);
         setCredits(data.credits || 0);
         setActivePackage(data.activePackage || 'Free');
         setUnlimitedCredits(Boolean(data.unlimitedCredits));
         setSubscription(data.subscription || null);
         setEntitlements(data.entitlements || EMPTY_ENTITLEMENTS);
-      } else {
-        if (isAuthError(res.status) || res.status === 404) {
-          clearToken();
-        }
+        setScanQuota(data.scanQuota || null);
+        setCreditsUsedToday(Number(data.creditsUsedToday) || 0);
+      } else if (result.status === 'unauthorized' || result.status === 'no_token') {
         resetSession();
       }
+      // Transient errors (429/5xx/network): keep the last known state.
     } catch (err) {
       console.error('Error loading user data:', err);
     } finally {
       setLoading(false);
     }
   }, [resetSession]);
+
+  const refreshUserData = useCallback(() => fetchUserData({ force: true }), [fetchUserData]);
 
   useEffect(() => {
     fetchUserData();
@@ -132,18 +135,27 @@ export function AuthProvider({ children }) {
     [entitlements, unlimitedCredits],
   );
 
+  const plan = useMemo(
+    () =>
+      selectPlanDisplay({ user, credits, activePackage, subscription, entitlements, unlimitedCredits }),
+    [user, credits, activePackage, subscription, entitlements, unlimitedCredits],
+  );
+
   const value = {
     user,
     credits,
+    plan,
     activePackage,
     unlimitedCredits,
     subscription,
     entitlements,
+    scanQuota,
+    creditsUsedToday,
     can,
     loading,
     login,
     logout,
-    refreshUserData: fetchUserData
+    refreshUserData
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

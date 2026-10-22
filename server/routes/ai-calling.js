@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { requireTwilioSignature } from '../utils/twilioVerify.js';
 import { verifyMediaFileAccess } from '../utils/signedMediaUrl.js';
+import { BRAND_NAME } from '../config/brand.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -133,7 +134,7 @@ router.post('/test-call', ...adminAuth, asyncHandler(async (req, res) => {
     phoneNumber,
     campaign: {
       caller_name: callerName || 'Emily',
-      business_name: businessName || 'Solar Velocity (Test Call)',
+      business_name: businessName || `${BRAND_NAME} (Test Call)`,
       twilio_number: process.env.TWILIO_PHONE_NUMBER,
     },
   });

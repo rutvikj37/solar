@@ -12,13 +12,32 @@ function scoreFillColor(score, existingSolarLikely) {
   return '#64748b';
 }
 
-export function buildScoreMarkerIcon(google, { score = 0, existingSolarLikely = false, selected = false } = {}) {
-  const fill = selected ? '#38bdf8' : scoreFillColor(score, existingSolarLikely);
+/** Verified score for a map list item, or null when only a preview / nothing is known. */
+export function verifiedMarkerScore(prop) {
+  if (prop?.scoreSource !== 'verified') return null;
+  const n = Number(prop.solarScore);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function markerTitle(prop) {
+  const score = verifiedMarkerScore(prop);
+  if (score != null) return `${prop.address} · Solar score ${score} (Verified)`;
+  if (prop?.scoreSource === 'preview' && prop.previewSystemKw) {
+    return `${prop.address} · Preview ≈ ${prop.previewSystemKw} kW from living area (not verified)`;
+  }
+  return `${prop?.address || 'Property'} · Not scored yet`;
+}
+
+export function buildScoreMarkerIcon(
+  google,
+  { score = 0, existingSolarLikely = false, selected = false, unscored = false } = {},
+) {
+  const fill = selected ? '#38bdf8' : unscored && !existingSolarLikely ? '#cbd5e1' : scoreFillColor(score, existingSolarLikely);
   const scale = selected ? 2.4 : 1.9;
   return {
     path: MAP_PIN_PATH,
     fillColor: fill,
-    fillOpacity: 0.95,
+    fillOpacity: unscored && !selected ? 0.7 : 0.95,
     strokeColor: selected ? '#ffffff' : '#080B1A',
     strokeWeight: selected ? 2.5 : 1.4,
     scale,

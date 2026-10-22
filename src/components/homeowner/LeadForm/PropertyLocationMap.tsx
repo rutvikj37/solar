@@ -217,7 +217,7 @@ export function PropertyLocationMap({
 
   return (
     <div className="space-y-2">
-      <div className="h-52 md:h-60 rounded-xl border border-white/10 overflow-hidden relative bg-[#0a1020]">
+      <div className="theme-dark-canvas h-52 md:h-60 rounded-xl border border-white/10 overflow-hidden relative bg-[#0a1020]">
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
         {showPlaceholder ? (

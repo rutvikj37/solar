@@ -9,6 +9,13 @@ import SocialLoginButtons from "../../components/SocialLoginButtons.jsx";
 
 const INSTALLER_HOME = "/for-installers";
 
+/** Same-origin relative path only (blocks //host, /\host and absolute URLs). */
+function safeNextPath(next) {
+  if (typeof next !== "string" || !next.startsWith("/")) return null;
+  if (next.startsWith("//") || next.startsWith("/\\") || next.startsWith("/login")) return null;
+  return next;
+}
+
 function resolveAuthBackTo(location) {
   const fromState = location.state?.from;
   if (typeof fromState === "string" && fromState.startsWith("/") && !fromState.startsWith("//")) {
@@ -47,13 +54,14 @@ export default function LoginPage() {
           role = payload?.role;
         } catch {}
       }
+      const next = safeNextPath(searchParams.get("next"));
       if (isAdminRole(role)) {
-        navigate("/admin", { replace: true });
+        navigate(next && next.startsWith("/admin") ? next : "/admin", { replace: true });
       } else {
-        navigate("/dashboard", { replace: true });
+        navigate(next || "/dashboard", { replace: true });
       }
     }
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   const completeLogin = (token, { needsOnboarding = false, role = null } = {}) => {
     setShowAuthLoader(true);
@@ -74,9 +82,11 @@ export default function LoginPage() {
       } catch {}
     }
 
+    const safeNext = safeNextPath(searchParams.get("next"));
+
     // Direct admin login directly to /admin with no user functionality
     if (isAdminRole(userRole)) {
-      navigate("/admin", { replace: true });
+      navigate(safeNext && safeNext.startsWith("/admin") ? safeNext : "/admin", { replace: true });
       return;
     }
 
@@ -84,9 +94,6 @@ export default function LoginPage() {
       navigate("/complete-profile", { replace: true });
       return;
     }
-    const next = searchParams.get("next");
-    const safeNext =
-      next && next.startsWith("/") && !next.startsWith("//") ? next : null;
     navigate(safeNext || "/dashboard", { replace: true });
   };
 

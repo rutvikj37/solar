@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
+import { fetchMeResult } from '../../lib/auth.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { invoiceNumber, openInvoicePdf } from '../../utils/invoicePdf.js';
 import { formatLedgerEntryType, formatMoney, formatWhen } from '../../lib/marketplace.js';
 
@@ -123,10 +125,12 @@ export default function Billing() {
   const [checkoutError, setCheckoutError] = useState('');
   const [portalLoading, setPortalLoading] = useState(false);
   const [marketplaceWallet, setMarketplaceWallet] = useState({ balance: 0, ledger: [] });
+  const { refreshUserData } = useAuth();
   const [entitlements, setEntitlements] = useState(null);
   const [planDetails, setPlanDetails] = useState(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const confirmedSessionRef = useRef(null);
 
   const parseFeatures = (raw) => {
     if (!raw) return [];
@@ -177,10 +181,12 @@ export default function Billing() {
       navigate('/login');
       return;
     }
+    if (purchasing) return;
     setPurchasing(true);
     setSelectedPlan(pkgId);
     setCheckoutError('');
     setMessage('');
+    let redirecting = false;
     try {
       const res = await fetch(`${API}/api/billing/checkout`, {
         method: 'POST',
@@ -190,6 +196,8 @@ export default function Billing() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Checkout failed');
       if (data.mode === 'stripe' && data.url) {
+        // Leave the button disabled while the browser navigates to Stripe.
+        redirecting = true;
         window.location.href = data.url;
         return;
       }
@@ -203,7 +211,7 @@ export default function Billing() {
     } catch (err) {
       setCheckoutError(err.message || 'Could not start checkout');
     } finally {
-      setPurchasing(false);
+      if (!redirecting) setPurchasing(false);
     }
   };
 
@@ -214,17 +222,23 @@ export default function Billing() {
       return;
     }
     try {
-      const [meRes, invRes, subRes, mktWalletRes] = await Promise.all([
-        fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } }),
+      const [meResult, invRes, subRes, mktWalletRes] = await Promise.all([
+        // Forced refresh updates the shared session (header credits); the follow-up read hits its cache.
+        refreshUserData().then(() => fetchMeResult()),
         fetch(`${API}/api/billing/invoices`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/billing/subscription`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/billing/marketplace-wallet`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
-      if (!meRes.ok) throw new Error('Unauthorized');
-      const me = await meRes.json();
-      setCredits(me.credits);
-      setActivePackage(me.activePackage || 'Free');
-      setSubscription(me.subscription || null);
+      if (meResult.status === 'unauthorized' || meResult.status === 'no_token') {
+        navigate('/login');
+        return;
+      }
+      if (meResult.status === 'ok') {
+        const me = meResult.data;
+        setCredits(me.credits);
+        setActivePackage(me.activePackage || 'Free');
+        setSubscription(me.subscription || null);
+      }
       if (invRes.ok) {
         const invData = await invRes.json();
         const list = Array.isArray(invData)
@@ -250,8 +264,8 @@ export default function Billing() {
         });
       }
     } catch (err) {
-      localStorage.removeItem('solar_token');
-      navigate('/login');
+      // Network/server errors are transient; only a 401/403 from /api/auth/me signs the user out.
+      console.error('Billing load failed:', err);
     } finally {
       setLoading(false);
     }
@@ -263,17 +277,45 @@ export default function Billing() {
       const sessionId = searchParams.get('session_id');
       const success = searchParams.get('success');
       const canceled = searchParams.get('canceled');
-      if (token && sessionId) {
-        await fetch(`${API}/api/billing/confirm`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ sessionId })
-        });
-        setMessage('Subscription confirmed — credits updated.');
-      } else if (success) {
-        setMessage('Subscription active — credits updated.');
-      } else if (canceled) {
-        setMessage('Checkout canceled — no changes were made.');
+      if (sessionId || success || canceled) {
+        if (sessionId) {
+          // StrictMode / re-renders must not confirm the same session twice.
+          if (confirmedSessionRef.current === sessionId) return;
+          confirmedSessionRef.current = sessionId;
+          if (token) {
+            try {
+              const res = await fetch(`${API}/api/billing/confirm`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ sessionId })
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok) {
+                setMessage('Subscription confirmed — credits updated.');
+              } else {
+                setCheckoutError(
+                  data.error ||
+                    'We could not confirm your payment yet. If you were charged, your credits will appear shortly.',
+                );
+              }
+            } catch {
+              setCheckoutError('Could not reach the server to confirm your payment. Please refresh in a moment.');
+            }
+          }
+        } else if (success) {
+          setMessage('Subscription active — credits updated.');
+        } else {
+          setMessage('Checkout canceled — no changes were made.');
+        }
+        // Strip one-shot params so a reload doesn't re-confirm; the resulting re-run loads data.
+        const next = new URLSearchParams(searchParams);
+        ['session_id', 'success', 'canceled', 'package'].forEach((k) => next.delete(k));
+        const search = next.toString();
+        navigate(
+          { pathname: window.location.pathname, search: search ? `?${search}` : '', hash: window.location.hash },
+          { replace: true },
+        );
+        return;
       }
       await Promise.all([load(), loadPlans()]);
     };

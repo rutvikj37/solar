@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DispositionBadge from '../../components/ai-calling/DispositionBadge';
 import { API_BASE } from '../../config.js';
+import { BRAND_NAME } from '../../config/brand.js';
 
 const API = API_BASE;
 
@@ -16,7 +17,7 @@ export default function AiCallingCampaigns() {
   const [formData, setFormData] = useState({
     name: '',
     callerName: 'Emily',
-    businessName: 'Solar Velocity',
+    businessName: BRAND_NAME,
     twilioNumber: '',
     elevenlabsVoiceId: '',
     timezone: 'America/New_York',
@@ -65,7 +66,7 @@ export default function AiCallingCampaigns() {
         setFormData({
           name: '',
           callerName: 'Emily',
-          businessName: 'Solar Velocity',
+          businessName: BRAND_NAME,
           twilioNumber: '',
           elevenlabsVoiceId: '',
           timezone: 'America/New_York',
@@ -160,7 +161,7 @@ export default function AiCallingCampaigns() {
                 <DispositionBadge status={c.status} />
               </div>
               <div className="space-y-1.5 text-xs text-on-surface-variant">
-                <p><span className="text-slate-400">Caller:</span> {c.caller_name || 'Emily'} ({c.business_name || 'Solar Velocity'})</p>
+                <p><span className="text-slate-400">Caller:</span> {c.caller_name || 'Emily'} ({c.business_name || BRAND_NAME})</p>
                 <p><span className="text-slate-400">Hours:</span> {c.calling_window_start} - {c.calling_window_end} ({c.timezone})</p>
                 <p><span className="text-slate-400">Progress:</span> {c.queue_done || 0} / {c.queue_total || 0} leads called</p>
               </div>

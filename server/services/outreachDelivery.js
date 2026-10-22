@@ -9,6 +9,11 @@ import { BRAND_NOREPLY } from '../config/brand.js';
 import { isSesConfigured, sendViaSes } from './email/sesClient.js';
 import { consumeEmailQuota, refundEmailQuota, logEmailSend } from './email/emailQuota.js';
 import { sendUserEmail } from './email/sendUserEmail.js';
+import { isEmailOptedOut, optedOutError } from './compliance/optOut.js';
+import { buildMarketingEmailExtras } from './compliance/emailCompliance.js';
+
+/** Sources that are commercial/marketing mail and need opt-out checks + unsubscribe footer. */
+export const MARKETING_EMAIL_SOURCES = new Set(['outreach', 'drip', 'marketing']);
 
 function isKeyValid(key) {
   return Boolean(
@@ -154,6 +159,8 @@ export async function sendEmail({
   source = 'other',
   userRole = null,
   skipQuota = false,
+  leadId = null,
+  marketing = MARKETING_EMAIL_SOURCES.has(source),
 }) {
   if (!userId) {
     const err = new Error('userId required to send plan emails');
@@ -164,6 +171,14 @@ export async function sendEmail({
   // html is accepted for API compatibility; connected providers send plain body today
   void html;
 
+  let headers = null;
+  if (marketing) {
+    if (await isEmailOptedOut(to)) throw optedOutError('email_unsubscribed');
+    const extras = await buildMarketingEmailExtras({ userId, to, leadId });
+    body = `${body}\n${extras.footer}`;
+    headers = extras.headers;
+  }
+
   let reserved = false;
   if (!skipQuota) {
     await consumeEmailQuota(userId, 1, userRole);
@@ -171,7 +186,7 @@ export async function sendEmail({
   }
 
   try {
-    const result = await sendUserEmail(userId, { to, subject, body });
+    const result = await sendUserEmail(userId, { to, subject, body, headers });
 
     await logEmailSend({
       userId,

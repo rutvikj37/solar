@@ -5,8 +5,37 @@ import { logActivity } from './crm.js';
 import { sendTwilioSms, sendEmail } from '../services/outreachDelivery.js';
 import { requireTwilioSignature } from '../utils/twilioVerify.js';
 import { fetchLeadForUser } from '../utils/leadAccess.js';
+import { requireWorkspacePermission } from '../middleware/workspacePermissions.js';
+import {
+  checkLeadContactable,
+  classifySmsKeyword,
+  optedOutError,
+  recordOptOut,
+  revokeOptOut,
+} from '../services/compliance/optOut.js';
+import { BRAND_NAME } from '../config/brand.js';
 
 const router = express.Router();
+
+const isKeyValid = (key) =>
+  Boolean(key && String(key).trim() !== '' && !String(key).toLowerCase().includes('your_'));
+
+/** Our own STOP/START confirmations; disable when Twilio Advanced Opt-Out already replies. */
+function smsKeywordRepliesEnabled() {
+  const v = String(process.env.SMS_KEYWORD_REPLIES ?? '1').trim().toLowerCase();
+  return v !== '0' && v !== 'false' && v !== 'off';
+}
+
+const SMS_KEYWORD_REPLIES = {
+  stop: `${BRAND_NAME}: You have been unsubscribed and will receive no further messages. Reply START to resubscribe.`,
+  start: `${BRAND_NAME}: You have been resubscribed to messages. Msg & data rates may apply. Reply STOP to opt out.`,
+  help: `${BRAND_NAME}: Solar information messages. Msg & data rates may apply. Reply STOP to opt out. Help: https://spacetoroof.com/contact`,
+};
+
+async function assertContactable(lead, channel) {
+  const check = await checkLeadContactable(lead, channel);
+  if (!check.allowed) throw optedOutError(check.reason);
+}
 
 async function assertLeadOwnership(leadId, userId, role) {
   return fetchLeadForUser(leadId, userId, role);
@@ -28,12 +57,24 @@ router.post('/webhooks/sms', async (req, res) => {
   const body = req.body?.Body || req.body?.body || '';
   const sid = req.body?.MessageSid || req.body?.SmsSid || null;
 
-  res.type('text/xml').send('<Response></Response>');
+  const keyword = classifySmsKeyword(body);
+  const reply = keyword && from && smsKeywordRepliesEnabled() ? SMS_KEYWORD_REPLIES[keyword] : null;
+  res.type('text/xml').send(reply ? `<Response><Message>${reply}</Message></Response>` : '<Response></Response>');
   if (!from) return;
 
   const fromDigits = digitsOnly(from);
   if (fromDigits.length < 7) return;
   const suffix = fromDigits.slice(-10);
+
+  try {
+    if (keyword === 'stop') {
+      await recordOptOut({ phone: from, channel: 'all', source: 'sms_keyword', detail: String(body).trim().slice(0, 40) });
+    } else if (keyword === 'start') {
+      await revokeOptOut({ phone: from, channel: 'all', source: 'sms_keyword', detail: String(body).trim().slice(0, 40) });
+    }
+  } catch (err) {
+    console.error('[Outreach] SMS keyword opt-out handling failed:', err.message);
+  }
 
   try {
     const [leads] = await db.query(
@@ -59,7 +100,7 @@ router.post('/webhooks/sms', async (req, res) => {
 });
 
 // Send SMS to a lead
-router.post('/sms', authenticateToken, async (req, res) => {
+router.post('/sms', authenticateToken, requireWorkspacePermission('outreach_send'), async (req, res) => {
   const { leadId, message } = req.body;
   if (!leadId || !message) return res.status(400).json({ error: 'leadId and message required' });
 
@@ -69,6 +110,7 @@ router.post('/sms', authenticateToken, async (req, res) => {
     if (!lead.phone || lead.phone === 'Not Available') {
       return res.status(400).json({ error: 'Lead has no phone number' });
     }
+    await assertContactable(lead, 'sms');
 
     const result = await sendTwilioSms(lead.phone, message);
     const status = result.simulated ? 'simulated' : 'sent';
@@ -86,13 +128,16 @@ router.post('/sms', authenticateToken, async (req, res) => {
 
     res.status(201).json({ id: ins.insertId, status, simulated: !!result.simulated });
   } catch (error) {
+    if (error.code === 'OPTED_OUT') {
+      return res.status(409).json({ error: error.message, code: 'OPTED_OUT', reason: error.reason });
+    }
     console.error('SMS outreach error:', error);
     res.status(500).json({ error: 'Failed to send SMS' });
   }
 });
 
 // Send email to a lead
-router.post('/email', authenticateToken, async (req, res) => {
+router.post('/email', authenticateToken, requireWorkspacePermission('outreach_send'), async (req, res) => {
   const { leadId, subject, message } = req.body;
   if (!leadId || !message) return res.status(400).json({ error: 'leadId and message required' });
 
@@ -102,6 +147,7 @@ router.post('/email', authenticateToken, async (req, res) => {
     if (!lead.email || lead.email === 'Not Available') {
       return res.status(400).json({ error: 'Lead has no email' });
     }
+    await assertContactable(lead, 'email');
 
     const emailSubject = subject || `Solar savings estimate for ${lead.address}`;
     const result = await sendEmail({
@@ -111,13 +157,14 @@ router.post('/email', authenticateToken, async (req, res) => {
       subject: emailSubject,
       body: message,
       source: 'outreach',
+      leadId: lead.id,
     });
     const status = result.simulated ? 'simulated' : 'sent';
 
     const [ins] = await db.query(
-      `INSERT INTO outreach_messages (user_id, lead_id, channel, subject, body, status, external_id)
-       VALUES (?, ?, 'email', ?, ?, ?, ?)`,
-      [req.user.id, leadId, emailSubject, message, status, result.id]
+      `INSERT INTO outreach_messages (user_id, lead_id, channel, subject, body, status, external_id, thread_key)
+       VALUES (?, ?, 'email', ?, ?, ?, ?, ?)`,
+      [req.user.id, leadId, emailSubject, message, status, result.id, result.threadId ? `gmail:${result.threadId}` : null]
     );
 
     await logActivity(leadId, req.user.id, 'email', message, { subject: emailSubject, status });
@@ -127,6 +174,9 @@ router.post('/email', authenticateToken, async (req, res) => {
 
     res.status(201).json({ id: ins.insertId, status, simulated: !!result.simulated });
   } catch (error) {
+    if (error.code === 'OPTED_OUT') {
+      return res.status(409).json({ error: error.message, code: 'OPTED_OUT', reason: error.reason });
+    }
     console.error('Email outreach error:', error);
     const status = error.code === 'EMAIL_NOT_CONNECTED' || error.code === 'EMAIL_QUOTA_EXCEEDED' || error.code === 'EMAIL_NOT_CONFIGURED'
       ? 400
@@ -140,7 +190,7 @@ router.post('/email', authenticateToken, async (req, res) => {
 });
 
 // Bulk SMS to multiple leads
-router.post('/bulk-sms', authenticateToken, async (req, res) => {
+router.post('/bulk-sms', authenticateToken, requireWorkspacePermission('outreach_send'), async (req, res) => {
   const { leadIds, message } = req.body;
   if (!Array.isArray(leadIds) || leadIds.length === 0 || !message) {
     return res.status(400).json({ error: 'leadIds[] and message required' });
@@ -152,6 +202,11 @@ router.post('/bulk-sms', authenticateToken, async (req, res) => {
       const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
       if (!lead || !lead.phone || lead.phone === 'Not Available') {
         results.push({ leadId, status: 'skipped' });
+        continue;
+      }
+      const check = await checkLeadContactable(lead, 'sms');
+      if (!check.allowed) {
+        results.push({ leadId, status: 'opted_out', reason: check.reason });
         continue;
       }
       const result = await sendTwilioSms(lead.phone, message);
@@ -172,13 +227,18 @@ router.post('/bulk-sms', authenticateToken, async (req, res) => {
 });
 
 // Schedule a call
-router.post('/calls', authenticateToken, async (req, res) => {
+router.post('/calls', authenticateToken, requireWorkspacePermission('outreach_send'), async (req, res) => {
   const { leadId, scheduledAt, script } = req.body;
   if (!leadId || !scheduledAt) return res.status(400).json({ error: 'leadId and scheduledAt required' });
 
   try {
     const lead = await assertLeadOwnership(leadId, req.user.id, req.user.role);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    const check = await checkLeadContactable(lead, 'call');
+    if (!check.allowed) {
+      const err = optedOutError(check.reason);
+      return res.status(409).json({ error: err.message, code: 'OPTED_OUT', reason: check.reason });
+    }
 
     const callScript = script || defaultSolarScript(lead);
     const [ins] = await db.query(

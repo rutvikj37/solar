@@ -1,4 +1,5 @@
 /** Template rendering for drip messages. */
+import { BRAND_COMPANY_DEFAULT } from '../../config/brand.js';
 
 export const MERGE_FIELDS = ['owner_name', 'address', 'estimated_savings', 'company_name'];
 
@@ -11,7 +12,7 @@ export function renderDripTemplate(template, lead, extras = {}) {
     .replace(/\{owner_name\}/g, lead.owner_name || 'Homeowner')
     .replace(/\{address\}/g, lead.address || 'your property')
     .replace(/\{estimated_savings\}/g, savings)
-    .replace(/\{company_name\}/g, extras.companyName || 'Solar Velocity');
+    .replace(/\{company_name\}/g, extras.companyName || BRAND_COMPANY_DEFAULT);
 }
 
 export const DEFAULT_DRIP_STEPS = [

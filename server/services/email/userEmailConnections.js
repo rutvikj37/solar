@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import db from '../../db.js';
+import { resolveFrontendBaseUrl } from '../../utils/frontendUrl.js';
 import {
   ensurePlatformEmailSettingsLoaded,
   getEmailOAuthPublicUrlOverride,
@@ -9,9 +10,13 @@ import {
 
 export const EMAIL_PROVIDERS = ['gmail', 'outlook', 'smtp'];
 
+/** Reply sync needs read scopes (gmail.readonly / Mail.Read). EMAIL_INBOX_SYNC=0 keeps send-only OAuth. */
+export function isInboxSyncEnabled() {
+  return String(process.env.EMAIL_INBOX_SYNC ?? '1').trim() !== '0';
+}
+
 function frontendBase() {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
-  return raw.split(',')[0].trim().replace(/\/$/, '');
+  return resolveFrontendBaseUrl();
 }
 
 export function getEmailOAuthPublicBase() {
@@ -100,6 +105,13 @@ export async function listUserEmailStatus(userId) {
     gmailAvailable: isGmailOAuthConfigured(),
     outlookAvailable: isOutlookOAuthConfigured(),
     smtpAvailable: true,
+    inbox: {
+      enabled: isInboxSyncEnabled(),
+      supported: conn ? conn.provider === 'gmail' || conn.provider === 'outlook' : false,
+      lastSyncAt: conn?.inbox_sync_at || null,
+      status: conn?.inbox_sync_status || null,
+      error: conn?.inbox_sync_error || null,
+    },
   };
 }
 
@@ -131,8 +143,8 @@ export async function upsertUserEmailConnection(userId, data) {
   await db.query(
     `INSERT INTO user_email_connections
       (user_id, provider, access_token, refresh_token, token_expires_at, from_email, from_name,
-       smtp_host, smtp_port, smtp_secure, smtp_username, smtp_password_encrypted, connected_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       smtp_host, smtp_port, smtp_secure, smtp_username, smtp_password_encrypted, granted_scopes, connected_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
      ON DUPLICATE KEY UPDATE
        provider = VALUES(provider),
        access_token = VALUES(access_token),
@@ -145,6 +157,9 @@ export async function upsertUserEmailConnection(userId, data) {
        smtp_secure = VALUES(smtp_secure),
        smtp_username = VALUES(smtp_username),
        smtp_password_encrypted = COALESCE(VALUES(smtp_password_encrypted), smtp_password_encrypted),
+       granted_scopes = COALESCE(VALUES(granted_scopes), granted_scopes),
+       inbox_sync_status = IF(VALUES(granted_scopes) IS NULL, inbox_sync_status, NULL),
+       inbox_sync_error = IF(VALUES(granted_scopes) IS NULL, inbox_sync_error, NULL),
        updated_at = NOW()`,
     [
       userId,
@@ -159,6 +174,7 @@ export async function upsertUserEmailConnection(userId, data) {
       data.smtpSecure != null ? (data.smtpSecure ? 1 : 0) : 1,
       data.smtpUsername || null,
       data.smtpPasswordEncrypted || null,
+      data.grantedScopes || null,
     ],
   );
 }

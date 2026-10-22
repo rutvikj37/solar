@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../config.js';
+import { BRAND_NAME } from '../../config/brand.js';
 
 const API = API_BASE;
 
@@ -15,7 +16,7 @@ export default function AiCallingSettings() {
     elevenlabsVoiceId: '',
     elevenlabsAgentId: '',
     openaiModel: 'gpt-4o',
-    defaultBusinessName: 'Solar Velocity',
+    defaultBusinessName: BRAND_NAME,
     defaultCallerName: 'Emily',
     defaultTimezone: 'America/New_York',
     businessHoursStart: '09:00',

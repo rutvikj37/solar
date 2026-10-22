@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import db from '../../db.js';
+import { resolveFrontendBaseUrl } from '../../utils/frontendUrl.js';
 import {
   ensurePlatformCrmSettingsLoaded,
   getOAuthPublicUrlOverride,
@@ -10,8 +11,7 @@ import {
 export const CRM_PROVIDERS = ['hubspot', 'salesforce'];
 
 function frontendBase() {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
-  return raw.split(',')[0].trim().replace(/\/$/, '');
+  return resolveFrontendBaseUrl();
 }
 
 /** Base URL HubSpot/Salesforce redirect to — must match app settings exactly. */

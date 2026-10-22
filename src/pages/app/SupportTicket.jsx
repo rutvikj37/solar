@@ -7,6 +7,8 @@ export default function SupportTicket() {
   const [data, setData] = useState(null);
   const [reply, setReply] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
   const navigate = useNavigate();
 
   const headers = () => ({
@@ -38,19 +40,26 @@ export default function SupportTicket() {
 
   const send = async (e) => {
     e.preventDefault();
-    if (!reply.trim()) return;
-    const res = await fetch(`${API_BASE}/api/tickets/${id}/messages`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify({ body: reply })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      alert(err.error || 'Failed to send');
-      return;
+    if (!reply.trim() || sending) return;
+    setSending(true);
+    setSendError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/tickets/${id}/messages`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ body: reply })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to send reply. Please try again.');
+      }
+      setReply('');
+      await load();
+    } catch (err) {
+      setSendError(err.message || 'Failed to send reply. Please try again.');
+    } finally {
+      setSending(false);
     }
-    setReply('');
-    load();
   };
 
   if (loading || !data) {
@@ -90,16 +99,28 @@ export default function SupportTicket() {
       </div>
 
       {!['closed', 'resolved'].includes(ticket.status) ? (
-        <form onSubmit={send} className="flex gap-2 text-xs">
-          <input
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            placeholder="Write a reply…"
-            className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2.5 text-on-surface"
-          />
-          <button type="submit" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg">
-            Send
-          </button>
+        <form onSubmit={send} className="text-xs">
+          <div className="flex gap-2">
+            <input
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder="Write a reply…"
+              disabled={sending}
+              className="flex-1 bg-surface-container-low border border-glass-stroke rounded-lg px-3 py-2.5 text-on-surface disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={sending || !reply.trim()}
+              className="bg-primary text-on-primary font-bold px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+          {sendError && (
+            <p className="mt-2 text-red-400" role="alert">
+              {sendError}
+            </p>
+          )}
         </form>
       ) : (
         <p className="text-xs text-on-surface-variant">This ticket is {ticket.status}.</p>

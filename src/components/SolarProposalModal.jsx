@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../config.js';
 import { authHeaders, getToken } from '../lib/auth.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { BRAND_NAME } from '../config/brand.js';
+import ProposalAssumptions from './proposals/ProposalAssumptions.jsx';
 
 /** Copy app styles into an isolated print document (Tailwind, fonts, etc.). */
 function copyDocumentStyles(targetDoc) {
@@ -232,9 +235,13 @@ function SatellitePanel({ lead }) {
 }
 
 export default function SolarProposalModal({ show, onClose, lead }) {
+  const { user } = useAuth();
+  const proposalBrandName = String(user?.company || '').trim() || BRAND_NAME;
   const proposalDocRef = useRef(null);
   const [financingType, setFinancingType] = useState('cash');
-  const [includeItc30, setIncludeItc30] = useState(true);
+  const [segment, setSegment] = useState('residential');
+  const [roi, setRoi] = useState(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [batteryType, setBatteryType] = useState('none');
   const [includeEvCharger, setIncludeEvCharger] = useState(false);
   const [shareableUrl, setShareableUrl] = useState('');
@@ -252,7 +259,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
       .then((data) => {
         if (data?.proposal) {
           setFinancingType(data.proposal.financing_type || 'cash');
-          setIncludeItc30(Boolean(data.proposal.include_itc_30));
+          setSegment(data.proposal.property_segment || 'residential');
           setBatteryType(data.proposal.battery_type || 'none');
           setProposalStatus(data.proposal.status || 'sent');
           setEngagement(data.engagement || null);
@@ -264,15 +271,51 @@ export default function SolarProposalModal({ show, onClose, lead }) {
       .catch(() => {});
   }, [show, lead?.id]);
 
+  const solar = lead?.solar || {};
+  const sizeKw = solar.recommendedSize || `${(Number(lead?.roof_size || 2000) / 250).toFixed(1)} kW`;
+  const panels = solar.estimatedPanels || Math.ceil(parseFloat(sizeKw) * 2.8) || 20;
+
+  useEffect(() => {
+    if (!show || !lead?.id || !getToken()) return undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE}/api/proposals/preview`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          leadId: lead.id,
+          systemSizeKw: parseFloat(sizeKw) || 8.5,
+          financingType,
+          segment,
+          batteryType,
+          batteryCount: batteryType !== 'none' ? 1 : 0,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          setRoi(data?.roi || null);
+          setPreviewFailed(!data?.roi);
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') setPreviewFailed(true);
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [show, lead?.id, sizeKw, financingType, segment, batteryType]);
+
   if (!show || !lead) return null;
 
-  const solar = lead.solar || {};
   const propExtra = lead.propertyExtra || {};
   const displayName = lead.owner_name || 'Property Owner';
   const score = lead.lead_score || propExtra.aiLeadScore?.overall || 85;
-  const baseSavings = solar.twentyFiveYearSavings || (lead.estimated_savings ? `$${Number(lead.estimated_savings).toLocaleString()}` : '$32,500');
-  const sizeKw = solar.recommendedSize || `${(Number(lead.roof_size || 2000) / 250).toFixed(1)} kW`;
-  const panels = solar.estimatedPanels || Math.ceil(parseFloat(sizeKw) * 2.8) || 20;
+  const baseSavings = roi
+    ? `$${Number(roi.est25yrSavings).toLocaleString()}`
+    : solar.twentyFiveYearSavings || (lead.estimated_savings ? `$${Number(lead.estimated_savings).toLocaleString()}` : '—');
+  const assumptions = roi?.assumptions || null;
 
   const handleGenerateShareableLink = async () => {
     if (!getToken()) return alert('Please log in.');
@@ -287,7 +330,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
           systemSizeKw: parseFloat(sizeKw) || 8.5,
           panelCount: panels,
           financingType,
-          includeItc30,
+          segment,
           batteryType,
           batteryCount: batteryType !== 'none' ? 1 : 0
         })
@@ -450,6 +493,18 @@ export default function SolarProposalModal({ show, onClose, lead }) {
                 <option value="cash">Cash</option>
                 <option value="loan">Loan</option>
                 <option value="lease">Lease</option>
+                <option value="ppa">PPA</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Property</span>
+              <select
+                value={segment}
+                onChange={(e) => setSegment(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white"
+              >
+                <option value="residential">Residential</option>
+                <option value="commercial">Commercial</option>
               </select>
             </label>
             <label className="space-y-1">
@@ -463,15 +518,6 @@ export default function SolarProposalModal({ show, onClose, lead }) {
                 <option value="tesla_pw3">Tesla Powerwall 3</option>
                 <option value="enphase_iq5p">Enphase IQ 5P</option>
               </select>
-            </label>
-            <label className="flex items-center gap-2 mt-5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeItc30}
-                onChange={(e) => setIncludeItc30(e.target.checked)}
-                className="accent-primary"
-              />
-              <span className="text-slate-200">Include 30% ITC</span>
             </label>
             <label className="flex items-center gap-2 mt-5 cursor-pointer">
               <input
@@ -492,7 +538,7 @@ export default function SolarProposalModal({ show, onClose, lead }) {
             <div>
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-2xl font-bold">bolt</span>
-                <span className="font-bold text-lg text-white tracking-tight">SOLAR VELOCITY</span>
+                <span className="font-bold text-lg text-white tracking-tight uppercase">{proposalBrandName}</span>
               </div>
               <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-mono">
                 Official Rooftop Energy Potential & Savings Assessment
@@ -541,7 +587,11 @@ export default function SolarProposalModal({ show, onClose, lead }) {
                 </p>
                 <p className="text-3xl font-black text-primary font-mono mt-1">{baseSavings}</p>
                 <p className="text-[10px] text-slate-300 mt-2 leading-relaxed">
-                  Based on solar irradiance analysis, utility tariff escalation (4.5%/yr), and net energy metering.
+                  {assumptions
+                    ? `Net of system cost (${assumptions.ownership.toUpperCase()}). ~$${Number(assumptions.utilityRate).toFixed(3)}/kWh, ${assumptions.escalationPct}%/yr rate escalation, ${Number(assumptions.annualProductionKwh).toLocaleString()} kWh/yr.`
+                    : previewFailed
+                      ? 'Estimate from the roof analysis. Live rate and incentive maths is unavailable on this plan or right now.'
+                      : 'Calculating with local utility rate and incentives…'}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10 text-center font-mono">
@@ -602,9 +652,11 @@ export default function SolarProposalModal({ show, onClose, lead }) {
             </div>
           </div>
 
+          {roi && <ProposalAssumptions roi={roi} tone="dark" />}
+
           {/* Footer Disclaimer */}
           <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[9px] text-slate-500">
-            <p>Generated by SpaceToRoof.com Intelligence Engine · All calculations based on live NREL & Google Solar data.</p>
+            <p>Generated by SpaceToRoof.com Intelligence Engine · Estimates only; see assumptions above.</p>
             <p className="font-mono">Page 1 of 1</p>
           </div>
         </div>

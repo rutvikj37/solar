@@ -6,6 +6,7 @@ import { initiateOutboundCall, updateCallTwiml, generateVoicemailTwiML } from '.
 import { generateCallSummary, extractQualification, scoreCallQuality } from './aiOrchestrator.js';
 import { bookAppointmentWithIntegrations } from './calendarService.js';
 import { updateQueueStatus, scheduleRetry } from './campaignEngine.js';
+import { checkLeadContactable, optedOutError } from '../compliance/optOut.js';
 import {
   sendAppointmentConfirmation,
   sendAppointmentInviteEmail,
@@ -17,6 +18,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { buildSignedMediaFileUrl } from '../../utils/signedMediaUrl.js';
+import { BRAND_NAME } from '../../config/brand.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,12 +110,20 @@ export async function initiateAICall({ campaignId, queueId, leadId, userId, phon
   }
 
   const [leadRows] = await db.query(
-    `SELECT status FROM leads WHERE id = ? AND user_id = ?`,
+    `SELECT id, status, email, phone, outreach_opt_out FROM leads WHERE id = ? AND user_id = ?`,
     [leadId, userId]
   );
   if (leadRows[0]?.status === 'do_not_call') {
     if (queueId) await updateQueueStatus(queueId, 'do_not_call');
     throw new Error('Lead marked do_not_call');
+  }
+  const contactCheck = await checkLeadContactable(
+    { ...(leadRows[0] || {}), phone: phoneNumber || leadRows[0]?.phone },
+    'call',
+  );
+  if (!contactCheck.allowed) {
+    if (queueId) await updateQueueStatus(queueId, 'do_not_call');
+    throw optedOutError(contactCheck.reason);
   }
 
   const { callRecordId: recordId, streamToken } = await createCallRecord({
@@ -197,7 +207,7 @@ export async function handleAmdWebhook(callRecordId, twilioData) {
 
   // Load voicemail template
   let script =
-    "Hi, this is Emily with Solar Velocity. Sorry we missed you — we're offering a free solar savings consultation. We'll try you again soon. Have a great day!";
+    `Hi, this is Emily with ${BRAND_NAME}. Sorry we missed you — we're offering a free solar savings consultation. We'll try you again soon. Have a great day!`;
   try {
     const [templates] = await db.query(
       `SELECT script FROM ai_voicemail_templates WHERE user_id = ? AND is_default = 1 LIMIT 1`,

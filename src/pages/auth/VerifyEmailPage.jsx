@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 
@@ -9,6 +9,7 @@ export default function VerifyEmailPage() {
   const [resendEmail, setResendEmail] = useState('');
   const [resendMsg, setResendMsg] = useState('');
   const [resending, setResending] = useState(false);
+  const verifyStateRef = useRef({ token: null, succeeded: false });
 
   useEffect(() => {
     if (searchParams.get('pending') === '1') {
@@ -24,6 +25,9 @@ export default function VerifyEmailPage() {
       setMessage('Missing verification token.');
       return;
     }
+    // Tokens are single-use: StrictMode's second effect run must not POST again.
+    if (verifyStateRef.current.token === token) return;
+    verifyStateRef.current = { token, succeeded: false };
     fetch(`${API_BASE}/api/auth/verify-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -32,10 +36,12 @@ export default function VerifyEmailPage() {
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Verification failed');
+        verifyStateRef.current.succeeded = true;
         setStatus('success');
         setMessage(data.message || 'Email verified.');
       })
       .catch((err) => {
+        if (verifyStateRef.current.succeeded) return;
         setStatus('error');
         setMessage(err.message);
       });

@@ -73,6 +73,8 @@ const Appointments = lazyRoute(() => import("./pages/app/Appointments"));
 const Support = lazyRoute(() => import("./pages/app/Support"));
 const SupportTicket = lazyRoute(() => import("./pages/app/SupportTicket"));
 const DripCampaigns = lazyRoute(() => import("./pages/app/DripCampaigns"));
+const InboxPage = lazyRoute(() => import("./pages/app/Inbox.jsx"));
+const TasksPage = lazyRoute(() => import("./pages/app/Tasks.jsx"));
 const Team = lazyRoute(() => import("./pages/app/Team"));
 
 
@@ -85,6 +87,7 @@ const MarketplaceDashboard = lazyRoute(
 );
 const PrivacyPolicyPage = lazyRoute(() => import("./pages/legal/PrivacyPolicyPage"));
 const TermsPage = lazyRoute(() => import("./pages/legal/TermsPage"));
+const UnsubscribePage = lazyRoute(() => import("./pages/legal/UnsubscribePage"));
 
 function PackagesRedirect() {
   const { search } = useLocation();
@@ -136,6 +139,7 @@ export default function App() {
             <Route path="/for-installers" element={<InstallerLandingPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsPage />} />
+            <Route path="/unsubscribe" element={<UnsubscribePage />} />
             <Route path="/get-solar-quote" element={<GetSolarQuote />} />
             <Route path="/proposal/:slug" element={<PublicProposalView />} />
 
@@ -157,6 +161,8 @@ export default function App() {
               <Route path="/bulk-scan" element={<BulkAreaScan />} />
               <Route path="/appointments" element={<Appointments />} />
               <Route path="/drip" element={<DripCampaigns />} />
+              <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
               <Route path="/support" element={<Support />} />
               <Route path="/support/:id" element={<SupportTicket />} />
 

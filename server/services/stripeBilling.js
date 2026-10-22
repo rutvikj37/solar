@@ -23,7 +23,7 @@ export function getStripeSecretKey() {
 export function getStripe() {
   const key = getStripeSecretKey();
   if (isPlaceholderSecret(key)) return null;
-  return new Stripe(key);
+  return new Stripe(key, { apiVersion: '2026-07-29.dahlia' });
 }
 
 export function isStripeConfigured() {
@@ -56,17 +56,21 @@ export function isStripeWebhookSecretConfigured() {
   return Boolean(secret && !isPlaceholderSecret(secret));
 }
 
+/** Unsigned webhooks only with an explicit opt-in, and never in production. */
+function allowUnsignedStripeWebhooks() {
+  return process.env.ALLOW_UNSIGNED_STRIPE_WEBHOOKS === '1' && process.env.NODE_ENV !== 'production';
+}
+
 /**
- * Verify Stripe webhook signature. In production (or whenever a secret is set),
- * unsigned payloads are rejected.
+ * Verify Stripe webhook signature. Payloads are rejected whenever STRIPE_WEBHOOK_SECRET is missing,
+ * unless ALLOW_UNSIGNED_STRIPE_WEBHOOKS=1 on a non-production host.
  */
 export function constructStripeWebhookEvent(stripe, rawBody, signature) {
   const secretOk = isStripeWebhookSecretConfigured();
-  const isProd = process.env.NODE_ENV === 'production';
 
-  if (isProd && !secretOk) {
+  if (!secretOk && !allowUnsignedStripeWebhooks()) {
     const err = new Error('STRIPE_WEBHOOK_SECRET missing or placeholder');
-    err.status = 500;
+    err.status = 503;
     err.code = 'webhook_not_configured';
     throw err;
   }
@@ -85,12 +89,64 @@ export function constructStripeWebhookEvent(stripe, rawBody, signature) {
     return stripe.webhooks.constructEvent(bodyForStripe, signature, getStripeWebhookSecret());
   }
 
-  // Local/dev only when secret unset
-  console.warn('[Stripe Webhook] Accepting unsigned webhooks in development (set STRIPE_WEBHOOK_SECRET)');
+  console.warn(
+    '[Stripe Webhook] WARNING: accepting an UNSIGNED webhook because ALLOW_UNSIGNED_STRIPE_WEBHOOKS=1. ' +
+      'Anyone can forge billing events. Never enable this on a public host; set STRIPE_WEBHOOK_SECRET instead.'
+  );
   if (typeof rawBody === 'string' || Buffer.isBuffer(rawBody)) {
     return JSON.parse(rawBody.toString());
   }
   return rawBody;
+}
+
+/** ID from a Stripe field that may be a string ID or an expanded object. */
+export function getStripeId(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  return typeof value.id === 'string' ? value.id : null;
+}
+
+/**
+ * Subscription ID of an invoice across API versions:
+ * pre-basil `invoice.subscription`; basil+ (incl. dahlia) `invoice.parent.subscription_details.subscription`,
+ * with line-item parents as a last resort.
+ */
+export function getInvoiceSubscriptionId(invoice) {
+  if (!invoice) return null;
+  const direct =
+    getStripeId(invoice.parent?.subscription_details?.subscription) || getStripeId(invoice.subscription);
+  if (direct) return direct;
+  for (const line of invoice.lines?.data || []) {
+    const fromLine =
+      getStripeId(line?.parent?.subscription_item_details?.subscription) || getStripeId(line?.subscription);
+    if (fromLine) return fromLine;
+  }
+  return null;
+}
+
+function unixToDate(seconds) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return new Date(n * 1000);
+}
+
+/**
+ * Current billing period of a subscription across API versions:
+ * pre-basil top-level `current_period_start/end`; basil+ per item `items.data[].current_period_start/end`.
+ * Returns nulls (never Invalid Date) when absent.
+ */
+export function getSubscriptionPeriod(subscription) {
+  if (!subscription) return { start: null, end: null };
+  let start = unixToDate(subscription.current_period_start);
+  let end = unixToDate(subscription.current_period_end);
+  if (!start || !end) {
+    const item = (subscription.items?.data || []).find((i) => i?.current_period_start && i?.current_period_end);
+    if (item) {
+      start = start || unixToDate(item.current_period_start);
+      end = end || unixToDate(item.current_period_end);
+    }
+  }
+  return { start, end };
 }
 
 /** Assert Checkout Session belongs to the authenticated user. */

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 import { HOMEOWNER_STATUS_OPTIONS, TIMELINE_OPTIONS } from '../../lib/marketplace.js';
+import { CONTACT_CONSENT_TEXT, consentPayload } from '../../lib/contactConsent.js';
 
 const initial = {
   name: '',
@@ -20,11 +21,16 @@ export default function GetSolarQuote() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [consent, setConsent] = useState(false);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (!consent) {
+      setError('Please agree to be contacted before submitting.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -41,6 +47,7 @@ export default function GetSolarQuote() {
           homeownerStatus: form.homeownerStatus,
           installationTimeline: form.installationTimeline,
           projectDetails: form.projectDetails,
+          ...consentPayload(consent),
         }),
       });
       const data = await res.json();
@@ -174,9 +181,27 @@ export default function GetSolarQuote() {
             />
           </Field>
 
+          <label className="flex items-start gap-3 text-xs leading-relaxed text-on-surface/70">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              required
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+            />
+            <span>
+              {CONTACT_CONSENT_TEXT}{' '}
+              See our{' '}
+              <Link to="/privacy" className="text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !consent}
             className="w-full rounded-xl bg-primary text-black font-semibold py-3 hover:brightness-110 disabled:opacity-50"
           >
             {loading ? 'Submitting…' : 'Submit inquiry'}

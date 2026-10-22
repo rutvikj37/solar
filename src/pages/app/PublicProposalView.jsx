@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
+import ProposalAssumptions from '../../components/proposals/ProposalAssumptions.jsx';
 
 function getProposalSessionId(slug) {
   const key = `proposal_session_${slug}`;
@@ -26,7 +27,7 @@ export default function PublicProposalView() {
 
   // Interactive ROI State
   const [financingType, setFinancingType] = useState('cash');
-  const [includeItc30, setIncludeItc30] = useState(true);
+  const [roi, setRoi] = useState(null);
   const [batteryType, setBatteryType] = useState('none');
   const [batteryCount, setBatteryCount] = useState(1);
   const [loanTermYears, setLoanTermYears] = useState(20);
@@ -73,7 +74,7 @@ export default function PublicProposalView() {
       const p = result.proposal;
       if (p) {
         setFinancingType(p.financing_type || 'cash');
-        setIncludeItc30(Boolean(p.include_itc_30));
+        setRoi(p.roi || null);
         setBatteryType(p.battery_type || 'none');
         setBatteryCount(p.battery_count || 1);
         setLoanTermYears(p.loan_term_years || 20);
@@ -110,47 +111,47 @@ export default function PublicProposalView() {
     trackEvent('equipment_viewed', { batteryType: value });
   };
 
-  // Recalculate ROI dynamically
   const p = data?.proposal || {};
   const lead = data?.lead || {};
   const solar = lead.solar || {};
 
-  const grossCost = Number(p.gross_cost || 25500);
-  const batteryUnitCost = batteryType === 'tesla_powerwall' ? 11500 : batteryType === 'enphase_iq' ? 6500 : 0;
-  const batteryTotalCost = batteryUnitCost * (batteryType !== 'none' ? batteryCount : 0);
-  const totalGrossCost = grossCost + batteryTotalCost;
+  // ROI comes from the server economics module (local utility rate, incentives table, financing).
+  useEffect(() => {
+    if (!data?.proposal) return undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE}/api/proposals/public/${slug}/recalculate`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          financingType,
+          batteryType,
+          batteryCount: batteryType !== 'none' ? batteryCount : 0,
+          loanTermYears,
+          loanInterestRate,
+          downPayment,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((result) => {
+          if (result?.roi) setRoi(result.roi);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [data?.proposal, slug, financingType, batteryType, batteryCount, loanTermYears, loanInterestRate, downPayment]);
 
-  const itc30Deduction = includeItc30 ? totalGrossCost * 0.30 : 0;
-  const stateRebate = Number(p.state_rebate || 1000);
-  const netSystemCost = Math.max(0, totalGrossCost - itc30Deduction - stateRebate);
-
+  const activeRoi = roi || p.roi || null;
   const systemSizeKw = Number(p.system_size_kw || 8.5);
-  const annualProdKwh = systemSizeKw * 1400;
-  const baseRate = 0.22;
-  const escalation = Number(p.utility_escalation || 4.5) / 100;
-
-  let cumulative25yrUtility = 0;
-  let rate = baseRate;
-  for (let yr = 1; yr <= 25; yr++) {
-    cumulative25yrUtility += annualProdKwh * rate;
-    rate *= (1 + escalation);
-  }
-
-  const est25yrSavings = Math.round(cumulative25yrUtility - netSystemCost);
-  const yr1Savings = Math.round(annualProdKwh * baseRate);
-  const paybackYears = (netSystemCost / Math.max(1, yr1Savings)).toFixed(1);
-
-  let monthlyPayment = 0;
-  if (financingType === 'loan') {
-    const ratePerMonth = (loanInterestRate / 100) / 12;
-    const numMonths = loanTermYears * 12;
-    const principal = Math.max(0, netSystemCost - downPayment);
-    if (ratePerMonth > 0 && numMonths > 0) {
-      monthlyPayment = Math.round((principal * ratePerMonth * Math.pow(1 + ratePerMonth, numMonths)) / (Math.pow(1 + ratePerMonth, numMonths) - 1));
-    }
-  } else if (financingType === 'lease') {
-    monthlyPayment = Math.round((netSystemCost / (20 * 12)) * 0.85);
-  }
+  const annualProdKwh = Number(activeRoi?.annualProductionKwh) || 0;
+  const netSystemCost = Number(activeRoi?.netCost) || 0;
+  const est25yrSavings = Number(activeRoi?.est25yrSavings) || 0;
+  const paybackYears = activeRoi?.paybackYears != null ? activeRoi.paybackYears : '—';
+  const monthlyPayment = Number(activeRoi?.monthlyPayment) || 0;
 
   // Canvas Drawing Handlers
   const startDrawing = (e) => {
@@ -384,7 +385,7 @@ export default function PublicProposalView() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">Payment Option:</span>
               <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
-                {['cash', 'loan', 'lease'].map((mode) => (
+                {['cash', 'loan', 'lease', 'ppa'].map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setFinancingTracked(mode)}
@@ -392,7 +393,7 @@ export default function PublicProposalView() {
                       financingType === mode ? 'bg-primary text-on-primary shadow-md' : 'text-slate-400 hover:text-on-surface'
                     }`}
                   >
-                    {mode}
+                    {mode === 'ppa' ? 'PPA' : mode}
                   </button>
                 ))}
               </div>
@@ -430,22 +431,14 @@ export default function PublicProposalView() {
 
             {/* Interactive ROI Toggles */}
             <div className="lg:col-span-2 space-y-5">
-              {/* Federal Tax Credit & State Incentive */}
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
-                <h4 className="font-bold text-white text-xs uppercase font-mono tracking-wider">Tax Credits & Incentives</h4>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold text-white">30% Federal Investment Tax Credit (ITC)</p>
-                    <p className="text-[10px] text-slate-400">Lowers cost by ${Math.round(itc30Deduction).toLocaleString()}</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={includeItc30}
-                    onChange={(e) => setIncludeItc30(e.target.checked)}
-                    className="w-5 h-5 rounded accent-primary cursor-pointer"
-                  />
+              {/* Incentives & assumptions (server-computed) */}
+              {activeRoi?.assumptions ? (
+                <ProposalAssumptions roi={activeRoi} tone="dark" />
+              ) : (
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-[11px] text-slate-400">
+                  Calculating incentives and savings…
                 </div>
-              </div>
+              )}
 
               {/* Battery Add-On Selection */}
               <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">

@@ -13,7 +13,7 @@ type HomeownerShellProps = {
 
 export function HomeownerShell({ children, stickyCta = true }: HomeownerShellProps) {
   return (
-    <div className="homeowner-site theme-dark-canvas min-h-screen bg-navy-dark text-white antialiased">
+    <div className="homeowner-site min-h-screen bg-navy-dark text-white antialiased">
       {children}
       {stickyCta ? (
         <Suspense fallback={null}>

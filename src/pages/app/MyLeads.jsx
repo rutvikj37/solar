@@ -10,6 +10,7 @@ import PipelineCustomizeModal from '../../components/leads/PipelineCustomizeModa
 import { API_BASE } from '../../config.js';
 import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
 import ApiErrorBanner from '../../components/layout/ApiErrorBanner.jsx';
+import { useTaskSummary } from '../../lib/tasks.js';
 import {
   STATUS_OPTIONS,
   FILTER_TABS,
@@ -142,6 +143,8 @@ export default function MyLeads() {
 
   const stats = useMemo(() => computeLeadStats(leads, summary), [leads, summary]);
   const overdueLeads = useMemo(() => getOverdueFollowUps(leads), [leads]);
+  const taskSummary = useTaskSummary();
+  const overdueTasksByLead = taskSummary?.overdueByLead || {};
 
   const filteredLeads = useMemo(
     () => sortLeads(filterLeads(leads, { searchTerm, filterTab }), { key: sortKey, direction: sortDir }),
@@ -536,6 +539,15 @@ export default function MyLeads() {
                                   >
                                     {ownerName}
                                   </Link>
+                                  {overdueTasksByLead[lead.id] > 0 && (
+                                    <Link
+                                      to={`/lead/${lead.id}?tab=followups`}
+                                      className="mt-0.5 inline-flex items-center gap-0.5 rounded border border-red-500/30 bg-red-500/10 px-1.5 py-px text-[9px] font-bold uppercase text-red-600 dark:text-red-400"
+                                    >
+                                      <span className="material-symbols-outlined text-[11px]">alarm</span>
+                                      {overdueTasksByLead[lead.id]} overdue task{overdueTasksByLead[lead.id] === 1 ? '' : 's'}
+                                    </Link>
+                                  )}
                                   <p className="text-[11px] text-slate-400 truncate mt-0.5" title={address}>
                                     {address}
                                   </p>

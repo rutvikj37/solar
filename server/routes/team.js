@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import db from '../db.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, optionalAuthenticateToken, isAdminRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { assertCrmSeatAvailable, getUserEntitlements } from '../services/planEntitlements.js';
 import { issueTeamInvitationEmail } from '../services/authEmailService.js';
@@ -136,7 +136,7 @@ router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
   let members;
   try {
     const [rows] = await db.query(
-      `SELECT tm.id, tm.member_email, tm.role, tm.role_id, tm.status, tm.invite_token, tm.invite_expires, tm.created_at,
+      `SELECT tm.id, tm.member_email, tm.role, tm.role_id, tm.status, tm.invite_expires, tm.created_at,
               u.name, u.account_status,
               wr.name as custom_role_name, wr.color as custom_role_color
        FROM team_members tm
@@ -162,22 +162,15 @@ router.get('/members', authenticateToken, asyncHandler(async (req, res) => {
     members = rows.map((m) => ({
       ...m,
       role_id: null,
-      invite_token: null,
       invite_expires: null,
       custom_role_name: null,
       custom_role_color: null,
     }));
   }
   const entitlements = await getUserEntitlements(req.user.id, req.user.role);
-  const frontendBaseUrl = resolveFrontendBaseUrl();
-
-  const enrichedMembers = members.map((m) => ({
-    ...m,
-    inviteLink: m.invite_token ? `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(m.invite_token)}` : null,
-  }));
 
   res.json({
-    members: enrichedMembers,
+    members,
     entitlements: {
       crmUserLimit: entitlements.limits.crmUserLimit,
       crmSeats: entitlements.usage.crmSeats,
@@ -202,6 +195,15 @@ router.post('/invite', authenticateToken, requireWorkspacePermission('team_manag
   const emailClean = memberEmail.trim().toLowerCase();
   if (!emailClean.includes('@') || !emailClean.includes('.')) {
     return res.status(400).json({ error: 'Please enter a valid email address' });
+  }
+
+  const [inviteeRows] = await db.query('SELECT id, role FROM users WHERE LOWER(email) = ? LIMIT 1', [emailClean]);
+  const invitee = inviteeRows[0];
+  if (invitee && isAdminRole(invitee.role)) {
+    return res.status(400).json({ error: 'Platform administrator accounts cannot be invited to a workspace.' });
+  }
+  if (invitee && Number(invitee.id) === Number(ownerUserId)) {
+    return res.status(400).json({ error: 'The workspace owner cannot be invited as a member.' });
   }
 
   let finalRoleName = role;
@@ -269,20 +271,16 @@ router.post('/invite', authenticateToken, requireWorkspacePermission('team_manag
     console.error('[Resend Invite Send Notice]:', err.message);
   }
 
-  const frontendBaseUrl = resolveFrontendBaseUrl();
-  const inviteLink = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(token)}`;
-
   res.status(201).json({
     id: memberId,
     memberEmail: emailClean,
     role: finalRoleName,
     roleId: customRoleId,
     status: 'pending',
-    inviteLink,
     emailSent: !sendWarning,
     emailWarning: sendWarning || null,
     message: sendWarning
-      ? 'Invite generated. Email could not be sent (copy the invitation link directly).'
+      ? 'Invite created, but the email could not be sent. Check email settings and use "Resend" to try again.'
       : 'Invitation sent via Resend! The team member can now accept and set their password.',
   });
 }));
@@ -326,15 +324,11 @@ router.post('/invite/resend', authenticateToken, requireWorkspacePermission('tea
     sendWarning = err.message;
   }
 
-  const frontendBaseUrl = resolveFrontendBaseUrl();
-  const inviteLink = `${frontendBaseUrl}/accept-invite?token=${encodeURIComponent(token)}`;
-
   res.json({
     success: true,
-    inviteLink,
     emailSent: !sendWarning,
     message: sendWarning
-      ? 'Invite refreshed. Email delivery failed (copy link directly).'
+      ? 'Invite refreshed, but email delivery failed. Check email settings and try again.'
       : 'Invitation re-sent via Resend!',
   });
 }));
@@ -382,13 +376,10 @@ router.get('/invite/verify', asyncHandler(async (req, res) => {
   });
 }));
 
-// Public: Accept invitation & set password
-router.post('/invite/accept', asyncHandler(async (req, res) => {
+// Accept invitation. New users set a password here; existing users must be signed in as the invited email.
+router.post('/invite/accept', optionalAuthenticateToken, asyncHandler(async (req, res) => {
   const { token, name, password } = req.body;
   if (!token) return res.status(400).json({ error: 'Token is required' });
-  if (!password || password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
-  }
 
   const [rows] = await db.query(
     `SELECT tm.id, tm.owner_user_id, tm.member_email, tm.role, tm.role_id, tm.status, tm.invite_expires,
@@ -413,21 +404,68 @@ router.post('/invite/accept', asyncHandler(async (req, res) => {
   }
 
   const emailClean = tm.member_email.toLowerCase().trim();
-  const passwordHash = await bcrypt.hash(password, 10);
   const fullName = (name || '').trim() || tm.member_email.split('@')[0];
 
-  let userRecord;
-  const [existing] = await db.query('SELECT * FROM users WHERE LOWER(email) = ?', [emailClean]);
+  const [existing] = await db.query('SELECT id, email, name, role FROM users WHERE LOWER(email) = ?', [emailClean]);
 
   if (existing.length > 0) {
-    userRecord = existing[0];
-    await db.query(
-      'UPDATE users SET password_hash = ?, name = COALESCE(NULLIF(?, ""), name), email_verified = 1, account_status = "active" WHERE id = ?',
-      [passwordHash, fullName, userRecord.id]
+    const existingUser = existing[0];
+    if (isAdminRole(existingUser.role)) {
+      return res.status(403).json({ error: 'Platform administrator accounts cannot join a workspace.' });
+    }
+    if (!req.user) {
+      return res.status(401).json({
+        error: `An account already exists for ${tm.member_email}. Sign in with that account to accept this invitation.`,
+        code: 'LOGIN_REQUIRED',
+        email: tm.member_email,
+      });
+    }
+    if (String(req.user.email || '').toLowerCase().trim() !== emailClean || Number(req.user.id) !== Number(existingUser.id)) {
+      return res.status(403).json({
+        error: `This invitation is for ${tm.member_email}. Sign in with that account to accept it.`,
+        code: 'INVITE_EMAIL_MISMATCH',
+      });
+    }
+
+    const [upd] = await db.query(
+      'UPDATE team_members SET status = "active", invite_token = NULL, invite_expires = NULL WHERE id = ? AND invite_token = ?',
+      [tm.id, token]
     );
-    userRecord.name = fullName || userRecord.name;
-    userRecord.role = userRecord.role || 'solar_company';
-  } else {
+    if (upd.affectedRows === 0) {
+      return res.status(400).json({ error: 'This invitation has already been used.' });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: existingUser.id,
+        email: existingUser.email,
+        name: existingUser.name,
+        role: existingUser.role,
+        companyName: tm.company_name,
+        teamRole: tm.role,
+      },
+      message: `Welcome to ${tm.company_name || 'the workspace'}!`,
+      redirect: '/dashboard',
+    });
+  }
+
+  if (!password || String(password).length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+  }
+
+  // Claim the invite before creating the account so a token cannot create two users.
+  const [claim] = await db.query(
+    'UPDATE team_members SET status = "active", invite_token = NULL, invite_expires = NULL WHERE id = ? AND invite_token = ?',
+    [tm.id, token]
+  );
+  if (claim.affectedRows === 0) {
+    return res.status(400).json({ error: 'This invitation has already been used.' });
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  let userRecord;
+  try {
     const [ins] = await db.query(
       `INSERT INTO users (name, email, password_hash, role, company_name, email_verified, account_status)
        VALUES (?, ?, ?, 'solar_company', ?, 1, 'active')`,
@@ -446,13 +484,13 @@ router.post('/invite/accept', asyncHandler(async (req, res) => {
       'INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status) VALUES (?, "Free", 0, 0, "active")',
       [userRecord.id]
     );
+  } catch (err) {
+    await db.query(
+      'UPDATE team_members SET status = "pending", invite_token = ?, invite_expires = ? WHERE id = ?',
+      [token, tm.invite_expires, tm.id]
+    ).catch(() => null);
+    throw err;
   }
-
-  // Update team_member status to active and clear invite token
-  await db.query(
-    'UPDATE team_members SET status = "active", invite_token = NULL, invite_expires = NULL WHERE id = ?',
-    [tm.id]
-  );
 
   const jwtToken = signUserToken(userRecord);
 

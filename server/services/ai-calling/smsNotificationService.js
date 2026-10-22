@@ -2,10 +2,16 @@
  * SMS / Email Notification Service for AI Calling module.
  */
 import { trackedFetch } from '../apiUsage.js';
+import { isPhoneOptedOut } from '../compliance/optOut.js';
+import { BRAND_NAME, BRAND_NOREPLY } from '../../config/brand.js';
 
 const isKeyValid = (k) => k && k.trim() !== '' && !k.toLowerCase().includes('your_');
 
 export async function sendSms(to, body) {
+  if (await isPhoneOptedOut(to, 'sms')) {
+    console.log('[SMS] Skipped — recipient opted out');
+    return { ok: false, skipped: true, reason: 'opted_out' };
+  }
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_PHONE_NUMBER;
@@ -36,7 +42,7 @@ export async function sendSms(to, body) {
 
 export async function sendEmail(to, subject, body) {
   const apiKey = process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY;
-  const from = process.env.OUTREACH_FROM_EMAIL || 'leads@solarvelocity.app';
+  const from = process.env.OUTREACH_FROM_EMAIL || BRAND_NOREPLY;
 
   if (!to) return { ok: false, simulated: true, reason: 'no_email' };
   if (!isKeyValid(apiKey)) {
@@ -114,7 +120,7 @@ Duration: ${appointment.durationMinutes || 30} minutes.
 
 If you need to reschedule, reply to this email or call us back.
 
-— Solar Velocity`;
+— ${BRAND_NAME}`;
 
   return sendEmail(lead.email, 'Your Solar Consultation is Confirmed', body);
 }

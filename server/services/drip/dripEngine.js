@@ -4,6 +4,7 @@
 import db from '../../db.js';
 import { executeDripStep } from './dripDelivery.js';
 import { stepDelayMs } from './dripTemplates.js';
+import { isEmailOptedOut } from '../compliance/optOut.js';
 
 const TERMINAL_LEAD_STATUSES = new Set(['won', 'lost', 'do_not_call']);
 const DEFAULT_STOP_STATUSES = ['won', 'lost', 'appointment'];
@@ -41,7 +42,7 @@ function isWithinBusinessHours(campaign) {
 async function leadHasInboundReply(leadId) {
   const [rows] = await db.query(
     `SELECT id FROM outreach_messages
-     WHERE lead_id = ? AND channel = 'sms' AND direction = 'inbound'
+     WHERE lead_id = ? AND channel IN ('sms', 'email') AND direction = 'inbound'
      LIMIT 1`,
     [leadId]
   );
@@ -52,6 +53,7 @@ async function shouldStopEnrollment(campaign, lead) {
   if (Number(lead.outreach_opt_out) === 1 || lead.outreach_opt_out === true) {
     return 'outreach_opt_out';
   }
+  if (await isEmailOptedOut(lead.email)) return 'email_unsubscribed';
   const stopStatuses = parseJsonArray(campaign.stop_on_statuses, DEFAULT_STOP_STATUSES);
   if (stopStatuses.includes(lead.status)) return 'stop_status';
   if (TERMINAL_LEAD_STATUSES.has(lead.status)) return 'terminal_status';
@@ -213,7 +215,10 @@ export async function processDueEnrollments({ userId = null } = {}) {
 
     const stopReason = await shouldStopEnrollment(campaign, lead);
     if (stopReason) {
-      await db.query('UPDATE drip_enrollments SET status = "cancelled" WHERE id = ?', [en.id]);
+      await db.query(
+        'UPDATE drip_enrollments SET status = "cancelled", stop_reason = ?, replied_at = IF(? = "lead_replied", COALESCE(replied_at, NOW()), replied_at) WHERE id = ?',
+        [stopReason, stopReason, en.id],
+      );
       results.push({ enrollmentId: en.id, status: 'cancelled', reason: stopReason });
       continue;
     }
@@ -295,7 +300,7 @@ export async function getCampaignFunnel(campaignId, userId) {
     `SELECT COUNT(DISTINCT om.lead_id) AS cnt
      FROM outreach_messages om
      JOIN drip_enrollments de ON de.lead_id = om.lead_id AND de.campaign_id = ?
-     WHERE om.channel = 'sms' AND om.direction = 'inbound' AND de.user_id = ?`,
+     WHERE om.channel IN ('sms', 'email') AND om.direction = 'inbound' AND de.user_id = ?`,
     [campaignId, userId]
   );
   const [converted] = await db.query(

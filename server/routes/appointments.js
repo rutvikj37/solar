@@ -10,6 +10,7 @@ import {
   buildCalendarLinks,
   isValidAppointmentStatus,
 } from '../utils/appointmentCalendar.js';
+import { syncAppointmentCalendarsWithin } from '../services/calendar/appointmentCalendarSync.js';
 
 const router = express.Router();
 
@@ -150,6 +151,7 @@ router.post('/', authenticateToken, requirePlanFeature('appointments'), async (r
     }
 
     const appt = await fetchAppointmentForUser(ins.insertId, req.user.id);
+    const calendarSync = appt ? await syncAppointmentCalendarsWithin(appt) : null;
     let emailSent = false;
     let emailSkippedReason = null;
 
@@ -194,6 +196,7 @@ router.post('/', authenticateToken, requirePlanFeature('appointments'), async (r
       emailSent,
       emailSkippedReason,
       calendarLinks: links,
+      calendarSync,
     });
   } catch (error) {
     console.error('Create appointment error:', error);
@@ -302,7 +305,9 @@ router.patch('/:id', authenticateToken, requirePlanFeature('appointments'), asyn
       ]
     );
 
-    const appt = await fetchAppointmentForUser(id, req.user.id);
+    let appt = await fetchAppointmentForUser(id, req.user.id);
+    const calendarSync = await syncAppointmentCalendarsWithin(appt);
+    if (calendarSync.status !== 'not_connected') appt = (await fetchAppointmentForUser(id, req.user.id)) || appt;
 
     if (existing.lead_id) {
       const bits = [];
@@ -346,7 +351,7 @@ router.patch('/:id', authenticateToken, requirePlanFeature('appointments'), asyn
       }
     }
 
-    res.json({ ...appt, emailSent, calendarLinks: buildCalendarLinks(appt) });
+    res.json({ ...appt, emailSent, calendarLinks: buildCalendarLinks(appt), calendarSync });
   } catch (error) {
     console.error('Update appointment error:', error);
     res.status(500).json({ error: 'Failed to update appointment' });
@@ -364,6 +369,7 @@ router.delete('/:id', authenticateToken, requirePlanFeature('appointments'), asy
       req.user.id
     ]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Appointment not found' });
+    const calendarSync = await syncAppointmentCalendarsWithin(existing, { action: 'delete' });
 
     if (existing.lead_id) {
       await logActivity(
@@ -374,7 +380,7 @@ router.delete('/:id', authenticateToken, requirePlanFeature('appointments'), asy
       );
     }
 
-    res.json({ success: true });
+    res.json({ success: true, calendarSync });
   } catch (error) {
     console.error('Delete appointment error:', error);
     res.status(500).json({ error: 'Failed to delete appointment' });

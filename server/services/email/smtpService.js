@@ -63,7 +63,7 @@ export async function saveSmtpConnection(userId, settings) {
   return { fromEmail: fromEmail.trim() };
 }
 
-export async function sendViaSmtp(userId, { to, subject, body }) {
+export async function sendViaSmtp(userId, { to, subject, body, headers = null }) {
   const conn = await getUserEmailConnection(userId);
   if (!conn || conn.provider !== 'smtp') {
     throw new Error('SMTP is not configured — connect in Integrations');
@@ -74,6 +74,7 @@ export async function sendViaSmtp(userId, { to, subject, body }) {
     to,
     subject,
     text: body,
+    ...(headers && Object.keys(headers).length ? { headers } : {}),
   });
   return { ok: true, id: info.messageId || `smtp_${Date.now()}`, from: conn.from_email, simulated: false };
 }

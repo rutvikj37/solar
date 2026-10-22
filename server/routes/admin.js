@@ -51,6 +51,29 @@ function generateTemporaryPassword(length = 12) {
 
 const adminChain = adminAuth;
 
+/**
+ * Role hierarchy for account-level admin actions: only a super_admin may modify admin-level accounts.
+ * Responds and returns null when the actor may not act on the target; otherwise returns the target row.
+ */
+async function loadGuardedTargetUser(req, res, targetId) {
+  const userId = Number(targetId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({ error: 'Invalid user id' });
+    return null;
+  }
+  const [rows] = await db.query('SELECT id, email, name, role, account_status FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!rows.length) {
+    res.status(404).json({ error: 'User not found' });
+    return null;
+  }
+  const target = rows[0];
+  if (isAdminRole(target.role) && req.user.role !== 'super_admin' && Number(target.id) !== Number(req.user.id)) {
+    res.status(403).json({ error: 'Only a super_admin can modify an admin account' });
+    return null;
+  }
+  return target;
+}
+
 function packageLabel(pkg) {
   if (!pkg) return 'None';
   return pkg.name || pkg.id || 'None';
@@ -527,6 +550,9 @@ router.patch('/users/:id/role', ...adminChain, async (req, res) => {
     if (previousRole === 'super_admin' && actorRole !== 'super_admin') {
       return res.status(403).json({ error: 'Only a super_admin can change a super_admin' });
     }
+    if ((isAdminRole(previousRole) || isAdminRole(nextRole)) && actorRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super_admin can grant or change admin roles' });
+    }
 
     if (previousRole === 'super_admin' && nextRole !== 'super_admin') {
       const [[{ cnt }]] = await db.query(
@@ -541,7 +567,7 @@ router.patch('/users/:id/role', ...adminChain, async (req, res) => {
       return res.status(400).json({ error: 'Cannot remove your own admin access' });
     }
 
-    await db.query('UPDATE users SET role = ? WHERE id = ?', [nextRole, userId]);
+    await db.query('UPDATE users SET role = ?, token_version = token_version + 1 WHERE id = ?', [nextRole, userId]);
     await writeAdminAudit({
       adminId: req.user.id,
       action: 'user.role_change',
@@ -574,8 +600,37 @@ router.patch('/users/:id/status', ...adminChain, async (req, res) => {
     return res.status(400).json({ error: 'status must be active, restricted, or suspended' });
   }
   try {
-    await db.query('UPDATE users SET account_status = ? WHERE id = ?', [status, req.params.id]);
-    res.json({ success: true, id: Number(req.params.id), status });
+    const target = await loadGuardedTargetUser(req, res, req.params.id);
+    if (!target) return;
+    if (Number(target.id) === Number(req.user.id) && status !== 'active') {
+      return res.status(400).json({ error: 'You cannot suspend or restrict your own account' });
+    }
+    if (target.role === 'super_admin' && status !== 'active') {
+      const [[{ cnt }]] = await db.query(
+        `SELECT COUNT(*) AS cnt FROM users WHERE role = 'super_admin' AND account_status = 'active' AND id <> ?`,
+        [target.id],
+      );
+      if (Number(cnt) === 0) {
+        return res.status(400).json({ error: 'Cannot deactivate the last active super_admin' });
+      }
+    }
+    if (status === 'suspended') {
+      await db.query(
+        'UPDATE users SET account_status = ?, token_version = token_version + 1 WHERE id = ?',
+        [status, target.id],
+      );
+    } else {
+      await db.query('UPDATE users SET account_status = ? WHERE id = ?', [status, target.id]);
+    }
+    await writeAdminAudit({
+      adminId: req.user.id,
+      action: 'user.status_change',
+      targetType: 'user',
+      targetId: Number(target.id),
+      details: { email: target.email, previousStatus: target.account_status, nextStatus: status },
+      ip: clientIp(req),
+    });
+    res.json({ success: true, id: Number(target.id), status });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update user status' });
   }
@@ -721,6 +776,11 @@ router.post('/users/:id/restrict-plan', ...adminChain, async (req, res) => {
 
   try {
     const userId = req.params.id;
+    const target = await loadGuardedTargetUser(req, res, userId);
+    if (!target) return;
+    if (restrict && Number(target.id) === Number(req.user.id)) {
+      return res.status(400).json({ error: 'You cannot restrict your own account' });
+    }
     const ctx = await loadUserPlanContext(userId);
     if (!ctx) return res.status(404).json({ error: 'User not found' });
 
@@ -822,61 +882,73 @@ router.post('/users/:id/credits', ...adminChain, async (req, res) => {
     const ctx = await loadUserPlanContext(userId);
     if (!ctx) return res.status(404).json({ error: 'User not found' });
 
-    const [packages] = await db.query(
-      'SELECT id, remaining_leads, purchased_leads, package_id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1',
-      [userId]
-    );
-
-    const currentBalance = packages[0]?.remaining_leads ?? 0;
+    // Lock the package row so concurrent unlocks/scans cannot be overwritten by this adjustment.
+    const conn = await db.getConnection();
+    let packages;
     let delta;
     let balanceAfter;
     let clamped = false;
     let applied = 0;
-
-    if (mode === 'set') {
-      delta = amount - currentBalance;
-      applied = delta;
-      balanceAfter = amount;
-    } else if (mode === 'subtract') {
-      applied = Math.min(amount, currentBalance);
-      clamped = amount > currentBalance;
-      delta = -applied;
-      balanceAfter = Math.max(0, currentBalance - applied);
-    } else if (amount < 0) {
-      // backward-compat: add mode with a negative number
-      applied = Math.min(Math.abs(amount), currentBalance);
-      clamped = Math.abs(amount) > currentBalance;
-      delta = -applied;
-      balanceAfter = Math.max(0, currentBalance - applied);
-      mode = 'subtract';
-    } else {
-      delta = amount;
-      applied = amount;
-      balanceAfter = currentBalance + amount;
-    }
-
-    if (packages.length === 0) {
-      await db.query(
-        `INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status)
-         VALUES (?, 'Free', ?, ?, 'active')`,
-        [userId, balanceAfter, Math.max(0, delta > 0 ? delta : 0)]
+    try {
+      await conn.beginTransaction();
+      [packages] = await conn.query(
+        'SELECT id, remaining_leads, purchased_leads, package_id FROM user_packages WHERE user_id = ? AND status = "active" ORDER BY id DESC LIMIT 1 FOR UPDATE',
+        [userId]
       );
-    } else {
-      const purchasedBump = delta > 0 ? delta : 0;
-      await db.query(
-        `UPDATE user_packages
-         SET remaining_leads = ?,
-             purchased_leads = purchased_leads + ?
-         WHERE id = ?`,
-        [balanceAfter, purchasedBump, packages[0].id]
-      );
-    }
 
-    await db.query(
-      `INSERT INTO admin_credit_adjustments (user_id, admin_id, amount, balance_after, mode, note)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, req.user.id, delta, balanceAfter, mode, note]
-    );
+      const currentBalance = packages[0]?.remaining_leads ?? 0;
+
+      if (mode === 'set') {
+        delta = amount - currentBalance;
+        applied = delta;
+        balanceAfter = amount;
+      } else if (mode === 'subtract') {
+        applied = Math.min(amount, currentBalance);
+        clamped = amount > currentBalance;
+        delta = -applied;
+        balanceAfter = Math.max(0, currentBalance - applied);
+      } else if (amount < 0) {
+        // backward-compat: add mode with a negative number
+        applied = Math.min(Math.abs(amount), currentBalance);
+        clamped = Math.abs(amount) > currentBalance;
+        delta = -applied;
+        balanceAfter = Math.max(0, currentBalance - applied);
+        mode = 'subtract';
+      } else {
+        delta = amount;
+        applied = amount;
+        balanceAfter = currentBalance + amount;
+      }
+
+      if (packages.length === 0) {
+        await conn.query(
+          `INSERT INTO user_packages (user_id, package_id, remaining_leads, purchased_leads, status)
+           VALUES (?, 'Free', ?, ?, 'active')`,
+          [userId, balanceAfter, Math.max(0, delta > 0 ? delta : 0)]
+        );
+      } else {
+        const purchasedBump = delta > 0 ? delta : 0;
+        await conn.query(
+          `UPDATE user_packages
+           SET remaining_leads = GREATEST(0, remaining_leads + ?),
+               purchased_leads = purchased_leads + ?
+           WHERE id = ?`,
+          [delta, purchasedBump, packages[0].id]
+        );
+      }
+
+      await conn.query(
+        `INSERT INTO admin_credit_adjustments (user_id, admin_id, amount, balance_after, mode, note)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [userId, req.user.id, delta, balanceAfter, mode, note]
+      );
+      await conn.commit();
+    } catch (txErr) {
+      await conn.rollback().catch(() => null);
+      throw txErr;
+    } finally {
+      conn.release();
+    }
 
     const signed = delta > 0 ? `+${delta}` : String(delta);
     const description =
@@ -951,12 +1023,16 @@ router.post('/users/:id/reset-password', ...adminChain, async (req, res) => {
   }
 
   try {
-    const [users] = await db.query('SELECT id, email FROM users WHERE id = ?', [userId]);
-    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+    const target = await loadGuardedTargetUser(req, res, userId);
+    if (!target) return;
+    const users = [target];
 
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
-    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+    await db.query(
+      'UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?',
+      [passwordHash, target.id],
+    );
 
     logger.info(`Admin password reset for user ${userId}`, { adminId: req.user.id, generated: generate });
 
@@ -1283,7 +1359,7 @@ router.post('/bootstrap', authenticateToken, async (req, res) => {
     }
     await db.query(`UPDATE users SET role = 'admin' WHERE id = ?`, [req.user.id]);
     const token = jwt.sign(
-      { id: req.user.id, email: req.user.email, name: req.user.name, role: 'admin' },
+      { id: req.user.id, email: req.user.email, name: req.user.name, role: 'admin', tv: Number(req.user.tv) || 0 },
       JWT_SECRET,
       { algorithm: 'HS256', expiresIn: '24h' }
     );

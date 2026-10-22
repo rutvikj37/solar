@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { isAdminRole } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useTaskSummary } from '../../lib/tasks.js';
 
 const EXPANDED_WIDTH = 260;
 const COLLAPSED_WIDTH = 72;
@@ -12,7 +13,15 @@ export default function Sidebar({
   collapsed = false,
   showBanner,
 }) {
-  const { user, credits, activePackage, subscription, refreshUserData, can, entitlements, unlimitedCredits } = useAuth();
+  const { user, plan, can, entitlements, unlimitedCredits } = useAuth();
+  const taskSummary = useTaskSummary();
+  const overdueTasks = Number(taskSummary?.overdue) || 0;
+  const dueTodayTasks = Number(taskSummary?.dueToday) || 0;
+  const taskHint = overdueTasks
+    ? `${overdueTasks} overdue`
+    : dueTodayTasks
+      ? `${dueTodayTasks} due today`
+      : 'Follow-up queue';
   const userRole = user?.role || '';
   const leadsCount = null;
   const isAdmin = isAdminRole(userRole);
@@ -27,10 +36,6 @@ export default function Sidebar({
     dripAutomationLimit < 10000
       ? `Up to ${dripAutomationLimit} automations`
       : undefined;
-
-  useEffect(() => {
-    refreshUserData();
-  }, [refreshUserData]);
 
   const handleMobileClose = () => {
     if (typeof onMobileClose === 'function') onMobileClose();
@@ -69,6 +74,14 @@ export default function Sidebar({
           tourId: 'tour-nav-marketplace',
         },
         { name: 'Leads CRM', path: '/my-leads', icon: 'assignment', tourId: 'tour-nav-leads' },
+        {
+          name: 'Tasks',
+          path: '/tasks',
+          icon: 'task_alt',
+          hint: taskHint,
+          badge: overdueTasks > 0 ? String(overdueTasks) : undefined,
+        },
+        { name: 'Inbox', path: '/inbox', icon: 'inbox', hint: 'Lead email replies' },
         { name: 'Reports', path: '/reports', icon: 'analytics' },
         {
           name: 'Integrations',
@@ -187,7 +200,7 @@ export default function Sidebar({
           w-[260px] lg:w-[var(--sidebar-w)] lg:shrink-0
           fixed left-0 ${topStyle} ${heightStyle}
           ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
-          lg:static lg:top-auto lg:h-auto lg:min-h-0 lg:self-stretch lg:translate-x-0 lg:shadow-none
+          lg:sticky lg:self-start lg:translate-x-0 lg:shadow-none
           ${collapsed ? 'lg:p-2.5' : 'p-5 lg:p-3'}
         `}
       >
@@ -354,16 +367,16 @@ export default function Sidebar({
               <div className="flex items-center justify-between gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5 truncate">
                   <span className="material-symbols-outlined text-[15px] text-primary shrink-0">verified</span>
-                  <span className="truncate">{subscription?.packageName || entitlements?.packageName || activePackage || 'Free'}</span>
+                  <span className="truncate">{plan.planName}</span>
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0">
-                  {isAdmin ? 'ADMIN' : subscription?.status || (activePackage === 'Free' ? 'Free Tier' : 'Active')}
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold shrink-0 uppercase">
+                  {plan.statusLabel}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-on-surface-variant text-[11px]">Credit Balance</span>
                 <span className="font-mono font-bold text-on-surface">
-                  {unlimitedCredits || isAdmin ? '∞' : Number(credits || 0).toLocaleString()}
+                  {plan.creditsLabel}
                 </span>
               </div>
               <NavLink
@@ -380,7 +393,7 @@ export default function Sidebar({
           ) : (
             <NavLink
               to="/billing"
-              title={`Active Plan: ${subscription?.packageName || entitlements?.packageName || activePackage || 'Free'} (${credits} credits)`}
+              title={`Active Plan: ${plan.planName} (${plan.unlimited ? 'unlimited' : plan.creditsLabel} credits)`}
               className="w-10 h-10 mx-auto rounded-xl bg-surface-container-low border border-glass-stroke hover:border-primary/50 text-primary flex items-center justify-center transition active:scale-95"
             >
               <span className="material-symbols-outlined text-[18px]">verified</span>

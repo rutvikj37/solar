@@ -34,22 +34,24 @@ export function parseFrontendOrigins(raw = process.env.FRONTEND_URL) {
 }
 
 /**
- * Public site base for password-reset / verify-email links.
- * Prefers the first non-localhost https origin, then any non-localhost,
- * then the first entry. In production, never returns localhost.
+ * Public app base for email links, OAuth/Stripe redirects, etc.
+ * APP_PUBLIC_URL (single origin) wins when set. Otherwise, from FRONTEND_URL:
+ * - production: first non-localhost https origin, then any non-localhost; never localhost.
+ * - other envs: first localhost origin, then the first entry.
  */
 export function resolveFrontendBaseUrl(raw = process.env.FRONTEND_URL) {
+  const explicit = normalizeOrigin(process.env.APP_PUBLIC_URL);
+  if (explicit) return explicit;
+
   const origins = parseFrontendOrigins(raw);
   const isProd = process.env.NODE_ENV === 'production';
 
   const nonLocal = origins.filter((o) => !isLocalhostOrigin(o));
   const httpsNonLocal = nonLocal.filter((o) => o.startsWith('https:'));
 
-  const pick =
-    httpsNonLocal[0] ||
-    nonLocal[0] ||
-    (!isProd ? origins[0] : null) ||
-    (!isProd ? 'http://localhost:5200' : null);
+  const pick = isProd
+    ? httpsNonLocal[0] || nonLocal[0] || null
+    : origins.find((o) => isLocalhostOrigin(o)) || origins[0] || 'http://localhost:5200';
 
   if (!pick) {
     // Production misconfig — fall back to brand URL rather than localhost.

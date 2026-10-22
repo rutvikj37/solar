@@ -22,14 +22,10 @@ export default function AppLayout() {
     }
   });
   const [showBanner, setShowBanner] = useState(true);
-  const { user, credits, subscription, refreshUserData, loading: authLoading } = useAuth();
+  const { user, plan, loading: authLoading } = useAuth();
   const location = useLocation();
   const isMapPage = location.pathname === '/map';
   const isWideTablePage = location.pathname === '/my-leads';
-
-  useEffect(() => {
-    refreshUserData();
-  }, [location.pathname, refreshUserData]);
 
   // Close mobile drawer on navigate
   useEffect(() => {
@@ -83,10 +79,9 @@ export default function AppLayout() {
     setMobileOpen((open) => !open);
   };
 
-  const creditsLow = credits !== null && credits !== undefined && credits <= 2;
-  const creditsEmpty = credits === 0;
-  const planName = subscription?.packageName;
-  const bannerCredits = authLoading ? null : credits;
+  const creditsLow = !authLoading && plan.creditsLow;
+  const creditsEmpty = !authLoading && plan.creditsEmpty;
+  const planName = plan.isFree ? null : plan.planName;
   const bodyPadding = showBanner ? 'pt-[100px]' : 'pt-16';
 
   // Admin users are directed strictly to the admin operator console — no user functionality
@@ -96,19 +91,21 @@ export default function AppLayout() {
 
   return (
     <OnboardingProvider>
-      <div className="min-h-screen bg-deep text-on-background flex flex-col font-sans overflow-x-hidden">
+      <div className="min-h-screen bg-deep text-on-background flex flex-col font-sans overflow-x-clip">
         {showBanner && (
           <div className="fixed top-0 left-0 right-0 h-9 bg-deep border-b border-glass-stroke py-1.5 px-3 sm:px-6 flex items-center justify-between gap-2 text-[10px] sm:text-[11px] text-on-surface-variant z-50">
             <div className="flex items-center gap-1.5 select-none min-w-0 flex-1">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0"></span>
               <span className="truncate">
-                {bannerCredits === null
+                {authLoading
                   ? '1 lead unlock = 1 credit'
-                  : creditsEmpty
-                    ? planName
-                      ? `${planName} — no unlock credits left.`
-                      : 'No credits remaining. Subscribe to continue.'
-                    : `${Number(bannerCredits).toLocaleString()} credit${bannerCredits === 1 ? '' : 's'} left · 1 lead = 1 credit${planName ? ` · ${planName}` : ''}`}
+                  : plan.unlimited
+                    ? `Unlimited credits · ${plan.planName}`
+                    : creditsEmpty
+                      ? planName
+                        ? `${planName} — no unlock credits left.`
+                        : 'No credits remaining. Subscribe to continue.'
+                      : `${plan.creditsLabel} credit${plan.credits === 1 ? '' : 's'} left · 1 lead = 1 credit${planName ? ` · ${planName}` : ''}`}
               </span>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -132,7 +129,11 @@ export default function AppLayout() {
           </div>
         )}
 
-        <div className="flex-grow flex flex-col relative min-h-screen min-w-0">
+        <div
+          className={`flex-grow flex flex-col relative min-w-0 ${
+            isMapPage ? 'h-screen h-dvh overflow-hidden' : 'min-h-screen'
+          }`}
+        >
           <TopBar
             onNavToggle={handleNavToggle}
             mobileNavOpen={mobileOpen}

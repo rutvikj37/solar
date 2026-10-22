@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Eye, EyeOff, AlertCircle, ArrowRight, Building2, UserCheck } from 'lucide-react';
 import { API_BASE } from '../../config.js';
 import { BRAND_NAME, BRAND_DISPLAY } from '../../config/brand.js';
-import { setToken } from '../../lib/auth.js';
+import { setToken, getToken, isTokenValid } from '../../lib/auth.js';
 
 export default function AcceptInvitePage() {
   const [searchParams] = useSearchParams();
@@ -51,36 +51,50 @@ export default function AcceptInvitePage() {
     verifyToken();
   }, [token]);
 
+  const existingAccount = Boolean(inviteData?.userExists);
+  const loginNext = `/login?next=${encodeURIComponent(`/accept-invite?token=${token}`)}`;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError('');
 
-    if (!name.trim()) {
-      setSubmitError('Please enter your full name');
+    if (existingAccount && !isTokenValid(getToken())) {
+      navigate(loginNext);
       return;
     }
-    if (password.length < 8) {
-      setSubmitError('Password must be at least 8 characters long');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setSubmitError('Passwords do not match');
-      return;
+    if (!existingAccount) {
+      if (!name.trim()) {
+        setSubmitError('Please enter your full name');
+        return;
+      }
+      if (password.length < 8) {
+        setSubmitError('Password must be at least 8 characters long');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setSubmitError('Passwords do not match');
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const sessionToken = getToken();
+      if (existingAccount && sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
       const res = await fetch(`${API_BASE}/api/team/invite/accept`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          name: name.trim(),
-          password,
-        }),
+        headers,
+        body: JSON.stringify(
+          existingAccount ? { token } : { token, name: name.trim(), password },
+        ),
       });
 
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && data.code === 'LOGIN_REQUIRED') {
+        navigate(loginNext);
+        return;
+      }
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to accept invitation. Please try again.');
       }
@@ -217,6 +231,14 @@ export default function AcceptInvitePage() {
                   />
                 </div>
 
+                {existingAccount ? (
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {isTokenValid(getToken())
+                      ? 'You already have an account. Accepting adds it to this workspace — your password and settings stay the same.'
+                      : 'You already have an account. Sign in with this email to accept the invitation.'}
+                  </p>
+                ) : (
+                <>
                 {/* Full Name */}
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
@@ -299,6 +321,8 @@ export default function AcceptInvitePage() {
                     </span>
                   </div>
                 </div>
+                </>
+                )}
 
                 {/* Submit Action */}
                 <button

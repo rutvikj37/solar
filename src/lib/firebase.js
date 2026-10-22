@@ -86,7 +86,11 @@ export async function ensureFirebaseAuth() {
       // Avoid IndexedDB "Database is closing/hidden" when auth popup backgrounds this tab (firebase <12.18).
       await setPersistence(auth, browserLocalPersistence);
       return auth;
-    })();
+    })().catch((err) => {
+      // Allow a later click to retry (e.g. API was briefly unreachable).
+      initPromise = null;
+      throw err;
+    });
   }
   return initPromise;
 }

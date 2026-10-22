@@ -13,6 +13,7 @@ import {
   lookupPhoneWithTwilio,
 } from '../contactEnrichmentService.js';
 import { buildScorePackage, computeStartingBid } from './leadScoring.js';
+import { revokeOptOut } from '../compliance/optOut.js';
 
 /**
  * Validate + score inquiry. Opens bidding only when listInMarketplace is true (admin approve).
@@ -271,8 +272,11 @@ export function formatInquiryResponse(lead, { reportAccess } = {}) {
           treesEquiv: enrichment.treesEquiv,
           milesOffset: enrichment.milesOffset,
           productionSource: enrichment.productionSource,
+          assumptions: enrichment.assumptions || null,
         }
       : null,
+    savingsEstimate: enrichment.googleSolarHit ? null : enrichment.savingsEstimate || null,
+    savingsAssumptions: enrichment.assumptions || null,
     propertyLat: lead.latitude != null ? Number(lead.latitude) : enrichment.lat,
     propertyLng: lead.longitude != null ? Number(lead.longitude) : enrichment.lng,
   };
@@ -349,6 +353,7 @@ export async function createInquiry(payload) {
     projectDetails,
     propertyLat,
     propertyLng,
+    consent = null,
   } = payload;
 
   const normalizedEmail = String(email).trim().toLowerCase();
@@ -402,6 +407,22 @@ export async function createInquiry(payload) {
   );
 
   const leadId = result.insertId;
+
+  if (consent) {
+    await db.query(
+      `UPDATE marketplace_leads SET
+         consent_text = ?, consent_version = ?, consent_at = ?, consent_ip = ?,
+         consent_user_agent = ?, consent_page_url = ?
+       WHERE id = ?`,
+      [consent.text, consent.version, consent.at, consent.ip, consent.userAgent, consent.pageUrl, leadId],
+    );
+    // Fresh express consent supersedes an earlier opt-out for this contact.
+    try {
+      await revokeOptOut({ email, phone, channel: 'all', source: 'form_consent', detail: `marketplace_lead:${leadId}` });
+    } catch (err) {
+      console.error('[Marketplace] consent opt-in reset failed:', err.message);
+    }
+  }
 
   let enrichment = null;
   try {

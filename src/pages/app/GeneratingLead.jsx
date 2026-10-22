@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { bulkScan } from '../../services/api.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { formatLeadGeneratedAt } from '../../lib/formatDate.js';
 import {
   PROPERTY_DATA_UNAVAILABLE,
@@ -30,6 +31,7 @@ export default function GeneratingLead() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const { refreshUserData } = useAuth();
   const apiCompletedRef = useRef(false);
   const apiErrorRef = useRef(null);
   const scanStartedRef = useRef(false);
@@ -92,7 +94,9 @@ export default function GeneratingLead() {
         setCreatedLeads(uniqueLeads);
         apiCompletedRef.current = true;
         setProgress(100);
+        refreshUserData();
       } catch (err) {
+        refreshUserData();
         console.error('Bulk scan API error:', err);
         const msg =
           resolvePropertyDataMessage(err.data, { status: err.status }) ||

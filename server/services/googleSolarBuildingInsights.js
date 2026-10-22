@@ -1,5 +1,5 @@
-import { trackedFetch } from './apiUsage.js';
 import { enrichWithNrel } from './nrel.js';
+import { getBuildingInsights } from './solarInsightsCache.js';
 
 const isKeyValid = (key) =>
   key && String(key).trim() !== '' && !String(key).toLowerCase().includes('your_');
@@ -30,13 +30,12 @@ export async function fetchGoogleSolarBuildingInsights(lat, lng) {
   }
 
   try {
-    const solarUrl = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${nLat}&location.longitude=${nLng}&key=${process.env.GOOGLE_SOLAR_API_KEY}`;
-    const response = await trackedFetch('google_solar', solarUrl);
-    if (!response.ok) {
+    const insights = await getBuildingInsights(nLat, nLng);
+    if (!insights.data) {
       return { googleSolarHit: false };
     }
 
-    const solarData = await response.json();
+    const solarData = insights.data;
     const pot = solarData.solarPotential;
     if (!pot) {
       return { googleSolarHit: false, center: solarData.center || null };

@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { setReportData } from '@/lib/report-store';
 import { API_BASE } from '@/config.js';
+import { consentPayload } from '@/lib/contactConsent.js';
 
 type ValidationCheck = {
   key: string;
@@ -94,6 +95,7 @@ export function LeadForm() {
     if (!formData.ownership) return 'Please confirm whether you own this home.';
     if (!formData.roofType) return 'Please select your roof type.';
     if (!formData.timeline) return 'Please select when you are considering solar.';
+    if (!formData.contactConsent) return 'Please agree to be contacted so we can send your report.';
 
     return null;
   };
@@ -151,6 +153,7 @@ export function LeadForm() {
             ]
               .filter(Boolean)
               .join('. '),
+            ...consentPayload(Boolean(formData.contactConsent)),
           }),
           signal: controller.signal,
         });
@@ -210,6 +213,8 @@ export function LeadForm() {
         dataSources: data.dataSources ?? null,
         satelliteImageUrl: data.satelliteImageUrl ?? null,
         solarReport: data.solarReport ?? null,
+        savingsEstimate: data.savingsEstimate ?? null,
+        savingsAssumptions: data.savingsAssumptions ?? null,
         googleSolarHit: data.enrichmentSource === 'google_solar',
         propertyLat: data.propertyLat ?? formData.propertyLat,
         propertyLng: data.propertyLng ?? formData.propertyLng,

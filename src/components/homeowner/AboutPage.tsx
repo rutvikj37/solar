@@ -76,8 +76,8 @@ export function AboutPage() {
             >
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent" />
               <img 
-                src="https://images.unsplash.com/photo-1509391366360-feaffa603b4b?auto=format&fit=crop&q=80&w=1200" 
-                alt="Solar Panel Installation" 
+                src="/about-solar-rooftop.jpg"
+                alt="Rooftop solar panel installation at sunset"
                 className="w-full h-full object-cover opacity-60 mix-blend-luminosity"
               />
             </motion.div>

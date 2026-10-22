@@ -373,7 +373,7 @@ function SatelliteVisual() {
   }, [isInView]);
 
   return (
-    <div ref={containerRef} className="relative w-full aspect-[4/3] rounded-[24px] overflow-hidden border border-white/10 bg-[#060B17] shadow-2xl">
+    <div ref={containerRef} className="theme-dark-canvas relative w-full aspect-[4/3] rounded-[24px] overflow-hidden border border-white/10 bg-[#060B17] shadow-2xl">
       {/* Zooming Images Layer */}
       <div className="absolute inset-0 z-0">
         {/* Stage 0-2: City Wide */}

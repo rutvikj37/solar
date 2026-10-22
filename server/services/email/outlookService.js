@@ -2,6 +2,7 @@ import {
   getUserEmailConnection,
   upsertUserEmailConnection,
   outlookRedirectUri,
+  isInboxSyncEnabled,
 } from './userEmailConnections.js';
 import {
   getMicrosoftMailClientId,
@@ -12,12 +13,25 @@ import {
 const AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 const TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
 
+function refreshScopeFromGranted(granted) {
+  const names = String(granted)
+    .split(/\s+/)
+    .map((x) => x.replace(/^https:\/\/graph\.microsoft\.com\//i, ''))
+    .filter((x) => /^(Mail\.Send|Mail\.Read|User\.Read)$/i.test(x));
+  if (!names.length) return 'offline_access Mail.Send User.Read';
+  return ['offline_access', ...new Set(names)].join(' ');
+}
+
+function outlookScope() {
+  return isInboxSyncEnabled() ? 'offline_access Mail.Send Mail.Read User.Read' : 'offline_access Mail.Send User.Read';
+}
+
 export function getOutlookAuthorizeUrl(state) {
   const params = new URLSearchParams({
     client_id: getMicrosoftMailClientId(),
     redirect_uri: outlookRedirectUri(),
     response_type: 'code',
-    scope: 'offline_access Mail.Send User.Read',
+    scope: outlookScope(),
     prompt: 'select_account',
     state,
   });
@@ -42,13 +56,13 @@ async function exchangeCode(code) {
   return data;
 }
 
-async function refreshAccessToken(refreshToken) {
+async function refreshAccessToken(refreshToken, grantedScopes = null) {
   const body = new URLSearchParams({
     client_id: getMicrosoftMailClientId(),
     client_secret: getMicrosoftMailClientSecret(),
     refresh_token: refreshToken,
     grant_type: 'refresh_token',
-    scope: 'offline_access Mail.Send User.Read',
+    scope: grantedScopes ? refreshScopeFromGranted(grantedScopes) : 'offline_access Mail.Send User.Read',
   });
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
@@ -72,11 +86,15 @@ async function fetchOutlookProfile(accessToken) {
   };
 }
 
+export async function ensureOutlookAccessToken(conn) {
+  return ensureAccessToken(conn);
+}
+
 async function ensureAccessToken(conn) {
   const expires = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
   if (expires > Date.now() + 60_000) return conn.access_token;
   if (!conn.refresh_token) throw new Error('Outlook connection expired — reconnect in Integrations');
-  const data = await refreshAccessToken(conn.refresh_token);
+  const data = await refreshAccessToken(conn.refresh_token, conn.granted_scopes);
   const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
   await upsertUserEmailConnection(conn.user_id, {
     provider: 'outlook',
@@ -101,6 +119,7 @@ export async function completeOutlookOAuth(userId, code) {
     expiresAt,
     fromEmail: profile.email,
     fromName: profile.name || profile.email?.split('@')[0],
+    grantedScopes: data.scope || null,
   });
   return { fromEmail: profile.email };
 }

@@ -125,6 +125,17 @@ export default function EmailIntegrationsSection({ onToast }) {
               via {EMAIL_PROVIDER_META[activeProvider]?.label || activeProvider} — replies stay in
               this inbox
             </p>
+            {data.inbox?.enabled && (
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                {!data.inbox.supported
+                  ? 'Reply sync needs Gmail or Outlook (SMTP is send-only).'
+                  : data.inbox.status === 'needs_reconnect'
+                    ? 'Reply sync needs read access — disconnect and reconnect to grant it.'
+                    : data.inbox.lastSyncAt
+                      ? `Lead replies synced to the CRM · last sync ${new Date(data.inbox.lastSyncAt).toLocaleString()}`
+                      : 'Lead replies will sync to the CRM automatically.'}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <button

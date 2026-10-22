@@ -3,6 +3,7 @@
  * Handles agency routing by ZIP/state coverage.
  */
 import db from '../../db.js';
+import { getCalendarAccessToken, listCalendarConnections } from '../calendar/calendarConnections.js';
 
 /**
  * Book an internal appointment (inserts into existing `appointments` table).
@@ -35,61 +36,109 @@ export async function getUserCalendarTokens(userId) {
      FROM ai_calling_settings WHERE user_id = ? LIMIT 1`,
     [userId]
   );
-  if (!rows.length) return { google: null, outlook: null, timezone: 'America/New_York' };
+  const tokens = rows.length
+    ? {
+        google: parseCalendarToken(rows[0].google_calendar_token),
+        outlook: parseCalendarToken(rows[0].outlook_calendar_token),
+        timezone: rows[0].default_timezone || 'America/New_York',
+      }
+    : { google: null, outlook: null, timezone: 'America/New_York' };
+
+  // OAuth connections from Integrations (auto-refreshing) win over legacy pasted tokens.
+  try {
+    const connections = await listCalendarConnections(userId);
+    for (const conn of connections) {
+      try {
+        const token = await getCalendarAccessToken(conn);
+        if (token) tokens[conn.provider] = token;
+      } catch (err) {
+        console.warn(`[Calendar] ${conn.provider} token unavailable for user ${userId}:`, err.message);
+      }
+    }
+  } catch (err) {
+    if (err?.code !== 'ER_NO_SUCH_TABLE') console.warn('[Calendar] connection lookup failed:', err.message);
+  }
+  return tokens;
+}
+
+const GOOGLE_EVENTS_URL = (calendarId = 'primary') =>
+  `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+const CALENDAR_FETCH_TIMEOUT_MS = 10_000;
+
+function eventEnd(event) {
+  return new Date(new Date(event.startTime).getTime() + (event.durationMinutes || 30) * 60000);
+}
+
+function googleEventBody(event, { conference = true } = {}) {
   return {
-    google: parseCalendarToken(rows[0].google_calendar_token),
-    outlook: parseCalendarToken(rows[0].outlook_calendar_token),
-    timezone: rows[0].default_timezone || 'America/New_York',
+    summary: event.title || 'Solar Consultation',
+    description: event.description || '',
+    location: event.location || '',
+    start: { dateTime: new Date(event.startTime).toISOString(), timeZone: event.timezone || 'America/New_York' },
+    end: { dateTime: eventEnd(event).toISOString(), timeZone: event.timezone || 'America/New_York' },
+    ...(event.attendees ? { attendees: event.attendees } : {}),
+    ...(conference
+      ? {
+          conferenceData: {
+            createRequest: { requestId: `solar-${Date.now()}`, conferenceSolutionKey: { type: 'hangoutsMeet' } },
+          },
+        }
+      : {}),
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 60 },
+        { method: 'popup', minutes: 15 },
+      ],
+    },
+  };
+}
+
+// Graph takes a naive local time + zone; send UTC explicitly so the instant is exact.
+function outlookEventBody(event, { onlineMeeting = true } = {}) {
+  const naive = (d) => d.toISOString().replace(/\.\d{3}Z$/, '');
+  return {
+    subject: event.title || 'Solar Consultation',
+    body: { contentType: 'text', content: event.description || '' },
+    start: { dateTime: naive(new Date(event.startTime)), timeZone: 'UTC' },
+    end: { dateTime: naive(eventEnd(event)), timeZone: 'UTC' },
+    location: event.location ? { displayName: event.location } : undefined,
+    ...(event.attendees
+      ? {
+          attendees: event.attendees.map((a) => ({
+            emailAddress: { address: a.email, name: a.displayName || a.email },
+            type: 'required',
+          })),
+        }
+      : {}),
+    ...(onlineMeeting ? { isOnlineMeeting: true, onlineMeetingProvider: 'teamsForBusiness' } : {}),
   };
 }
 
 /**
  * Book a Google Calendar event (with optional Meet link + attendees).
+ * opts: { conference = true, sendUpdates = 'all', calendarId = 'primary' }
  */
-export async function bookGoogleCalendarEvent(accessToken, event) {
+export async function bookGoogleCalendarEvent(accessToken, event, opts = {}) {
   if (!accessToken) return { eventId: null, simulated: true };
+  const { conference = true, sendUpdates = 'all', calendarId = 'primary' } = opts;
 
   const response = await fetch(
-    'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all',
+    `${GOOGLE_EVENTS_URL(calendarId)}?conferenceDataVersion=${conference ? 1 : 0}&sendUpdates=${sendUpdates}`,
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        summary: event.title || 'Solar Consultation',
-        description: event.description || '',
-        location: event.location || '',
-        start: {
-          dateTime: new Date(event.startTime).toISOString(),
-          timeZone: event.timezone || 'America/New_York',
-        },
-        end: {
-          dateTime: new Date(new Date(event.startTime).getTime() + (event.durationMinutes || 30) * 60000).toISOString(),
-          timeZone: event.timezone || 'America/New_York',
-        },
-        attendees: event.attendees || [],
-        conferenceData: {
-          createRequest: {
-            requestId: `solar-${Date.now()}`,
-            conferenceSolutionKey: { type: 'hangoutsMeet' },
-          },
-        },
-        reminders: {
-          useDefault: false,
-          overrides: [
-            { method: 'email', minutes: 60 },
-            { method: 'popup', minutes: 15 },
-          ],
-        },
-      }),
+      body: JSON.stringify(googleEventBody(event, { conference })),
+      signal: AbortSignal.timeout(CALENDAR_FETCH_TIMEOUT_MS),
     }
   );
 
   if (!response.ok) {
     console.error('[Google Calendar] Failed to create event:', response.status);
-    return { eventId: null, simulated: false, error: 'Failed to create event' };
+    return { eventId: null, simulated: false, error: 'Failed to create event', status: response.status };
   }
 
   const data = await response.json();
@@ -101,11 +150,45 @@ export async function bookGoogleCalendarEvent(accessToken, event) {
   return { eventId: data.id, htmlLink: data.htmlLink, meetLink, simulated: false };
 }
 
+/** PATCH an existing Google event. Returns { ok, status } (404/410 = event gone). */
+export async function updateGoogleCalendarEvent(accessToken, eventId, event, opts = {}) {
+  const { sendUpdates = 'none', calendarId = 'primary' } = opts;
+  const body = googleEventBody(event, { conference: false });
+  const response = await fetch(
+    `${GOOGLE_EVENTS_URL(calendarId)}/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CALENDAR_FETCH_TIMEOUT_MS),
+    }
+  );
+  if (!response.ok) console.error('[Google Calendar] Failed to update event:', response.status);
+  return { ok: response.ok, status: response.status };
+}
+
+export async function deleteGoogleCalendarEvent(accessToken, eventId, opts = {}) {
+  const { sendUpdates = 'none', calendarId = 'primary' } = opts;
+  const response = await fetch(
+    `${GOOGLE_EVENTS_URL(calendarId)}/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(CALENDAR_FETCH_TIMEOUT_MS),
+    }
+  );
+  const gone = response.status === 404 || response.status === 410;
+  if (!response.ok && !gone) console.error('[Google Calendar] Failed to delete event:', response.status);
+  return { ok: response.ok || gone, status: response.status };
+}
+
 /**
  * Book an Outlook Calendar event (Microsoft Graph API).
+ * opts: { onlineMeeting = true }
  */
-export async function bookOutlookEvent(accessToken, event) {
+export async function bookOutlookEvent(accessToken, event, opts = {}) {
   if (!accessToken) return { eventId: null, simulated: true };
+  const { onlineMeeting = true } = opts;
 
   const response = await fetch('https://graph.microsoft.com/v1.0/me/events', {
     method: 'POST',
@@ -113,32 +196,13 @@ export async function bookOutlookEvent(accessToken, event) {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      subject: event.title || 'Solar Consultation',
-      body: { contentType: 'text', content: event.description || '' },
-      start: {
-        dateTime: new Date(event.startTime).toISOString().replace(/\.\d{3}Z$/, ''),
-        timeZone: event.timezone || 'America/New_York',
-      },
-      end: {
-        dateTime: new Date(new Date(event.startTime).getTime() + (event.durationMinutes || 30) * 60000)
-          .toISOString()
-          .replace(/\.\d{3}Z$/, ''),
-        timeZone: event.timezone || 'America/New_York',
-      },
-      location: event.location ? { displayName: event.location } : undefined,
-      attendees: (event.attendees || []).map((a) => ({
-        emailAddress: { address: a.email, name: a.displayName || a.email },
-        type: 'required',
-      })),
-      isOnlineMeeting: true,
-      onlineMeetingProvider: 'teamsForBusiness',
-    }),
+    body: JSON.stringify(outlookEventBody(event, { onlineMeeting })),
+    signal: AbortSignal.timeout(CALENDAR_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
     console.error('[Outlook] Failed to create event:', response.status);
-    return { eventId: null, simulated: false };
+    return { eventId: null, simulated: false, status: response.status };
   }
 
   const data = await response.json();
@@ -147,6 +211,28 @@ export async function bookOutlookEvent(accessToken, event) {
     meetLink: data.onlineMeeting?.joinUrl || data.webLink || null,
     simulated: false,
   };
+}
+
+export async function updateOutlookEvent(accessToken, eventId, event) {
+  const response = await fetch(`https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(outlookEventBody(event, { onlineMeeting: false })),
+    signal: AbortSignal.timeout(CALENDAR_FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) console.error('[Outlook] Failed to update event:', response.status);
+  return { ok: response.ok, status: response.status };
+}
+
+export async function deleteOutlookEvent(accessToken, eventId) {
+  const response = await fetch(`https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(CALENDAR_FETCH_TIMEOUT_MS),
+  });
+  const gone = response.status === 404 || response.status === 410;
+  if (!response.ok && !gone) console.error('[Outlook] Failed to delete event:', response.status);
+  return { ok: response.ok || gone, status: response.status };
 }
 
 /**
@@ -261,6 +347,16 @@ export async function bookAppointmentWithIntegrations({
     const o = await bookOutlookEvent(tokens.outlook, eventPayload);
     outlookEventId = o.eventId || null;
     if (o.meetLink) inviteLink = o.meetLink;
+  }
+
+  if (googleEventId || outlookEventId) {
+    await db
+      .query(
+        `UPDATE appointments SET google_event_id = ?, outlook_event_id = ?, calendar_sync_status = 'synced',
+           calendar_sync_error = NULL, calendar_synced_at = NOW() WHERE id = ?`,
+        [googleEventId, outlookEventId, appointmentId]
+      )
+      .catch((err) => console.warn('[Calendar] could not store event ids:', err.message));
   }
 
   return {

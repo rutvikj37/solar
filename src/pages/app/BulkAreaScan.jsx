@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import UpgradeModal from '../../components/UpgradeModal';
 import LocationSearchField from '../../components/LocationSearchField.jsx';
 import { API_BASE } from '../../config.js';
+import { fetchMeResult } from '../../lib/auth.js';
 
 export default function BulkAreaScan() {
   const [searchMode, setSearchMode] = useState('zip');
@@ -32,11 +33,9 @@ export default function BulkAreaScan() {
 
     const fetchCredits = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
+        const result = await fetchMeResult();
+        if (result.status === 'ok') {
+          const data = result.data;
           setLeadCredits(data.credits);
           setUnlimitedCredits(
             !!data.unlimitedCredits ||

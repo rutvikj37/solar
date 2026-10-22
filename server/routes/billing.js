@@ -9,10 +9,15 @@ import {
   getBillingCurrency,
   constructStripeWebhookEvent,
   assertSessionBelongsToUser,
+  getStripeId,
+  getInvoiceSubscriptionId,
+  getSubscriptionPeriod,
 } from '../services/stripeBilling.js';
 import { fulfillMarketplaceWalletFromStripeSession } from '../services/marketplace/walletTopup.js';
 import { getLedger, getWalletBalance, ensureWallet } from '../services/marketplace/wallet.js';
 import { clientErrorMessage } from '../utils/clientError.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { resolveFrontendBaseUrl } from '../utils/frontendUrl.js';
 import {
   normalizeBillingMonths,
   resolveDurationPricing,
@@ -34,8 +39,7 @@ function isSubscriptionPackage(pkg) {
 }
 
 function frontendBase() {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
-  return raw.split(',')[0].trim();
+  return resolveFrontendBaseUrl();
 }
 
 /** Reset credits to monthly plan allowance (subscription refresh). */
@@ -194,38 +198,37 @@ export async function fulfillPrepaidPlan({
   const periodEnd = new Date();
   periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
 
-  await setSubscriptionCredits(userId, packageId, credits);
-  await upsertUserSubscription({
+  const claimed = await claimSessionInvoice({
+    sessionId: session.id,
     userId,
     packageId,
-    paymentProvider: 'stripe',
-    stripeCustomerId: session.customer || null,
-    stripeSubscriptionId: `prepaid_${session.id}`,
-    status: 'active',
-    periodStart,
-    periodEnd,
-    cancelAtPeriodEnd: false,
-    billingMonths,
-    creditsRefreshedAt: periodStart,
+    credits,
+    amountCents: session.amount_total || 0,
+    method: 'stripe_prepaid',
+    overwriteMethod: true,
   });
+  if (!claimed) {
+    return { alreadyPaid: true, credits, packageId, billingMonths, periodEnd };
+  }
 
-  const [invoices] = await db.query('SELECT * FROM invoices WHERE stripe_session_id = ?', [session.id]);
-  if (invoices.length > 0 && invoices[0].status !== 'paid') {
-    await db.query(
-      `UPDATE invoices SET status = 'paid', credits = ?, method = 'stripe_prepaid', billing_reason = 'initial' WHERE id = ?`,
-      [credits, invoices[0].id],
-    );
-  } else if (invoices.length === 0) {
-    await recordInvoice({
+  try {
+    await setSubscriptionCredits(userId, packageId, credits);
+    await upsertUserSubscription({
       userId,
       packageId,
-      amountCents: session.amount_total || 0,
-      credits,
-      status: 'paid',
-      method: 'stripe_prepaid',
-      stripeSessionId: session.id,
-      billingReason: 'initial',
+      paymentProvider: 'stripe',
+      stripeCustomerId: session.customer || null,
+      stripeSubscriptionId: `prepaid_${session.id}`,
+      status: 'active',
+      periodStart,
+      periodEnd,
+      cancelAtPeriodEnd: false,
+      billingMonths,
+      creditsRefreshedAt: periodStart,
     });
+  } catch (err) {
+    await releaseSessionInvoice(session.id);
+    throw err;
   }
 
   return { credits, packageId, billingMonths, periodEnd };
@@ -272,7 +275,8 @@ export async function upsertUserSubscription({
       `UPDATE user_subscriptions SET
          package_id = ?, payment_provider = ?, stripe_customer_id = ?, stripe_subscription_id = ?,
          razorpay_subscription_id = COALESCE(?, razorpay_subscription_id), status = ?,
-         current_period_start = ?, current_period_end = ?, cancel_at_period_end = ?,
+         current_period_start = COALESCE(?, current_period_start),
+         current_period_end = COALESCE(?, current_period_end), cancel_at_period_end = ?,
          billing_months = ?, credits_refreshed_at = ?
        WHERE user_id = ?`,
       [
@@ -341,21 +345,93 @@ export async function maybeRefreshMonthlyCredits(userId) {
     return null;
   }
 
+  const anchor = sub.current_period_start ? new Date(sub.current_period_start) : null;
+  if (!anchor || Number.isNaN(anchor.getTime()) || anchor > now) return null;
+
+  // Refresh on monthly anniversaries of current_period_start, not calendar months.
+  const monthsElapsed =
+    (now.getUTCFullYear() - anchor.getUTCFullYear()) * 12 + (now.getUTCMonth() - anchor.getUTCMonth());
+  let anniversary = addMonthsUtc(anchor, monthsElapsed);
+  if (anniversary > now) anniversary = addMonthsUtc(anchor, monthsElapsed - 1);
+
   const last = sub.credits_refreshed_at ? new Date(sub.credits_refreshed_at) : null;
-  const monthKey = (d) => `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-  if (last && monthKey(last) === monthKey(now)) {
+  if (last && last >= anniversary) {
     return null;
   }
 
   const credits = Number(sub.lead_limit) || 0;
   if (credits <= 0) return null;
 
-  await setSubscriptionCredits(userId, sub.package_id, credits);
-  await db.query(
-    'UPDATE user_subscriptions SET credits_refreshed_at = ? WHERE user_id = ?',
-    [now, userId],
+  const [claim] = await db.query(
+    `UPDATE user_subscriptions SET credits_refreshed_at = ?
+     WHERE user_id = ? AND (credits_refreshed_at IS NULL OR credits_refreshed_at < ?)`,
+    [now, userId, anniversary],
   );
+  if (claim.affectedRows === 0) return null;
+
+  await setSubscriptionCredits(userId, sub.package_id, credits);
   return { refreshed: true, credits, packageId: sub.package_id };
+}
+
+function addMonthsUtc(date, months) {
+  const d = new Date(date.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d;
+}
+
+/**
+ * Atomically mark a Checkout-session invoice paid (or insert it as paid). Returns true only for the
+ * single caller that claimed it, so plan credits are granted at most once per session.
+ */
+async function claimSessionInvoice({
+  sessionId,
+  userId,
+  packageId,
+  credits,
+  amountCents = 0,
+  method,
+  stripeSubscriptionId = null,
+  overwriteMethod = false,
+}) {
+  const [upd] = await db.query(
+    `UPDATE invoices
+     SET status = 'paid', credits = ?, billing_reason = 'initial',
+         stripe_subscription_id = COALESCE(?, stripe_subscription_id),
+         method = IF(?, ?, method)
+     WHERE stripe_session_id = ? AND status <> 'paid'`,
+    [credits, stripeSubscriptionId, overwriteMethod ? 1 : 0, method, sessionId],
+  );
+  if (upd.affectedRows > 0) return true;
+
+  const [existing] = await db.query('SELECT id FROM invoices WHERE stripe_session_id = ? LIMIT 1', [sessionId]);
+  if (existing.length > 0) return false;
+
+  try {
+    await recordInvoice({
+      userId,
+      packageId,
+      amountCents,
+      credits,
+      status: 'paid',
+      method,
+      stripeSessionId: sessionId,
+      stripeSubscriptionId,
+      billingReason: 'initial',
+    });
+    return true;
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') return false;
+    throw err;
+  }
+}
+
+/** Undo a claim when granting fails so Stripe retries / the user's confirm can fulfil later. */
+async function releaseSessionInvoice(sessionId) {
+  await db.query(`UPDATE invoices SET status = 'pending' WHERE stripe_session_id = ?`, [sessionId]).catch(() => null);
 }
 
 /** Prefer DB package lead_limit over Checkout metadata (metadata is set server-side but package is source of truth). */
@@ -671,6 +747,13 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
     if (!subs.length) return res.status(404).json({ error: 'No active subscription' });
     const sub = subs[0];
 
+    const stripeSubId = String(sub.stripe_subscription_id || '');
+    if (stripeSubId.startsWith('prepaid_') || stripeSubId.startsWith('dev_')) {
+      // Prepaid terms have no Stripe subscription; they simply lapse at period end.
+      await db.query('UPDATE user_subscriptions SET cancel_at_period_end = 1 WHERE user_id = ?', [req.user.id]);
+      return res.json({ message: 'Your plan will not renew and ends at the end of the current period.' });
+    }
+
     if (sub.stripe_subscription_id && getStripe()) {
       const stripe = getStripe();
       await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
@@ -685,7 +768,7 @@ router.post('/cancel-subscription', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/checkout', authenticateToken, async (req, res) => {
+router.post('/checkout', authenticateToken, asyncHandler(async (req, res) => {
   const { packageId } = req.body;
   const billingMonths = normalizeBillingMonths(req.body.billingMonths ?? req.body.months ?? 1);
   const pkg = await loadActivePackage(packageId);
@@ -909,7 +992,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
       error: clientErrorMessage(error, 'Server error creating checkout'),
     });
   }
-});
+}));
 
 router.post('/confirm', authenticateToken, async (req, res) => {
   const { sessionId } = req.body;
@@ -942,29 +1025,41 @@ router.post('/confirm', authenticateToken, async (req, res) => {
     const packageId = session.metadata?.packageId || invoice.package_id;
     const credits = await resolvePackageCredits(packageId, session.metadata?.credits, invoice.credits);
 
-    if (session.mode === 'subscription' && session.subscription) {
-      const subscription = await stripe.subscriptions.retrieve(session.subscription);
-      const periodStart = new Date(subscription.current_period_start * 1000);
-      const periodEnd = new Date(subscription.current_period_end * 1000);
+    const sessionSubscriptionId = getStripeId(session.subscription);
+    if (session.mode === 'subscription' && sessionSubscriptionId) {
+      const subscription = await stripe.subscriptions.retrieve(sessionSubscriptionId);
+      const { start: periodStart, end: periodEnd } = getSubscriptionPeriod(subscription);
 
-      await setSubscriptionCredits(req.user.id, packageId, credits);
-      await upsertUserSubscription({
+      const claimed = await claimSessionInvoice({
+        sessionId,
         userId: req.user.id,
         packageId,
-        paymentProvider: 'stripe',
-        stripeCustomerId: session.customer,
+        credits,
+        method: 'stripe_subscription',
         stripeSubscriptionId: subscription.id,
-        status: subscription.status,
-        periodStart,
-        periodEnd,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        billingMonths: 1,
-        creditsRefreshedAt: periodStart,
       });
-      await db.query(
-        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, credits = ?, billing_reason = 'initial' WHERE id = ? AND status <> 'paid'`,
-        [subscription.id, credits, invoice.id]
-      );
+      if (!claimed) {
+        return res.json({ message: 'Already fulfilled', invoice });
+      }
+      try {
+        await setSubscriptionCredits(req.user.id, packageId, credits);
+        await upsertUserSubscription({
+          userId: req.user.id,
+          packageId,
+          paymentProvider: 'stripe',
+          stripeCustomerId: getStripeId(session.customer),
+          stripeSubscriptionId: subscription.id,
+          status: subscription.status,
+          periodStart,
+          periodEnd,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          billingMonths: 1,
+          creditsRefreshedAt: periodStart,
+        });
+      } catch (err) {
+        await releaseSessionInvoice(sessionId);
+        throw err;
+      }
       return res.json({ message: 'Credits granted', credits, packageId });
     }
 
@@ -975,6 +1070,9 @@ router.post('/confirm', authenticateToken, async (req, res) => {
         packageId,
         credits,
       });
+      if (result.alreadyPaid) {
+        return res.json({ message: 'Already fulfilled', invoice });
+      }
       return res.json({
         message: 'Plan activated',
         credits: result.credits,
@@ -1006,7 +1104,7 @@ router.post('/confirm', authenticateToken, async (req, res) => {
   }
 });
 
-async function handleCheckoutCompleted(stripe, session) {
+export async function handleCheckoutCompleted(stripe, session) {
   if (await fulfillMarketplaceWalletFromStripeSession(session)) {
     console.log(`[Stripe Webhook] Marketplace wallet topped up for user ${session.metadata?.userId}`);
     return;
@@ -1018,52 +1116,52 @@ async function handleCheckoutCompleted(stripe, session) {
 
   const credits = await resolvePackageCredits(packageId, session.metadata?.credits);
 
-  if (session.mode === 'subscription' && session.subscription) {
-    const subscription = await stripe.subscriptions.retrieve(session.subscription);
-    const periodStart = new Date(subscription.current_period_start * 1000);
-    const periodEnd = new Date(subscription.current_period_end * 1000);
+  const sessionSubscriptionId = getStripeId(session.subscription);
+  if (session.mode === 'subscription' && sessionSubscriptionId) {
+    const subscription = await stripe.subscriptions.retrieve(sessionSubscriptionId);
+    const { start: periodStart, end: periodEnd } = getSubscriptionPeriod(subscription);
 
-    await setSubscriptionCredits(userId, packageId, credits);
-    await upsertUserSubscription({
+    const claimed = await claimSessionInvoice({
+      sessionId: session.id,
       userId,
       packageId,
-      paymentProvider: 'stripe',
-      stripeCustomerId: session.customer,
+      credits,
+      amountCents: session.amount_total || 0,
+      method: 'stripe_subscription',
       stripeSubscriptionId: subscription.id,
-      status: subscription.status,
-      periodStart,
-      periodEnd,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      billingMonths: 1,
-      creditsRefreshedAt: periodStart,
     });
-
-    const [invoices] = await db.query('SELECT * FROM invoices WHERE stripe_session_id = ?', [session.id]);
-    if (invoices.length > 0 && invoices[0].status !== 'paid') {
-      await db.query(
-        `UPDATE invoices SET status = 'paid', stripe_subscription_id = ?, credits = ?, billing_reason = 'initial' WHERE id = ?`,
-        [subscription.id, credits, invoices[0].id]
-      );
-    } else if (invoices.length === 0) {
-      await recordInvoice({
+    if (!claimed) {
+      console.log(`[Stripe Webhook] Session ${session.id} already fulfilled; skipping credit grant`);
+      return;
+    }
+    try {
+      await setSubscriptionCredits(userId, packageId, credits);
+      await upsertUserSubscription({
         userId,
         packageId,
-        amountCents: session.amount_total || 0,
-        credits,
-        status: 'paid',
-        method: 'stripe_subscription',
-        stripeSessionId: session.id,
+        paymentProvider: 'stripe',
+        stripeCustomerId: getStripeId(session.customer),
         stripeSubscriptionId: subscription.id,
-        billingReason: 'initial'
+        status: subscription.status,
+        periodStart,
+        periodEnd,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        billingMonths: 1,
+        creditsRefreshedAt: periodStart,
       });
+    } catch (err) {
+      await releaseSessionInvoice(session.id);
+      throw err;
     }
     console.log(`[Stripe Webhook] Subscription activated for user ${userId}, plan ${packageId}`);
     return;
   }
 
   if (session.metadata?.prepaid === '1') {
-    await fulfillPrepaidPlan({ session, userId, packageId, credits });
-    console.log(`[Stripe Webhook] Prepaid plan activated for user ${userId}, plan ${packageId}`);
+    const result = await fulfillPrepaidPlan({ session, userId, packageId, credits });
+    if (!result.alreadyPaid) {
+      console.log(`[Stripe Webhook] Prepaid plan activated for user ${userId}, plan ${packageId}`);
+    }
     return;
   }
 
@@ -1083,11 +1181,11 @@ async function handleCheckoutCompleted(stripe, session) {
   }
 }
 
-async function handleInvoicePaid(stripe, invoice) {
+export async function handleInvoicePaid(stripe, invoice) {
   if (invoice.status !== 'paid') return;
   if (await invoiceAlreadyProcessed(invoice.id)) return;
 
-  const subscriptionId = invoice.subscription;
+  const subscriptionId = getInvoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
@@ -1098,36 +1196,65 @@ async function handleInvoicePaid(stripe, invoice) {
   const credits = await resolvePackageCredits(packageId, subscription.metadata?.credits);
   const billingReason = invoice.billing_reason === 'subscription_create' ? 'initial' : 'renewal';
 
-  await refreshSubscriptionCredits(userId, packageId, credits);
-  await upsertUserSubscription({
-    userId,
-    packageId,
-    paymentProvider: 'stripe',
-    stripeCustomerId: invoice.customer,
-    stripeSubscriptionId: subscription.id,
-    status: subscription.status,
-    periodStart: new Date(subscription.current_period_start * 1000),
-    periodEnd: new Date(subscription.current_period_end * 1000),
-    cancelAtPeriodEnd: subscription.cancel_at_period_end
-  });
+  // The first invoice of a subscription is already fulfilled by checkout.session.completed / confirm;
+  // resetting credits again would refill whatever the user spent in between.
+  let skipCreditReset = false;
+  if (billingReason === 'initial') {
+    const [paidSession] = await db.query(
+      `SELECT id FROM invoices WHERE stripe_subscription_id = ? AND stripe_session_id IS NOT NULL AND status = 'paid' LIMIT 1`,
+      [subscription.id],
+    );
+    skipCreditReset = paidSession.length > 0;
+  }
 
-  await recordInvoice({
-    userId,
-    packageId,
-    amountCents: invoice.amount_paid || 0,
-    credits,
-    status: 'paid',
-    method: 'stripe_subscription',
-    stripeSubscriptionId: subscription.id,
-    stripeInvoiceId: invoice.id,
-    billingReason
-  });
+  // Insert first: UNIQUE(stripe_invoice_id) makes this the idempotency claim.
+  let invoiceRowId;
+  try {
+    invoiceRowId = await recordInvoice({
+      userId,
+      packageId,
+      amountCents: invoice.amount_paid || 0,
+      credits: skipCreditReset ? 0 : credits,
+      status: 'paid',
+      method: 'stripe_subscription',
+      stripeSubscriptionId: subscription.id,
+      stripeInvoiceId: invoice.id,
+      billingReason
+    });
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') return;
+    throw err;
+  }
 
-  console.log(`[Stripe Webhook] ${billingReason} credits refreshed for user ${userId}, plan ${packageId}`);
+  try {
+    if (!skipCreditReset) {
+      await refreshSubscriptionCredits(userId, packageId, credits);
+    }
+    const period = getSubscriptionPeriod(subscription);
+    await upsertUserSubscription({
+      userId,
+      packageId,
+      paymentProvider: 'stripe',
+      stripeCustomerId: getStripeId(invoice.customer) || getStripeId(subscription.customer),
+      stripeSubscriptionId: subscription.id,
+      status: subscription.status,
+      periodStart: period.start,
+      periodEnd: period.end,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end
+    });
+  } catch (err) {
+    await db.query('DELETE FROM invoices WHERE id = ?', [invoiceRowId]).catch(() => null);
+    throw err;
+  }
+
+  console.log(
+    `[Stripe Webhook] ${billingReason} invoice ${invoice.id} recorded for user ${userId}, plan ${packageId}` +
+      (skipCreditReset ? ' (credits already granted at checkout)' : ' — credits refreshed')
+  );
 }
 
-async function handleInvoicePaymentFailed(invoice) {
-  const subscriptionId = invoice.subscription;
+export async function handleInvoicePaymentFailed(invoice) {
+  const subscriptionId = getInvoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
   const [subs] = await db.query('SELECT user_id FROM user_subscriptions WHERE stripe_subscription_id = ?', [subscriptionId]);
   if (subs.length === 0) return;
@@ -1135,7 +1262,7 @@ async function handleInvoicePaymentFailed(invoice) {
   console.log(`[Stripe Webhook] Subscription past_due for user ${subs[0].user_id}`);
 }
 
-async function handleSubscriptionUpdated(subscription) {
+export async function handleSubscriptionUpdated(subscription) {
   let targetUserId = Number(subscription.metadata?.userId);
   if (!targetUserId) {
     const [rows] = await db.query(
@@ -1150,15 +1277,16 @@ async function handleSubscriptionUpdated(subscription) {
   const [existing] = await db.query('SELECT package_id FROM user_subscriptions WHERE user_id = ?', [targetUserId]);
   const resolvedPackageId = packageId || existing[0]?.package_id || 'Scout';
 
+  const period = getSubscriptionPeriod(subscription);
   await upsertUserSubscription({
     userId: targetUserId,
     packageId: resolvedPackageId,
     paymentProvider: 'stripe',
-    stripeCustomerId: subscription.customer,
+    stripeCustomerId: getStripeId(subscription.customer),
     stripeSubscriptionId: subscription.id,
     status: subscription.status,
-    periodStart: new Date(subscription.current_period_start * 1000),
-    periodEnd: new Date(subscription.current_period_end * 1000),
+    periodStart: period.start,
+    periodEnd: period.end,
     cancelAtPeriodEnd: subscription.cancel_at_period_end
   });
 }
@@ -1187,6 +1315,17 @@ router.post('/webhook', async (req, res) => {
     });
   }
 
+  let eventClaimed = false;
+  try {
+    eventClaimed = await claimStripeEvent(event);
+  } catch (err) {
+    console.error('[Stripe Webhook] event claim failed:', err.message);
+    return res.status(500).json({ error: 'Webhook handler failed' });
+  }
+  if (!eventClaimed) {
+    return res.json({ received: true, duplicate: true });
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed':
@@ -1207,12 +1346,34 @@ router.post('/webhook', async (req, res) => {
       default:
         break;
     }
+    await db
+      .query(`UPDATE stripe_events SET status = 'processed', processed_at = NOW() WHERE event_id = ?`, [event.id])
+      .catch(() => null);
     res.json({ received: true });
   } catch (error) {
     console.error('[Stripe Webhook] handler error:', error);
+    // Release the claim so Stripe's retry can process the event.
+    await db.query('DELETE FROM stripe_events WHERE event_id = ?', [event.id]).catch(() => null);
     res.status(500).json({ error: 'Webhook handler failed' });
   }
 });
+
+/** Returns true when this request owns processing of the event (first delivery or a stale stuck claim). */
+async function claimStripeEvent(event) {
+  if (!event?.id) return true;
+  try {
+    await db.query('INSERT INTO stripe_events (event_id, event_type) VALUES (?, ?)', [event.id, String(event.type || '')]);
+    return true;
+  } catch (err) {
+    if (err?.code !== 'ER_DUP_ENTRY') throw err;
+    const [upd] = await db.query(
+      `UPDATE stripe_events SET created_at = CURRENT_TIMESTAMP
+       WHERE event_id = ? AND status = 'processing' AND created_at < (NOW() - INTERVAL 10 MINUTE)`,
+      [event.id],
+    );
+    return upd.affectedRows > 0;
+  }
+}
 
 router.get('/invoices', authenticateToken, async (req, res) => {
   try {

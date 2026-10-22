@@ -12,13 +12,27 @@ function isGoogleSolarEnriched(data = {}) {
   );
 }
 
+const ESCALATION = 0.03;
+const DEGRADATION = 0.005;
+
+function cumulativeSavings(year1, years) {
+  let total = 0;
+  for (let y = 0; y < years; y += 1) {
+    total += year1 * Math.pow((1 + ESCALATION) * (1 - DEGRADATION), y);
+  }
+  return Math.round(total);
+}
+
 export function buildSolarReportEstimates(data = {}) {
   const bill = Math.max(50, Number(data.monthlyBill) || 250);
   const annualBill = bill * 12;
   const solar = data.solarReport || {};
   const googleSolarHit = isGoogleSolarEnriched(data);
 
-  let ratePerKwh = 0.16;
+  const assumptions =
+    data.savingsAssumptions || solar.assumptions || data.enrichment?.assumptions || null;
+  const estimate = data.savingsEstimate || data.enrichment?.savingsEstimate || null;
+  let ratePerKwh = Number(assumptions?.utilityRate) || 0.165;
   let annualUsageKwh = Math.round((annualBill / ratePerKwh) * 0.95);
   let systemKw;
   let panelCount;
@@ -36,7 +50,7 @@ export function buildSolarReportEstimates(data = {}) {
   let milesOffset;
 
   if (googleSolarHit && solar.systemKw != null) {
-    ratePerKwh = Number(solar.ratePerKwh) || 0.16;
+    ratePerKwh = Number(solar.ratePerKwh) || ratePerKwh;
     annualUsageKwh = bill > 0 ? Math.round((annualBill / ratePerKwh) * 0.95) : 0;
     systemKw = Number(solar.systemKw);
     panelCount = solar.panelCount ?? Math.max(8, Math.round(systemKw / 0.42));
@@ -49,9 +63,9 @@ export function buildSolarReportEstimates(data = {}) {
         Math.max(35, Math.round((annualProduction / Math.max(annualUsageKwh, 1)) * 100)),
       );
     year1Savings = solar.year1Savings ?? Math.round(Math.min(annualBill, annualProduction * ratePerKwh));
-    year5Savings = solar.year5Savings ?? Math.round(year1Savings * 4.6);
-    year10Savings = solar.year10Savings ?? Math.round(year1Savings * 9.2);
-    year25Savings = solar.year25Savings ?? Math.round(annualProduction * ratePerKwh * 25);
+    year5Savings = solar.year5Savings ?? cumulativeSavings(year1Savings, 5);
+    year10Savings = solar.year10Savings ?? cumulativeSavings(year1Savings, 10);
+    year25Savings = solar.year25Savings ?? cumulativeSavings(year1Savings, 25);
     estSolarPayment = solar.estSolarPayment ?? Math.round(Math.max(0, bill - year1Savings / 12));
     co2TonsYear = Math.round(((annualProduction * 0.92) / 1000) * 10) / 10;
     co2Tons25 = solar.co2Tons25 ?? Math.round(co2TonsYear * 23 * 10) / 10;
@@ -61,22 +75,32 @@ export function buildSolarReportEstimates(data = {}) {
       sunHours = Math.round(annualProduction / systemKw / 0.85);
     }
   } else {
-    const systemKwRaw =
-      data.estimatedSolarKw != null
-        ? Number(data.estimatedSolarKw)
-        : Math.round((bill / 120) * 10) / 10;
-    systemKw = Math.max(3.5, systemKwRaw);
+    annualUsageKwh = Math.round((annualBill / ratePerKwh) * 0.95);
+    if (estimate?.systemKw && estimate?.annualProductionKwh) {
+      systemKw = Number(estimate.systemKw);
+      annualProduction = Number(estimate.annualProductionKwh);
+    } else {
+      const systemKwRaw =
+        data.estimatedSolarKw != null
+          ? Number(data.estimatedSolarKw)
+          : Math.round(((annualUsageKwh * 0.9) / (sunHours * 0.85)) * 10) / 10;
+      systemKw = Math.max(3, systemKwRaw);
+      annualProduction = Math.round(systemKw * sunHours * 0.85);
+    }
     panelCount = Math.max(8, Math.round(systemKw / 0.42));
-    annualProduction = Math.round(systemKw * sunHours * 0.85);
     coveragePct = Math.min(
       98,
       Math.max(35, Math.round((annualProduction / Math.max(annualUsageKwh, 1)) * 100)),
     );
-    year1Savings = Math.round(annualBill * 0.82);
-    year5Savings = Math.round(year1Savings * 4.6);
-    year10Savings = Math.round(year1Savings * 9.2);
-    year25Savings = Math.round(year1Savings * 21);
-    estSolarPayment = Math.round(bill * 0.58);
+    year1Savings =
+      estimate?.year1Savings ?? Math.round(Math.min(annualBill, annualProduction * ratePerKwh));
+    year5Savings = estimate?.year5Savings ?? cumulativeSavings(year1Savings, 5);
+    year10Savings = estimate?.year10Savings ?? cumulativeSavings(year1Savings, 10);
+    year25Savings = estimate?.year25Savings ?? cumulativeSavings(year1Savings, 25);
+    estSolarPayment = Math.round(Math.max(0, bill - year1Savings / 12));
+    if (systemKw > 0 && annualProduction > 0) {
+      sunHours = Math.round(annualProduction / systemKw / 0.85);
+    }
     co2TonsYear = Math.round(((annualProduction * 0.92) / 1000) * 10) / 10;
     co2Tons25 = Math.round(co2TonsYear * 23 * 10) / 10;
     treesEquiv = Math.round(co2TonsYear * 16);
@@ -147,6 +171,7 @@ export function buildSolarReportEstimates(data = {}) {
     shading: solar.shading || null,
     imageryDate: solar.imageryDate || null,
     imageryQuality: solar.imageryQuality || null,
+    assumptions,
   };
 }
 

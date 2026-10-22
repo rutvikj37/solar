@@ -9,7 +9,7 @@ export default function Profile() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", jobTitle: "" });
+  const [form, setForm] = useState({ name: "", phone: "", jobTitle: "", company: "", companyPostalAddress: "" });
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -45,6 +45,8 @@ export default function Profile() {
           name: data.user?.name || "",
           phone: data.user?.phone || "",
           jobTitle: data.user?.jobTitle || "",
+          company: data.user?.company || "",
+          companyPostalAddress: data.user?.companyPostalAddress || "",
         });
         setPlanData({
           activePackage: data.activePackage || "Free",
@@ -301,6 +303,26 @@ export default function Profile() {
                   value={form.jobTitle}
                   onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
                   placeholder="Your role in the company"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-on-surface"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-on-surface-variant">Company Name</label>
+                <input
+                  type="text"
+                  value={form.company}
+                  onChange={(e) => setForm({ ...form, company: e.target.value })}
+                  placeholder="Shown in outreach & drip emails"
+                  className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-on-surface"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-on-surface-variant">Company Postal Address</label>
+                <input
+                  type="text"
+                  value={form.companyPostalAddress}
+                  onChange={(e) => setForm({ ...form, companyPostalAddress: e.target.value })}
+                  placeholder="Street, City, State ZIP (required in marketing email footers)"
                   className="w-full bg-surface-container-low border border-glass-stroke rounded-lg py-2 px-3 focus:outline-none focus:border-primary text-on-surface"
                 />
               </div>

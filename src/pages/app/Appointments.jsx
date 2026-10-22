@@ -710,7 +710,27 @@ export default function Appointments() {
                         </Link>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-on-surface font-semibold">{a.title}</td>
+                    <td className="px-4 py-3 text-on-surface font-semibold">
+                      {a.title}
+                      {a.calendar_sync_status && (
+                        <span
+                          className={`ml-1.5 inline-flex items-center align-middle ${
+                            a.calendar_sync_status === 'synced'
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-amber-600 dark:text-amber-400'
+                          }`}
+                          title={
+                            a.calendar_sync_status === 'synced'
+                              ? 'Synced to your calendar'
+                              : `Calendar sync issue: ${a.calendar_sync_error || a.calendar_sync_status}`
+                          }
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            {a.calendar_sync_status === 'synced' ? 'event_available' : 'event_busy'}
+                          </span>
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-300">{inferAppointmentType(a.title)}</td>
                     <td className="px-4 py-3">{renderStatus(a)}</td>
                     <td className="px-4 py-3 text-right">{renderRowActions(a)}</td>

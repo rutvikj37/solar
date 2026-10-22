@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 import { BRAND_NAME } from '../../config/brand.js';
-import { authHeaders, isAuthError, isAdminRole, logoutToLogin } from '../../lib/auth.js';
+import { authHeaders, isAdminRole, logoutToLogin } from '../../lib/auth.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useTheme } from '../../context/ThemeContext.jsx';
 
@@ -12,46 +12,30 @@ export default function TopBar({
   sidebarCollapsed = false,
   showBanner,
 }) {
-  const { user, credits, activePackage, subscription, unlimitedCredits, refreshUserData } = useAuth();
+  const { user, credits, plan, unlimitedCredits, scanQuota, creditsUsedToday } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [leadsCount, setLeadsCount] = useState(0);
-  const [scanUsedToday, setScanUsedToday] = useState(0);
-  const [scanRemaining, setScanRemaining] = useState(0);
-  const [scanTotal, setScanTotal] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  useEffect(() => {
-    refreshUserData();
-  }, [refreshUserData]);
+  const finiteOr = (value, fallback) => {
+    const n = Number(value);
+    return value != null && value !== '' && Number.isFinite(n) ? n : fallback;
+  };
+  const quota = scanQuota || {};
+  const scanUsedToday = finiteOr(quota.usedToday, finiteOr(creditsUsedToday, 0));
+  const scanRemaining = finiteOr(quota.remaining, plan.credits);
+  const scanTotal = finiteOr(quota.total, Math.max(plan.credits + scanUsedToday, 0));
 
+  const userId = user?.id;
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/me`, { headers: authHeaders(), cache: 'no-store' })
+    if (!userId) return;
+    fetch(`${API_BASE}/api/leads/count`, { headers: authHeaders() })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!data) return;
-        const quota = data.scanQuota || {};
-        setScanUsedToday(Number(quota.usedToday) || Number(data.creditsUsedToday) || 0);
-        setScanRemaining(Number(quota.remaining) ?? Number(data.credits) ?? 0);
-        setScanTotal(
-          Number(quota.total) ||
-            Math.max(Number(data.credits) + Number(quota.usedToday || data.creditsUsedToday || 0), 0),
-        );
+        if (data && Number.isFinite(Number(data.count))) setLeadsCount(Number(data.count));
       })
       .catch(console.error);
-
-    fetch(`${API_BASE}/api/leads`, { headers: authHeaders() })
-      .then((res) => {
-        if (isAuthError(res.status)) {
-          logoutToLogin();
-          return null;
-        }
-        return res.ok ? res.json() : null;
-      })
-      .then((data) => {
-        if (Array.isArray(data)) setLeadsCount(data.length);
-      })
-      .catch(console.error);
-  }, [credits]);
+  }, [credits, userId]);
 
   const handleLogout = () => logoutToLogin();
 
@@ -61,14 +45,7 @@ export default function TopBar({
   const userInitial = userName.trim() ? userName.trim().charAt(0).toUpperCase() : '?';
   const topPosition = showBanner ? 'top-9' : 'top-0';
   const isAdmin = isAdminRole(userRole) || unlimitedCredits;
-  const hasSubscription = Boolean(subscription);
-  const planLabel = isAdmin
-    ? 'ADMIN'
-    : hasSubscription
-      ? subscription?.packageName || activePackage
-      : activePackage === 'Free'
-        ? 'FREE'
-        : activePackage;
+  const planLabel = plan.planName;
 
   const navToggleLabel = mobileNavOpen
     ? 'Close navigation'
@@ -116,7 +93,7 @@ export default function TopBar({
       >
         <span className="uppercase truncate">{planLabel}</span>
         <span className="text-on-surface font-mono tabular-nums">
-          {isAdmin ? '∞' : Number(credits).toLocaleString()}
+          {plan.creditsLabel}
         </span>
       </Link>
 
@@ -129,7 +106,7 @@ export default function TopBar({
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold tracking-wider">
           <span className="text-slate-300">SCANS TODAY</span>
           <span className="text-white font-mono tabular-nums">
-            {isAdmin
+            {plan.unlimited
               ? '∞'
               : `${scanUsedToday}/${Math.max(scanTotal, scanRemaining + scanUsedToday) || scanRemaining}`}
           </span>
@@ -145,7 +122,7 @@ export default function TopBar({
           </span>
           <span className="uppercase">{planLabel}</span>
           <span className="text-on-surface font-mono tabular-nums ml-0.5">
-            | {isAdmin ? 'UNLIMITED' : `${Number(credits).toLocaleString()} CREDITS`}
+            | {plan.unlimited ? 'UNLIMITED' : `${plan.creditsLabel} CREDITS`}
           </span>
         </Link>
       </div>
@@ -171,7 +148,7 @@ export default function TopBar({
               {userEmail}
             </p>
             <p className="text-primary-glow text-[9px] font-bold tracking-wider leading-none mt-1 uppercase">
-              {isAdmin ? 'ADMIN · UNLIMITED' : `${credits} LEAD CREDITS`}
+              {plan.unlimited ? `${plan.planName} · UNLIMITED` : `${plan.creditsLabel} LEAD CREDITS`}
             </p>
           </div>
         </div>

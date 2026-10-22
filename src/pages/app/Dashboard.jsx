@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../../config.js";
-import { clearToken } from "../../lib/auth.js";
+import { fetchMeResult } from "../../lib/auth.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { formatLeadGeneratedAt } from "../../lib/formatDate.js";
 import { placeAdvancedLeadMarker } from "../../lib/mapMarkers.js";
 import FullPageLoader from "../../components/layout/FullPageLoader.jsx";
@@ -12,7 +13,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [credits, setCredits] = useState(null);
   const [creditsUsedToday, setCreditsUsedToday] = useState(0);
-  const [activePackage, setActivePackage] = useState(null);
+  const { plan } = useAuth();
   const [emailQuota, setEmailQuota] = useState(null);
   const [leads, setLeads] = useState([]);
   const [territorySummary, setTerritorySummary] = useState(null);
@@ -51,17 +52,18 @@ export default function Dashboard() {
 
     const fetchData = async () => {
       try {
-        // Fetch User Me details
-        const meResponse = await fetch(`${API_BASE}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!meResponse.ok) throw new Error("Failed to fetch profile");
-        const meData = await meResponse.json();
-        setUser(meData.user);
-        setCredits(meData.credits);
-        setCreditsUsedToday(Number(meData.creditsUsedToday) || 0);
-        setActivePackage(meData.activePackage || "Scout");
-        setEmailQuota(meData.emailQuota || null);
+        const meResult = await fetchMeResult();
+        if (meResult.status === "unauthorized" || meResult.status === "no_token") {
+          navigate("/login", { replace: true });
+          return;
+        }
+        if (meResult.status === "ok") {
+          const meData = meResult.data;
+          setUser(meData.user);
+          setCredits(meData.credits);
+          setCreditsUsedToday(Number(meData.creditsUsedToday) || 0);
+          setEmailQuota(meData.emailQuota || null);
+        }
 
         // Fetch User Leads
         const leadsResponse = await fetch(`${API_BASE}/api/leads`, {
@@ -79,7 +81,16 @@ export default function Dashboard() {
           const analyticsData = await analyticsResponse.json();
           setTerritorySummary(analyticsData.summary || null);
         }
+      } catch (error) {
+        // Transient network/server error: stay on the dashboard; only a 401/403 from /me signs out.
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
+    const loadMaps = async () => {
+      try {
         const { resolveGoogleMapsApiKey } = await import("../../lib/mapsKey.js");
         const mapsKey = await resolveGoogleMapsApiKey();
         if (mapsKey && !mapsKey.startsWith("AizaSyCBA9")) {
@@ -87,16 +98,12 @@ export default function Dashboard() {
           loadGoogleMapsScript(mapsKey);
         }
       } catch (error) {
-        console.error(error);
-        // If token is invalid, redirect to login
-        clearToken();
-        navigate("/login", { replace: true });
-      } finally {
-        setLoading(false);
+        console.error("Google Maps key load failed:", error);
       }
     };
 
     fetchData();
+    loadMaps();
   }, [navigate]);
 
   const loadGoogleMapsScript = (apiKey) => {
@@ -248,7 +255,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-end gap-2">
             <p className="font-headline-md text-2xl md:text-headline-md font-semibold text-secondary font-mono tabular-nums">
-              {credits == null ? '—' : credits}
+              {plan.unlimited ? '∞' : credits == null ? '—' : credits}
             </p>
             <p className="font-label-mono text-[9px] text-slate-300 pb-1">
               Lead credits left
@@ -317,7 +324,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p className="font-headline-md text-xl md:text-2xl font-bold text-primary truncate">
-              {activePackage || 'Free'}
+              {plan.planName}
             </p>
             <p className="text-[10px] text-primary font-semibold mt-0.5 flex items-center gap-1 group-hover:underline">
               <span>View plan details</span>
@@ -357,7 +364,7 @@ export default function Dashboard() {
           {mapsLoaded && googleMapsKey && leads.some((l) => l.latitude && l.longitude) ? (
             <div ref={dashboardMapRef} className="absolute inset-0 z-0" />
           ) : (
-            <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#0a1224] via-[#0d1a2e] to-[#081018] flex items-center justify-center p-6">
+            <div className="theme-dark-canvas absolute inset-0 z-0 bg-gradient-to-br from-[#0a1224] via-[#0d1a2e] to-[#081018] flex items-center justify-center p-6">
               <div className="text-center max-w-sm space-y-3">
                 <span className="material-symbols-outlined text-4xl text-primary/80">map</span>
                 <h3 className="text-sm font-semibold text-on-surface">

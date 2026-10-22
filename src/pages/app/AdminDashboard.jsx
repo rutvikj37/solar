@@ -63,10 +63,16 @@ const USER_SECTIONS = [
 
 const TABS = ADMIN_TABS;
 
+function tabFromParam(t) {
+  const normalized = t === 'crm' || t === 'email' ? 'integrations' : t;
+  return normalized && TABS.some((x) => x.id === normalized) ? normalized : null;
+}
+
 export default function AdminDashboard() {
   const { theme } = useTheme();
   const { user: currentAdmin } = useAuth();
-  const [tab, setTab] = useState('dashboard');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => tabFromParam(searchParams.get('tab')) || 'dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
@@ -161,7 +167,6 @@ export default function AdminDashboard() {
   const [statusBusy, setStatusBusy] = useState(false);
 
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const authHeaders = useCallback(() => ({
     Authorization: `Bearer ${localStorage.getItem('solar_token')}`,
@@ -217,6 +222,10 @@ export default function AdminDashboard() {
     is_subscription: true,
   });
 
+  const searchRef = useRef({ q, roleFilter });
+  searchRef.current = { q, roleFilter };
+  const loadAbortRef = useRef(null);
+
   const loadTab = useCallback(
     async (active) => {
       const token = localStorage.getItem('solar_token');
@@ -224,13 +233,18 @@ export default function AdminDashboard() {
         navigate('/login');
         return;
       }
+      loadAbortRef.current?.abort();
+      const controller = new AbortController();
+      loadAbortRef.current = controller;
+      const { signal } = controller;
+      const get = (path) => fetch(`${API_BASE}${path}`, { headers: authHeaders(), signal });
       setError('');
       setLoading(true);
       try {
         if (active === 'dashboard') {
           const [res, healthRes] = await Promise.all([
-            fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() }),
-            fetch(`${API_BASE}/api/admin/system-health`, { headers: authHeaders() }),
+            get('/api/admin/stats'),
+            get('/api/admin/system-health'),
           ]);
           if (res.status === 403) {
             setError('Admin access required.');
@@ -241,12 +255,11 @@ export default function AdminDashboard() {
           if (healthRes.ok) setSystemHealth(await healthRes.json());
         }
         if (active === 'users') {
-          const roleQs = roleFilter ? `&role=${encodeURIComponent(roleFilter)}` : '';
+          const { q: query, roleFilter: role } = searchRef.current;
+          const roleQs = role ? `&role=${encodeURIComponent(role)}` : '';
           const [usersRes, plansRes] = await Promise.all([
-            fetch(`${API_BASE}/api/admin/users?q=${encodeURIComponent(q)}${roleQs}`, {
-              headers: authHeaders(),
-            }),
-            fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() }),
+            get(`/api/admin/users?q=${encodeURIComponent(query)}${roleQs}`),
+            get('/api/admin/plans'),
           ]);
           if (usersRes.status === 403 || plansRes.status === 403) {
             setError('Admin access required.');
@@ -257,9 +270,7 @@ export default function AdminDashboard() {
           if (plansRes.ok) setPlans(await plansRes.json());
         }
         if (active === 'subscriptions') {
-          const res = await fetch(`${API_BASE}/api/admin/subscriptions`, {
-            headers: authHeaders(),
-          });
+          const res = await get('/api/admin/subscriptions');
           if (res.status === 403) {
             setError('Admin access required.');
             return;
@@ -268,7 +279,7 @@ export default function AdminDashboard() {
           setSubs(await res.json());
         }
         if (active === 'plans') {
-          const res = await fetch(`${API_BASE}/api/admin/plans`, { headers: authHeaders() });
+          const res = await get('/api/admin/plans');
           if (res.status === 403) {
             setError('Admin access required.');
             return;
@@ -277,7 +288,7 @@ export default function AdminDashboard() {
           setPlans(await res.json());
         }
         if (active === 'apis') {
-          const res = await fetch(`${API_BASE}/api/admin/apis?days=7`, { headers: authHeaders() });
+          const res = await get('/api/admin/apis?days=7');
           if (res.status === 403) {
             setError('Admin access required.');
             return;
@@ -287,7 +298,7 @@ export default function AdminDashboard() {
           setApis(data.providers || []);
         }
         if (active === 'inquiries') {
-          const res = await fetch(`${API_BASE}/api/admin/inquiries`, { headers: authHeaders() });
+          const res = await get('/api/admin/inquiries');
           if (res.status === 403) {
             setError('Admin access required.');
             return;
@@ -296,7 +307,7 @@ export default function AdminDashboard() {
           setInquiries(await res.json());
         }
         if (active === 'tickets') {
-          const res = await fetch(`${API_BASE}/api/tickets`, { headers: authHeaders() });
+          const res = await get('/api/tickets');
           if (res.status === 403) {
             setError('Admin access required.');
             return;
@@ -305,9 +316,7 @@ export default function AdminDashboard() {
           setTickets(await res.json());
         }
         if (active === 'audit') {
-          const res = await fetch(`${API_BASE}/api/admin/audit-log?limit=100`, {
-            headers: authHeaders(),
-          });
+          const res = await get('/api/admin/audit-log?limit=100');
           if (res.status === 403) {
             setError('Admin access required.');
             return;
@@ -317,27 +326,48 @@ export default function AdminDashboard() {
           setAuditEntries(data.entries || []);
         }
       } catch (err) {
+        if (signal.aborted) return;
         setError(err.message);
         toast.error(err.message || 'Failed to load admin data');
       } finally {
-        setLoading(false);
+        if (loadAbortRef.current === controller) {
+          loadAbortRef.current = null;
+          setLoading(false);
+        }
       }
     },
-    [navigate, q, roleFilter, authHeaders],
+    [navigate, authHeaders],
   );
 
+  useEffect(() => () => loadAbortRef.current?.abort(), []);
+
   useEffect(() => {
-    const t = searchParams.get('tab');
-    const normalized = t === 'crm' || t === 'email' ? 'integrations' : t;
-    if (normalized && TABS.some((x) => x.id === normalized)) setTab(normalized);
+    const normalized = tabFromParam(searchParams.get('tab'));
+    if (normalized) setTab(normalized);
   }, [searchParams]);
 
   useEffect(() => {
     loadTab(tab);
   }, [tab, loadTab]);
 
-  // Keep nav badges fresh
+  // Debounced user search; the initial users load comes from the tab effect above.
+  const lastUserSearchRef = useRef(`${q}\u0000${roleFilter}`);
   useEffect(() => {
+    const key = `${q}\u0000${roleFilter}`;
+    if (key === lastUserSearchRef.current) return undefined;
+    if (tab !== 'users') return undefined;
+    const id = window.setTimeout(() => {
+      lastUserSearchRef.current = key;
+      loadTab('users');
+    }, 300);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, roleFilter]);
+
+  // Keep nav badges fresh (the dashboard tab already loads stats itself)
+  const initialTabRef = useRef(tab);
+  useEffect(() => {
+    if (initialTabRef.current === 'dashboard') return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -359,6 +389,11 @@ export default function AdminDashboard() {
   const handleSyncTelemetry = async () => {
     setSyncing(true);
     try {
+      if (tab === 'dashboard') {
+        await loadTab(tab);
+        toast.success('Telemetry updated');
+        return;
+      }
       const [res, healthRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/stats`, { headers: authHeaders() }),
         fetch(`${API_BASE}/api/admin/system-health`, { headers: authHeaders() }),

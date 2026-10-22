@@ -38,6 +38,12 @@ import proposalRoutes from './routes/proposals.js';
 import pipelineRoutes from './routes/pipeline.js';
 import marketplaceRoutes from './routes/marketplace.js';
 import marketplaceAdminRoutes from './routes/marketplace-admin.js';
+import complianceRoutes from './routes/compliance.js';
+import inboxRoutes from './routes/inbox.js';
+import tasksRoutes from './routes/tasks.js';
+import calendarRoutes from './routes/calendar.js';
+import aiOutreachRoutes from './routes/aiOutreach.js';
+import { startInboxWorker, stopInboxWorker } from './services/email/inboxWorker.js';
 import { startDialerWorker, stopDialerWorker } from './services/ai-calling/dialerWorker.js';
 import { startDripWorker, stopDripWorker } from './services/drip/dripWorker.js';
 import {
@@ -293,6 +299,11 @@ app.use('/api/proposals', proposalRoutes);
 app.use('/api/pipeline', pipelineRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/marketplace/admin', marketplaceAdminRoutes);
+app.use('/api/compliance', complianceRoutes);
+app.use('/api/inbox', inboxRoutes);
+app.use('/api/tasks', tasksRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/ai-outreach', aiOutreachRoutes);
 
 // Optional bundled frontend (Docker / single-process deploy). Helmet above sets COOP for HTML/JS.
 const staticFrontendDir = String(process.env.STATIC_FRONTEND_DIR || '').trim();
@@ -347,6 +358,9 @@ function startBackgroundWorkers() {
   startDialerWorker({ intervalMs: 15000 });
   startDripWorker({ intervalMs: 60000 });
   startMarketplaceWorker({ intervalMs: 30000 });
+  if (startInboxWorker()) {
+    console.log('[InboxWorker] Email reply sync enabled');
+  }
   console.log(
     BRAND_LOG_PREFIX + ' Background workers started: drip (60s), AI dialer (15s), marketplace (30s), appointment reminders (5m)',
   );
@@ -356,6 +370,7 @@ function stopBackgroundWorkers() {
   stopDialerWorker();
   stopDripWorker();
   stopMarketplaceWorker();
+  stopInboxWorker();
 }
 
 async function startServer() {

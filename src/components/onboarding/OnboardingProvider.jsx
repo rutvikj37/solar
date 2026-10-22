@@ -12,6 +12,7 @@ import {
   writeOnboardingState,
 } from '../../lib/productTour.js';
 import GettingStartedPanel from './GettingStartedPanel.jsx';
+import { COOKIE_CONSENT_EVENT, readCookieConsent } from '../../lib/cookieConsent.js';
 
 const OnboardingContext = createContext(null);
 
@@ -95,12 +96,25 @@ export default function OnboardingProvider({ children, autoStartOnDashboard = tr
     if (location.pathname !== '/dashboard') return undefined;
     if (!shouldAutoStartTour(readOnboardingState())) return undefined;
 
-    const t = window.setTimeout(() => {
-      if (shouldAutoStartTour(readOnboardingState()) && !tourRunning) {
-        runTour({ openChecklistAfter: true });
-      }
-    }, 600);
-    return () => window.clearTimeout(t);
+    let t = null;
+    const schedule = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => {
+        if (shouldAutoStartTour(readOnboardingState()) && !tourRunning) {
+          runTour({ openChecklistAfter: true });
+        }
+      }, 600);
+    };
+    // Don't stack the tour on top of the cookie banner; wait for a decision.
+    const onConsent = () => {
+      if (readCookieConsent().decided) schedule();
+    };
+    if (readCookieConsent().decided) schedule();
+    else window.addEventListener(COOKIE_CONSENT_EVENT, onConsent);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener(COOKIE_CONSENT_EVENT, onConsent);
+    };
     // Intentionally only on dashboard mount / path change — not when tourRunning flips
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStartOnDashboard, location.pathname]);

@@ -1,5 +1,6 @@
 import { enrichWithNrel } from './nrel.js';
 import { trackedFetch } from './apiUsage.js';
+import { getBuildingInsights } from './solarInsightsCache.js';
 import {
   cacheRentcastRecord,
   getCachedRentcastRecord
@@ -174,16 +175,25 @@ export function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+/**
+ * Rough rooftop-capacity preview from real RentCast living area (no Google Solar lookup yet).
+ * Assumes ~1.5 stories, ~30% of footprint usable for panels, ~17.6 sq ft per 400 W panel.
+ */
+export function previewSystemKwFromLivingArea(livingAreaSqFt, propertyType) {
+  const sqFt = Number(livingAreaSqFt) || 0;
+  if (sqFt < 400 || !isSingleFamilyType(propertyType)) return null;
+  const footprint = sqFt / 1.5;
+  const panels = Math.floor((footprint * 0.3) / 17.6);
+  const kw = Math.max(2, Math.min(20, panels * 0.4));
+  return Number(kw.toFixed(1));
+}
+
+/** List item with no synthetic scores: unscored until Google Solar insights are attached. */
 export function mapRentcastToListItem(prop) {
-  const propIdStr = prop.id || '';
-  const idHash = hashString(propIdStr || prop.formattedAddress);
   const propertyType = prop.propertyType || prop.features?.propertyType || 'Unknown';
   const sqFt = prop.squareFootage || prop.features?.livingArea || 0;
-  const solarScore = Math.min(99, Math.floor(68 + (idHash % 7) * 4 + Math.min(10, (sqFt || 0) / 400)));
-  const sizeKw = (5 + (idHash % 7) * 1.5).toFixed(1);
-  const estSavings = Math.floor(parseFloat(sizeKw) * 1450 * 0.18 * 25);
-  const existingSolarLikely = (idHash % 8 === 0) || (prop.features && prop.features.hasSolar === true);
-  const existingSolar = existingSolarLikely ? 'Possible (list heuristic)' : 'Unlikely';
+  const reportedSolar = prop.features?.hasSolar === true;
+  const previewKw = previewSystemKwFromLivingArea(sqFt, propertyType);
 
   return {
     id: `rentcast-${prop.id}__${encodeURIComponent(prop.formattedAddress || '')}`,
@@ -193,13 +203,31 @@ export function mapRentcastToListItem(prop) {
     propertyType,
     yearBuilt: prop.yearBuilt || null,
     squareFootage: sqFt || null,
-    solarScore,
-    estSavings,
-    systemSize: `${sizeKw} kW`,
-    panelsCount: Math.ceil(parseFloat(sizeKw) * 2.8),
-    existingSolar,
-    existingSolarLikely: !!existingSolarLikely,
+    solarScore: null,
+    estSavings: null,
+    systemSize: null,
+    panelsCount: null,
+    scoreSource: previewKw != null ? 'preview' : null,
+    previewSystemKw: previewKw,
+    existingSolar: reportedSolar ? 'Reported (property record)' : 'Unknown',
+    existingSolarLikely: reportedSolar,
     ownerOccupied: prop.ownerOccupied === true
+  };
+}
+
+/** Merge cached/verified Google Solar summary into a list item. */
+export function applyVerifiedSolarSummary(item, summary) {
+  if (!item || !summary) return item;
+  return {
+    ...item,
+    solarScore: summary.solarScore,
+    systemSize: `${summary.systemKw} kW`,
+    panelsCount: summary.panelCount,
+    annualProductionKwh: summary.annualProductionKwh,
+    totalRoofSqFt: summary.totalRoofSqFt,
+    existingSolar: item.existingSolarLikely && !summary.existingSolarLikely ? item.existingSolar : summary.existingSolar,
+    existingSolarLikely: Boolean(item.existingSolarLikely || summary.existingSolarLikely),
+    scoreSource: 'verified',
   };
 }
 
@@ -239,7 +267,8 @@ export function filterPropertiesByQuery(list, { lat, lng, radius, polygon, singl
 
   const minSav = parseMinSavingsThreshold(minSavings);
   if (minSav > 0) {
-    out = out.filter((p) => (p.estSavings || 0) >= minSav);
+    // Unknown savings (not yet scored) are kept rather than silently dropped.
+    out = out.filter((p) => p.estSavings == null || p.estSavings >= minSav);
   }
 
   if (skipPaneled === true || skipPaneled === 'true' || skipPaneled === '1') {
@@ -733,12 +762,11 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
 
   if (isKeyValid(process.env.GOOGLE_SOLAR_API_KEY)) {
     try {
-      console.log(`[Google Solar API] Querying coordinates: ${lat}, ${lng}`);
-      const solarUrl = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${process.env.GOOGLE_SOLAR_API_KEY}`;
-      const response = await trackedFetch('google_solar', solarUrl);
-      
-      if (response.ok) {
-        const solarData = await response.json();
+      const insights = await getBuildingInsights(lat, lng);
+      console.log(`[Google Solar API] ${lat}, ${lng} → ${insights.status}${insights.cached ? ' (cached)' : ''}`);
+
+      if (insights.data) {
+        const solarData = insights.data;
         if (solarData.center?.latitude != null && solarData.center?.longitude != null) {
           solarBuildingCenter = solarData.center;
         }
@@ -978,7 +1006,8 @@ export async function retrievePropertyDetails(id, providedLat, providedLng, rent
     livingArea,
     lotSize,
     stories,
-    solarScore,
+    solarScore: googleSolarHit ? solarScore : null,
+    solarScoreSource: googleSolarHit ? 'verified' : null,
     _locationInfo: locationInfo,
 
     solar: solarDetails,

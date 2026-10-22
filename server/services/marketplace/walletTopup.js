@@ -1,5 +1,6 @@
 import db from '../../db.js';
 import { adjustWallet, getWalletBalance } from './wallet.js';
+import { resolveFrontendBaseUrl } from '../../utils/frontendUrl.js';
 import {
   getStripe,
   getBillingCurrency,
@@ -26,8 +27,7 @@ export function getMarketplaceWalletPaymentInfo() {
 }
 
 function frontendBase() {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5200';
-  return raw.split(',')[0].trim();
+  return resolveFrontendBaseUrl();
 }
 
 function allowDevCheckout() {

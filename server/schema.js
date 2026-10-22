@@ -1,5 +1,6 @@
 import db from "./db.js";
 import { FOUNDING_LAUNCH_PLANS, LEGACY_PACKAGE_IDS, modulesToJson } from "./services/planPricing.js";
+import { migrateSecurityHardening } from "./migrations/securityHardening.js";
 
 async function columnExists(table, column) {
   const [rows] = await db.query(
@@ -32,6 +33,7 @@ export async function migrateSchema() {
   await ensureColumn("leads", "solar_json", "LONGTEXT NULL");
   await ensureColumn("leads", "property_json", "LONGTEXT NULL");
   await ensureColumn("leads", "image_url", "VARCHAR(1024) NULL");
+  await ensureColumn("leads", "last_enriched_at", "DATETIME NULL");
   await ensureColumn(
     "users",
     "account_status",
@@ -1450,4 +1452,197 @@ export async function migrateSchema() {
   await ensureColumn('leads', 'sale_rep_name', 'VARCHAR(255) NULL');
   await ensureColumn('leads', 'call_outcome', 'VARCHAR(40) NULL');
   await ensureColumn('leads', 'outreach_opt_out', 'TINYINT(1) NOT NULL DEFAULT 0');
+
+  // ===== COMPLIANCE: homeowner consent + central opt-out registry =====
+  await ensureColumn('marketplace_leads', 'consent_text', 'TEXT NULL');
+  await ensureColumn('marketplace_leads', 'consent_version', 'VARCHAR(32) NULL');
+  await ensureColumn('marketplace_leads', 'consent_at', 'DATETIME NULL');
+  await ensureColumn('marketplace_leads', 'consent_ip', 'VARCHAR(64) NULL');
+  await ensureColumn('marketplace_leads', 'consent_user_agent', 'VARCHAR(512) NULL');
+  await ensureColumn('marketplace_leads', 'consent_page_url', 'VARCHAR(1024) NULL');
+  await ensureColumn('users', 'company_postal_address', 'VARCHAR(500) NULL');
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS contact_opt_outs (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      contact_type ENUM('email','phone') NOT NULL,
+      contact_value VARCHAR(255) NOT NULL,
+      channel VARCHAR(16) NOT NULL,
+      source VARCHAR(40) NOT NULL,
+      user_id INT UNSIGNED NULL,
+      lead_id INT UNSIGNED NULL,
+      detail VARCHAR(255) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_opt_out_contact_channel (contact_type, contact_value, channel)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS contact_opt_out_events (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      contact_type ENUM('email','phone') NOT NULL,
+      contact_value VARCHAR(255) NOT NULL,
+      channel VARCHAR(16) NOT NULL,
+      action ENUM('opt_out','opt_in') NOT NULL,
+      source VARCHAR(40) NOT NULL,
+      user_id INT UNSIGNED NULL,
+      lead_id INT UNSIGNED NULL,
+      detail VARCHAR(255) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_opt_out_events_contact (contact_type, contact_value)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ===== Google Solar buildingInsights cache (shared by map, detail, reports, overlays) =====
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS solar_insights_cache (
+      cache_key VARCHAR(32) NOT NULL PRIMARY KEY,
+      lat DECIMAL(9,6) NOT NULL,
+      lng DECIMAL(9,6) NOT NULL,
+      status ENUM('hit','miss') NOT NULL,
+      payload_json LONGTEXT NULL,
+      fetched_at DATETIME NOT NULL,
+      expires_at DATETIME NOT NULL,
+      INDEX idx_solar_cache_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ===== Savings maths: incentives data table, utility-rate cache, proposal assumptions =====
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS solar_incentives (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(64) NOT NULL UNIQUE,
+      jurisdiction VARCHAR(8) NOT NULL DEFAULT 'US',
+      label VARCHAR(255) NOT NULL,
+      segment ENUM('residential','commercial','any') NOT NULL DEFAULT 'residential',
+      ownership VARCHAR(64) NOT NULL DEFAULT 'cash,loan',
+      kind ENUM('percent','fixed','per_watt') NOT NULL DEFAULT 'percent',
+      amount DECIMAL(12,4) NOT NULL DEFAULT 0,
+      cap_amount DECIMAL(12,2) NULL,
+      enabled TINYINT(1) NOT NULL DEFAULT 1,
+      as_of DATE NOT NULL,
+      expires_on DATE NULL,
+      notes TEXT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_incentive_jurisdiction (jurisdiction, enabled)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  try {
+    const { DEFAULT_SOLAR_INCENTIVES } = await import('./config/solarIncentivesDefaults.js');
+    for (const row of DEFAULT_SOLAR_INCENTIVES) {
+      await db.query(
+        `INSERT IGNORE INTO solar_incentives
+           (code, jurisdiction, label, segment, ownership, kind, amount, cap_amount, enabled, as_of, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [row.code, row.jurisdiction, row.label, row.segment, row.ownership, row.kind,
+          row.amount, row.cap, row.enabled, row.asOf, row.notes],
+      );
+    }
+  } catch (err) {
+    console.warn('[schema] solar_incentives seed skipped:', err.message);
+  }
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS utility_rate_cache (
+      cache_key VARCHAR(32) NOT NULL PRIMARY KEY,
+      rate_per_kwh DECIMAL(8,5) NULL,
+      utility_name VARCHAR(255) NULL,
+      source VARCHAR(32) NOT NULL,
+      fetched_at DATETIME NOT NULL,
+      expires_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  try {
+    await db.query(
+      "ALTER TABLE proposals MODIFY financing_type ENUM('cash','loan','lease','ppa') NOT NULL DEFAULT 'cash'",
+    );
+    await db.query('ALTER TABLE proposals MODIFY include_itc_30 TINYINT(1) NOT NULL DEFAULT 0');
+    await db.query('ALTER TABLE proposals MODIFY state_rebate DECIMAL(10,2) NOT NULL DEFAULT 0.00');
+  } catch (err) {
+    console.warn('[schema] proposals column modify skipped:', err.message);
+  }
+  await ensureColumn('proposals', 'property_segment', "ENUM('residential','commercial') NOT NULL DEFAULT 'residential'");
+  await ensureColumn('proposals', 'state_code', 'VARCHAR(2) NULL');
+  await ensureColumn('proposals', 'utility_rate', 'DECIMAL(8,5) NULL');
+  await ensureColumn('proposals', 'annual_production_kwh', 'INT NULL');
+  await ensureColumn('proposals', 'incentives_total', 'DECIMAL(10,2) NULL');
+  await ensureColumn('proposals', 'assumptions_json', 'LONGTEXT NULL');
+
+  // ===== Two-way email inbox (Gmail / Outlook reply sync) =====
+  await ensureColumn('outreach_messages', 'thread_key', 'VARCHAR(255) NULL');
+  await ensureColumn('outreach_messages', 'from_address', 'VARCHAR(255) NULL');
+  await ensureColumn('outreach_messages', 'received_at', 'DATETIME NULL');
+  await ensureColumn('outreach_messages', 'dedupe_key', 'VARCHAR(191) NULL');
+  try {
+    const [idx] = await db.query("SHOW INDEX FROM outreach_messages WHERE Key_name = 'uniq_outreach_dedupe'");
+    if (!idx.length) {
+      await db.query('CREATE UNIQUE INDEX uniq_outreach_dedupe ON outreach_messages (dedupe_key)');
+    }
+    const [idx2] = await db.query("SHOW INDEX FROM outreach_messages WHERE Key_name = 'idx_outreach_lead_channel'");
+    if (!idx2.length) {
+      await db.query('CREATE INDEX idx_outreach_lead_channel ON outreach_messages (lead_id, channel, direction)');
+    }
+  } catch (err) {
+    console.warn('[schema] outreach_messages inbox indexes skipped:', err.message);
+  }
+  await ensureColumn('user_email_connections', 'granted_scopes', 'TEXT NULL');
+  await ensureColumn('user_email_connections', 'inbox_sync_at', 'DATETIME NULL');
+  await ensureColumn('user_email_connections', 'inbox_sync_status', 'VARCHAR(32) NULL');
+  await ensureColumn('user_email_connections', 'inbox_sync_error', 'VARCHAR(500) NULL');
+  await ensureColumn('drip_enrollments', 'stop_reason', 'VARCHAR(64) NULL');
+  await ensureColumn('drip_enrollments', 'replied_at', 'DATETIME NULL');
+
+  // ===== CRM TASKS (follow-ups per lead, workspace-scoped) =====
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS crm_tasks (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      owner_user_id INT UNSIGNED NOT NULL,
+      lead_id INT UNSIGNED NULL,
+      assignee_user_id INT UNSIGNED NULL,
+      title VARCHAR(255) NOT NULL,
+      notes TEXT NULL,
+      due_at DATETIME NULL,
+      status ENUM('open','done','cancelled') NOT NULL DEFAULT 'open',
+      priority ENUM('low','normal','high','urgent') NOT NULL DEFAULT 'normal',
+      created_by INT UNSIGNED NOT NULL,
+      completed_at DATETIME NULL,
+      completed_by INT UNSIGNED NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_crm_tasks_owner_status_due (owner_user_id, status, due_at),
+      INDEX idx_crm_tasks_assignee_status_due (assignee_user_id, status, due_at),
+      INDEX idx_crm_tasks_lead (lead_id, status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // ===== CALENDAR SYNC (Google / Outlook OAuth; appointment <-> event ids) =====
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_calendar_connections (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NOT NULL,
+      provider VARCHAR(16) NOT NULL,
+      account_email VARCHAR(255) NULL,
+      access_token_enc TEXT NULL,
+      refresh_token_enc TEXT NULL,
+      token_expires_at DATETIME NULL,
+      granted_scopes TEXT NULL,
+      calendar_id VARCHAR(255) NOT NULL DEFAULT 'primary',
+      status VARCHAR(32) NOT NULL DEFAULT 'ok',
+      last_error VARCHAR(500) NULL,
+      last_sync_at DATETIME NULL,
+      connected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_calendar_user_provider (user_id, provider)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await ensureColumn('appointments', 'google_event_id', 'VARCHAR(255) NULL');
+  await ensureColumn('appointments', 'outlook_event_id', 'VARCHAR(255) NULL');
+  await ensureColumn('appointments', 'calendar_sync_status', 'VARCHAR(32) NULL');
+  await ensureColumn('appointments', 'calendar_sync_error', 'VARCHAR(500) NULL');
+  await ensureColumn('appointments', 'calendar_synced_at', 'DATETIME NULL');
+
+  // ===== SECURITY / BILLING HARDENING (token_version, leads.address_hash, stripe_events, invoice uniqueness) =====
+  await migrateSecurityHardening();
 }

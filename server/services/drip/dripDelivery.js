@@ -5,13 +5,15 @@ import db from '../../db.js';
 import { sendEmail } from '../outreachDelivery.js';
 import { logActivity } from '../../routes/crm.js';
 import { renderDripTemplate } from './dripTemplates.js';
+import { getSenderIdentity } from '../compliance/emailCompliance.js';
 
 function hasEmail(email) {
   return email && email !== 'Not Available';
 }
 
 export async function executeDripStep({ step, enrollment, lead, campaignName, userId }) {
-  const body = renderDripTemplate(step.template_content, lead, { companyName: 'Solar Velocity' });
+  const { companyName } = await getSenderIdentity(userId);
+  const body = renderDripTemplate(step.template_content, lead, { companyName });
   const channel = step.action_type;
 
   // Drip is email-only; skip legacy SMS / AI-call steps without sending.
@@ -30,7 +32,8 @@ export async function executeDripStep({ step, enrollment, lead, campaignName, us
     }
     const subject = renderDripTemplate(
       step.subject || `Solar Proposal for ${lead.address || 'your home'}`,
-      lead
+      lead,
+      { companyName }
     );
     try {
       const result = await sendEmail({
@@ -39,12 +42,13 @@ export async function executeDripStep({ step, enrollment, lead, campaignName, us
         subject,
         body,
         source: 'drip',
+        leadId: lead.id,
       });
       const status = result.simulated ? 'simulated' : 'sent';
       const [ins] = await db.query(
-        `INSERT INTO outreach_messages (user_id, lead_id, channel, subject, body, status, external_id)
-         VALUES (?, ?, 'email', ?, ?, ?, ?)`,
-        [userId, lead.id, subject, body, status, result.id || null]
+        `INSERT INTO outreach_messages (user_id, lead_id, channel, subject, body, status, external_id, thread_key)
+         VALUES (?, ?, 'email', ?, ?, ?, ?, ?)`,
+        [userId, lead.id, subject, body, status, result.id || null, result.threadId ? `gmail:${result.threadId}` : null]
       );
       await logActivity(lead.id, userId, 'drip_email', body, { subject, campaign: campaignName, drip: true });
       if (lead.status === 'new' || lead.status === 'qualified') {
@@ -57,6 +61,9 @@ export async function executeDripStep({ step, enrollment, lead, campaignName, us
         outreachId: ins.insertId,
       };
     } catch (err) {
+      if (err.code === 'OPTED_OUT') {
+        return { status: 'skipped', channel: 'email', errorMessage: err.message, externalId: null };
+      }
       return { status: 'failed', channel: 'email', errorMessage: err.message, externalId: null };
     }
   }

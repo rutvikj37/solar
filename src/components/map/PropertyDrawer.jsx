@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { API_BASE } from '../../config.js';
 import { authHeaders } from '../../lib/auth.js';
+import RoofLayoutCard from './RoofLayoutCard.jsx';
 
 function LockedValue() {
   return (
@@ -22,6 +23,30 @@ function displayValue(value, fallback = 'Not Available') {
 function FieldValue({ unlocked, value, fallback = 'Not Available' }) {
   if (!unlocked) return <LockedValue />;
   return displayValue(value, fallback);
+}
+
+export function ScoreSourceTag({ source }) {
+  if (source === 'verified') {
+    return (
+      <span
+        title="From Google Solar building insights for this roof"
+        className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-emerald-500"
+      >
+        Verified
+      </span>
+    );
+  }
+  if (source === 'preview') {
+    return (
+      <span
+        title="Rough estimate from property records — open or unlock for verified roof data"
+        className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-amber-500"
+      >
+        Preview
+      </span>
+    );
+  }
+  return null;
 }
 
 function starCountFromScore(score) {
@@ -51,17 +76,22 @@ function PropertySatelliteHeader({ property }) {
       return undefined;
     }
 
+    const controller = new AbortController();
+    let objectUrl = null;
+
     (async () => {
       try {
         const res = await fetch(
           `${API_BASE}/api/properties/satellite-image?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`,
-          { headers: authHeaders() }
+          { headers: authHeaders(), signal: controller.signal }
         );
         if (cancelled) return;
         if (res.ok) {
           const blob = await res.blob();
+          if (cancelled) return;
           if (blob.type.startsWith('image/') && blob.size > 0) {
-            setSrc(URL.createObjectURL(blob));
+            objectUrl = URL.createObjectURL(blob);
+            setSrc(objectUrl);
             setStatus('ready');
             return;
           }
@@ -74,10 +104,8 @@ function PropertySatelliteHeader({ property }) {
 
     return () => {
       cancelled = true;
-      setSrc((prev) => {
-        if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
-        return null;
-      });
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [property?.id, property?.lat, property?.lng]);
 
@@ -136,6 +164,9 @@ export default function PropertyDrawer({
   if (!displayProperty) return null;
 
   const unlocked = displayProperty.unlocked === true;
+  const isUnlocked = unlocked || generatedLeadStatus === 'generated';
+  const outOfCredits =
+    !isUnlocked && !unlimitedCredits && leadCredits !== null && leadCredits !== undefined && Number(leadCredits) <= 0;
 
   return (
     <div
@@ -225,9 +256,13 @@ export default function PropertyDrawer({
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-[9px] text-on-surface-variant uppercase font-label-mono">Solar Score</p>
+                      <p className="text-[9px] text-on-surface-variant uppercase font-label-mono flex items-center gap-1.5">
+                        Solar Score <ScoreSourceTag source={displayProperty.solarScoreSource} />
+                      </p>
                       <p className="text-sm font-bold text-on-surface">
-                        {displayValue(displayProperty.solarScore, '0')}/100
+                        {displayProperty.solarScore != null && Number(displayProperty.solarScore) > 0
+                          ? `${displayProperty.solarScore}/100`
+                          : '—'}
                       </p>
                     </div>
                     <div>
@@ -252,8 +287,9 @@ export default function PropertyDrawer({
                 </div>
 
                 <div className="glass-card p-4 rounded-xl space-y-3 bg-white/5">
-                  <h4 className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest font-semibold">
+                  <h4 className="font-label-mono text-[9px] text-on-surface-variant uppercase tracking-widest font-semibold flex items-center gap-1.5">
                     AI Lead Score Analysis
+                    <ScoreSourceTag source={displayProperty.enrichmentMeta?.googleSolarHit ? 'verified' : null} />
                   </h4>
                   <div className="flex items-center gap-4">
                     <div className="relative w-14 h-14 flex items-center justify-center flex-shrink-0">
@@ -353,6 +389,11 @@ export default function PropertyDrawer({
                     </div>
                   </div>
                 </div>
+                <RoofLayoutCard
+                  lat={displayProperty.lat}
+                  lng={displayProperty.lng}
+                  defaultPanels={Number(displayProperty.solar?.estimatedPanels) || null}
+                />
               </div>
             )}
 
@@ -428,33 +469,51 @@ export default function PropertyDrawer({
           </div>
 
           {/* Action CTA */}
-          <div className="p-4 border-t border-glass-stroke bg-white/5 space-y-2">
-            <button
-              onClick={handleGenerateLead}
-              disabled={generatedLeadStatus === 'generating' || generatedLeadStatus === 'generated'}
-              className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg ${
-                generatedLeadStatus === 'generated'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-primary text-on-primary hover:brightness-110'
-              }`}
-            >
-              {generatedLeadStatus === 'generating' ? (
-                <>
-                  <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                  Unlocking Lead...
-                </>
-              ) : generatedLeadStatus === 'generated' ? (
-                <>
-                  <span className="material-symbols-outlined text-sm">check_circle</span>
-                  Lead Saved To Dashboard!
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-sm">bolt</span>
-                  Unlock Full Lead ({unlimitedCredits ? '0 credits' : '1 credit'})
-                </>
-              )}
-            </button>
+          <div className="shrink-0 p-4 border-t border-glass-stroke bg-white/5 space-y-2">
+            {outOfCredits ? (
+              <>
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 bg-primary/40 text-on-primary cursor-not-allowed"
+                >
+                  <span className="material-symbols-outlined text-sm">lock</span>
+                  Unlock Lead (1 credit)
+                </button>
+                <p className="text-[10px] text-on-surface-variant text-center">
+                  No lead credits left.{' '}
+                  <Link to="/billing#plans" className="text-primary font-bold hover:underline">
+                    Upgrade to unlock
+                  </Link>
+                </p>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGenerateLead}
+                disabled={isUnlocked || generatedLeadStatus === 'generating'}
+                className={`w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg ${
+                  isUnlocked ? 'bg-green-600 text-white' : 'bg-primary text-on-primary hover:brightness-110'
+                }`}
+              >
+                {generatedLeadStatus === 'generating' ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                    Unlocking Lead...
+                  </>
+                ) : isUnlocked ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    Lead Unlocked
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">lock_open</span>
+                    Unlock Lead ({unlimitedCredits ? 'unlimited' : '1 credit'})
+                  </>
+                )}
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Link
                 to={

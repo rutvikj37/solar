@@ -10,7 +10,16 @@ import {
   mockAddresses,
   buildGoogleSatelliteStaticUrl,
   fetchGoogleSatelliteImage,
+  applyVerifiedSolarSummary,
 } from '../services/propertyService.js';
+import {
+  getBuildingInsights,
+  getCachedSummaries,
+  isGoogleSolarConfigured,
+  solarCacheKey,
+  summarizeBuildingInsights,
+  takeSolarFetchBudget,
+} from '../services/solarInsightsCache.js';
 import {
   allowMockProperties,
   PROPERTY_DATA_UNAVAILABLE,
@@ -31,9 +40,22 @@ import {
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { isMissingField, isPlaceholderOwnerName } from '../services/contactEnrichmentService.js';
+import { buildRoofLayout } from '../services/roofLayout.js';
+import { isWithinEnrichmentCooldown } from '../utils/enrichmentCooldown.js';
 import db from '../db.js';
 
 const router = express.Router();
+
+/** Attach already-cached Google Solar summaries (no API spend). */
+async function attachCachedSolarScores(list) {
+  if (!Array.isArray(list) || !list.length) return list;
+  const summaries = await getCachedSummaries(list);
+  if (!summaries.size) return list;
+  return list.map((p) => {
+    const summary = summaries.get(solarCacheKey(p.lat, p.lng));
+    return summary ? applyVerifiedSolarSummary(p, summary) : p;
+  });
+}
 
 const isKeyValid = (key) => {
   return key && key.trim() !== '' && !key.toLowerCase().includes('your_');
@@ -89,8 +111,8 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
     const { resolveWorkspaceContext } = await import('../utils/workspaceContext.js');
     const workspace = await resolveWorkspaceContext(req.user.id);
     const [rows] = await db.query(
-      `SELECT id, owner_name, phone, phone_type, email, email_status, linkedin,
-              mailing_address, property_value, owner_occupied, parcel_id
+      `SELECT id, user_id, owner_name, phone, phone_type, email, email_status, linkedin,
+              mailing_address, property_value, owner_occupied, parcel_id, last_enriched_at
        FROM leads WHERE user_id = ? AND address = ? LIMIT 1`,
       [workspace.ownerUserId, preview.address]
     );
@@ -98,14 +120,21 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
   }
   if (existing) {
     let details = preview;
-    const sparse = leadRecordIsSparse(existing);
+    const sparse =
+      leadRecordIsSparse(existing) && !isWithinEnrichmentCooldown(existing.last_enriched_at);
     if (sparse) {
       console.log(`[Property Detail] Sparse saved lead #${existing.id} — refreshing enrichment`);
-      details = await retrievePropertyDetails(id, lat, lng, rentcastRecord, {
-        skipContacts: false,
-        bypassCache: true,
-        addressHint,
-      });
+      try {
+        details = await retrievePropertyDetails(id, lat, lng, rentcastRecord, {
+          skipContacts: false,
+          bypassCache: true,
+          addressHint,
+        });
+      } finally {
+        await db
+          .query('UPDATE leads SET last_enriched_at = NOW() WHERE id = ?', [existing.id])
+          .catch((err) => console.warn('[Property Detail] last_enriched_at update failed:', err.message || err));
+      }
     }
 
     const ownerName = coalesceEnrichedText(existing.owner_name, details.propertyData?.ownerName);
@@ -161,7 +190,7 @@ async function respondWithLockedOrUnlockedDetails(req, res, id, lat, lng, rentca
             propValNum,
             propValNum,
             existing.id,
-            req.user.id,
+            existing.user_id,
           ],
         );
         console.log(`[Property Detail] Updated sparse lead #${existing.id} from refreshed enrichment`);
@@ -272,11 +301,12 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
               propertyType: 'Unknown',
               yearBuilt: null,
               squareFootage: null,
-              solarScore: 0,
-              estSavings: 0,
-              systemSize: '0 kW',
-              panelsCount: 0,
-              existingSolar: 'Unlikely',
+              solarScore: null,
+              estSavings: null,
+              systemSize: null,
+              panelsCount: null,
+              scoreSource: null,
+              existingSolar: 'Unknown',
               existingSolarLikely: false,
               ownerOccupied: false
             };
@@ -315,11 +345,12 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
             propertyType: 'Unknown',
             yearBuilt: null,
             squareFootage: null,
-            solarScore: 0,
-            estSavings: 0,
-            systemSize: '0 kW',
-            panelsCount: 0,
-            existingSolar: 'Unlikely',
+            solarScore: null,
+            estSavings: null,
+            systemSize: null,
+            panelsCount: null,
+            scoreSource: null,
+            existingSolar: 'Unknown',
             existingSolarLikely: false,
             ownerOccupied: false,
             isSearchMatch: true,
@@ -421,6 +452,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
             );
             list.unshift(exactMatch);
           }
+          list = await attachCachedSolarScores(list);
 
           let responseCenter = center;
           if (!exactMatch && list.length > 0) {
@@ -472,6 +504,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   }
 
   if (exactMatch) {
+    [exactMatch] = await attachCachedSolarScores([exactMatch]);
     return res.json({
       center,
       properties: [exactMatch],
@@ -517,12 +550,6 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
     const latDiff = Math.sin(i * 12.3) * 0.0025;
     const lngDiff = Math.cos(i * 15.6) * 0.003;
     const propId = `${zip || 'geo'}-${1000 + i}`;
-    const solarScore = Math.floor(65 + (Math.sin(i * 5) + 1) * 17.5);
-    const estSavings = Math.floor(20000 + (Math.cos(i * 4) + 1) * 15000);
-    const kwSize = (5 + (i % 8) * 1.8).toFixed(1);
-    const panelsCount = Math.ceil(parseFloat(kwSize) * 2.8);
-    const existingSolarLikely = i % 8 === 0;
-
     list.push({
       id: propId,
       lat: center.lat + latDiff,
@@ -531,12 +558,13 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
       propertyType: i % 5 === 0 ? 'Condo' : 'Single Family',
       yearBuilt: 1980 + (i % 30),
       squareFootage: 1400 + i * 40,
-      solarScore,
-      estSavings,
-      systemSize: `${kwSize} kW`,
-      panelsCount,
-      existingSolar: existingSolarLikely ? 'Possible (list heuristic)' : 'Unlikely',
-      existingSolarLikely,
+      solarScore: null,
+      estSavings: null,
+      systemSize: null,
+      panelsCount: null,
+      scoreSource: null,
+      existingSolar: 'Unknown',
+      existingSolarLikely: false,
       ownerOccupied: i % 3 !== 0
     });
   }
@@ -560,6 +588,81 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 // Coordinates property lookup (when user clicks anywhere on map/rooftop)
+/**
+ * Verified solar scores for visible map items.
+ * Body: { items: [{ id, lat, lng }] } (max 40). Cached results are free; uncached ones are
+ * fetched from Google Solar up to SOLAR_SCORE_FETCH_PER_REQUEST and a per-user daily budget.
+ */
+// GET /api/properties/roof-layout?lat=&lng=&panels= — roof segments + panel layout polygons
+router.get('/roof-layout', authenticateToken, asyncHandler(async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'lat and lng are required' });
+  }
+  if (!isGoogleSolarConfigured()) {
+    return res.json({ status: 'not_configured', message: 'Google Solar API key is not configured.' });
+  }
+  let result = await getBuildingInsights(lat, lng, { allowFetch: false });
+  if (result.status === 'not_cached') {
+    const { grant } = takeSolarFetchBudget(req.user.id, 1);
+    if (!grant) {
+      return res.json({ status: 'budget_exhausted', message: 'Daily roof-analysis limit reached. Try again tomorrow.' });
+    }
+    result = await getBuildingInsights(lat, lng, { allowFetch: true });
+  }
+  if (result.status === 'miss') {
+    return res.json({ status: 'no_coverage', message: 'Google Solar has no roof model for this building.' });
+  }
+  if (result.status !== 'hit' || !result.data) {
+    return res.json({ status: 'unavailable', message: 'Roof analysis is temporarily unavailable.' });
+  }
+  const layout = buildRoofLayout(result.data, { panelCount: req.query.panels });
+  if (!layout) return res.json({ status: 'no_coverage', message: 'No roof segments available for this building.' });
+  return res.json({ status: 'ok', layout });
+}));
+
+router.post('/solar-scores', authenticateToken, asyncHandler(async (req, res) => {
+  const items = (Array.isArray(req.body?.items) ? req.body.items : [])
+    .slice(0, 40)
+    .map((it) => ({ id: String(it?.id || ''), lat: Number(it?.lat), lng: Number(it?.lng) }))
+    .filter((it) => it.id && Number.isFinite(it.lat) && Number.isFinite(it.lng));
+
+  const cached = await getCachedSummaries(items);
+  const scores = {};
+  const uncached = [];
+  for (const it of items) {
+    const key = solarCacheKey(it.lat, it.lng);
+    if (cached.has(key)) {
+      const s = cached.get(key);
+      scores[it.id] = s ? { status: 'verified', ...s } : { status: 'no_coverage' };
+    } else {
+      uncached.push(it);
+    }
+  }
+
+  const configured = isGoogleSolarConfigured();
+  const perRequest = Math.max(0, Number(process.env.SOLAR_SCORE_FETCH_PER_REQUEST) || 8);
+  const { grant, remaining } = configured
+    ? takeSolarFetchBudget(req.user.id, Math.min(perRequest, uncached.length))
+    : { grant: 0, remaining: 0 };
+
+  const toFetch = uncached.slice(0, grant);
+  const results = await Promise.all(toFetch.map((it) => getBuildingInsights(it.lat, it.lng)));
+  toFetch.forEach((it, i) => {
+    const r = results[i];
+    const s = r.data ? summarizeBuildingInsights(r.data) : null;
+    if (s) scores[it.id] = { status: 'verified', ...s };
+    else if (r.status === 'miss') scores[it.id] = { status: 'no_coverage' };
+    else scores[it.id] = { status: 'unavailable' };
+  });
+  for (const it of uncached.slice(grant)) {
+    scores[it.id] = { status: configured ? 'pending' : 'not_configured' };
+  }
+
+  res.json({ scores, configured, budgetRemaining: remaining });
+}));
+
 router.get('/lookup', authenticateToken, asyncHandler(async (req, res) => {
   const { lat, lng } = req.query;
   if (!lat || !lng) return res.status(400).json({ error: 'Coordinates required' });

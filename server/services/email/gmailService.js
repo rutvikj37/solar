@@ -2,7 +2,10 @@ import {
   getUserEmailConnection,
   upsertUserEmailConnection,
   gmailRedirectUri,
+  isInboxSyncEnabled,
 } from './userEmailConnections.js';
+
+export const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 import {
   getGoogleMailClientId,
   getGoogleMailClientSecret,
@@ -20,6 +23,7 @@ export function getGmailAuthorizeUrl(state) {
     scope: [
       'https://www.googleapis.com/auth/gmail.send',
       'https://www.googleapis.com/auth/userinfo.email',
+      ...(isInboxSyncEnabled() ? [GMAIL_READ_SCOPE] : []),
     ].join(' '),
     access_type: 'offline',
     prompt: 'select_account consent',
@@ -72,6 +76,10 @@ async function fetchGoogleEmail(accessToken) {
   return data.email;
 }
 
+export async function ensureGmailAccessToken(conn) {
+  return ensureAccessToken(conn);
+}
+
 async function ensureAccessToken(conn) {
   const expires = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
   if (expires > Date.now() + 60_000) return conn.access_token;
@@ -101,16 +109,21 @@ export async function completeGmailOAuth(userId, code) {
     expiresAt,
     fromEmail,
     fromName: fromEmail.split('@')[0],
+    grantedScopes: data.scope || null,
   });
   return { fromEmail };
 }
 
-function buildRawMessage({ fromName, fromEmail, to, subject, body }) {
+function buildRawMessage({ fromName, fromEmail, to, subject, body, headers }) {
   const fromHeader = fromName ? `"${fromName.replace(/"/g, '')}" <${fromEmail}>` : fromEmail;
+  const extraHeaders = Object.entries(headers || {})
+    .filter(([k, v]) => /^[A-Za-z0-9-]+$/.test(k) && v && !/[\r\n]/.test(String(v)))
+    .map(([k, v]) => `${k}: ${v}`);
   const lines = [
     `From: ${fromHeader}`,
     `To: ${to}`,
     `Subject: ${subject}`,
+    ...extraHeaders,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
     '',
@@ -123,7 +136,7 @@ function buildRawMessage({ fromName, fromEmail, to, subject, body }) {
     .replace(/=+$/, '');
 }
 
-export async function sendViaGmail(userId, { to, subject, body }) {
+export async function sendViaGmail(userId, { to, subject, body, headers = null }) {
   const conn = await getUserEmailConnection(userId);
   if (!conn?.access_token || conn.provider !== 'gmail') {
     throw new Error('Gmail is not connected — connect in Integrations');
@@ -135,6 +148,7 @@ export async function sendViaGmail(userId, { to, subject, body }) {
     to,
     subject,
     body,
+    headers,
   });
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
@@ -146,5 +160,5 @@ export async function sendViaGmail(userId, { to, subject, body }) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error?.message || 'Gmail send failed');
-  return { ok: true, id: data.id, from: conn.from_email, simulated: false };
+  return { ok: true, id: data.id, threadId: data.threadId || null, from: conn.from_email, simulated: false };
 }

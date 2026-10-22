@@ -1,4 +1,6 @@
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { CONTACT_CONSENT_TEXT } from '@/lib/contactConsent.js';
 
 export function Step4Solar({ onBack, data, updateData, onSubmit, submitting = false }: any) {
   const billValue = data.monthlyBill || 250;
@@ -58,11 +60,27 @@ export function Step4Solar({ onBack, data, updateData, onSubmit, submitting = fa
         </div>
       </div>
 
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={Boolean(data.contactConsent)}
+          onChange={(e) => updateData({ contactConsent: e.target.checked })}
+          className="mt-1 h-4 w-4 shrink-0 accent-cyan-500"
+          aria-describedby="contact-consent-text"
+        />
+        <span id="contact-consent-text" className="text-[11px] leading-relaxed text-white/60">
+          {CONTACT_CONSENT_TEXT}{' '}
+          <Link to="/privacy" className="text-cyan-400 hover:underline">Privacy Policy</Link>
+          {' · '}
+          <Link to="/terms" className="text-cyan-400 hover:underline">Terms</Link>
+        </span>
+      </label>
+
       <div className="flex gap-4 pt-4 border-t border-white/5">
         <button onClick={onBack} className="w-1/3 bg-white/5 text-white font-bold py-4 rounded-xl hover:bg-white/10 transition-colors">← Back</button>
         <button
           onClick={onSubmit}
-          disabled={!data.timeline || submitting}
+          disabled={!data.timeline || !data.contactConsent || submitting}
           className="w-2/3 bg-cyan-500 text-navy-dark font-black py-4 rounded-xl hover:bg-cyan-400 transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] disabled:opacity-50 disabled:shadow-none"
         >
           {submitting ? 'VALIDATING…' : 'GET MY FREE SOLAR REPORT →'}
